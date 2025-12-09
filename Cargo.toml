@@ -9,6 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 geo = "0.32.0"
+itertools = "0.14.0"
 nalgebra = "0.34.1"
 parry2d-f64 = "0.25.3"
 pyo3 = { version = "0.27.1", features = ["extension-module"] }
