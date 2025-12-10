@@ -1,5 +1,7 @@
 use std::sync::LazyLock;
 
+use geo::Polygon as GeoPolygon;
+use itertools::Itertools;
 use nalgebra::{Point2, Vector2};
 use parry2d_f64::{
     query::{Unsupported, intersection_test},
@@ -7,7 +9,7 @@ use parry2d_f64::{
 };
 use pyo3::{exceptions::PyValueError, prelude::*};
 
-use crate::python::isometry::Isometry;
+use crate::{polygon::polygon_to_collision_shape, python::isometry::Isometry};
 
 static IDENTITY: LazyLock<Isometry> = LazyLock::new(Isometry::identity);
 
@@ -92,10 +94,27 @@ impl Triangle {
     }
 }
 
+#[pyclass(extends = Shape)]
+pub struct Polygon {}
+
+#[pymethods]
+impl Polygon {
+    #[new]
+    fn new(exterior: Vec<(f64, f64)>, interiors: Vec<Vec<(f64, f64)>>) -> PyResult<(Self, Shape)> {
+        let poly = GeoPolygon::new(exterior.into(), interiors.into_iter().map_into().collect());
+        let shape = polygon_to_collision_shape(&poly).ok_or(PyValueError::new_err(
+            "Cannot create collision shape from empty polygon",
+        ))?;
+        Ok((Polygon {}, Shape { inner: shape }))
+    }
+}
+
 #[pymodule]
 pub(super) mod collision_object {
     #[pymodule_export]
     use super::Circle;
+    #[pymodule_export]
+    use super::Polygon;
     #[pymodule_export]
     use super::Rectangle;
     #[pymodule_export]
