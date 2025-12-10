@@ -41,3 +41,9 @@ impl RoadBoundaryChecker {
         })
     }
 }
+
+#[pymodule]
+pub(super) mod road_boundary {
+    #[pymodule_export]
+    use super::RoadBoundaryChecker;
+}

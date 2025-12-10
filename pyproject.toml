@@ -2,7 +2,7 @@
 name = "commonroad-collision-checker"
 version = "0.1.0"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.7"
+requires-python = ">=3.9"
 authors = [
     { name = "Cyber-Physical Systems Group - Technical University of Munich", email = "commonroad@lists.lrz.de" },
 ]
@@ -23,12 +23,13 @@ dependencies = ["commonroad-io>=2023.1"]
 dev = ["pre-commit>=2.21.0", "ruff==0.14.8"]
 
 [build-system]
-requires = ["maturin>=1,<2"]
+requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
-# module-name = "commonroad_collision_checker._core"
+module-name = "commonroad_collision_checker._core"
+python-packages = ["commonroad_collision_checker"]
+python-source = "src"
 
 [tool.uv]
 cache-keys = [

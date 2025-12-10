@@ -1,5 +1,7 @@
 use pyo3::prelude::*;
 
+mod collision_object;
+mod isometry;
 mod road_boundary;
 
 #[pyfunction]
@@ -9,8 +11,14 @@ fn hello() -> PyResult<()> {
 }
 
 #[pymodule]
-fn commonroad_collision_checker(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(hello, m)?)?;
-    m.add_class::<road_boundary::RoadBoundaryChecker>()?;
-    Ok(())
+mod _core {
+    #[pymodule_export]
+    use super::hello;
+
+    #[pymodule_export]
+    use super::collision_object::collision_object;
+    #[pymodule_export]
+    use super::isometry::isometry;
+    #[pymodule_export]
+    use super::road_boundary::road_boundary;
 }
