@@ -1,24 +1,25 @@
 import commonroad_collision_checker._core as ccc
 from commonroad.common.file_reader import CommonRoadFileReader
 
+from commonroad_collision_checker.collision_checker import CollisionCheckerBuilder
+
 
 def main():
     # read scenario
-    # scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/ZAM_Merge-1_1_T-1.xml"
-    scenario_path = "/home/lercher/datasets/exiD/exiD-commonroad-only6-no-merge-selected/scenarios/DEU_MerzenichRather-2_870_T-149.xml"
-    # scenario_path = "scenarios/ZAM_Yield-1_1_T-1.xml"
-    # scenario_path = "scenarios/USA_US101-6_1_T-1.xml"
-    # scenario_path = "scenarios/ZAM_Tutorial-1_2_T-1.xml"
+    scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/ZAM_Merge-1_1_T-1.xml"
+    # scenario_path = "/home/lercher/datasets/exiD/exiD-commonroad-only6-no-merge-selected/scenarios/DEU_MerzenichRather-2_870_T-149.xml"
+    # scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/ZAM_Yield-1_1_T-1.xml"
+    # scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/USA_US101-6_1_T-1.xml"
+    # scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/ZAM_Tutorial-1_2_T-1.xml"
 
     scenario, planning_problems = CommonRoadFileReader(scenario_path).open()
 
     lanelet_network = scenario.lanelet_network
 
-    lanelet_polygons = [list(lanelet.polygon.shapely_object.exterior.coords) for lanelet in lanelet_network.lanelets]
-
-    rb = ccc.road_boundary.RoadBoundaryChecker(lanelet_polygons)
-    print(rb.collides((55.29, -1.99), 1.326))
-    print(rb.collides((37.33, 4.07), -2.207))
+    cc = CollisionCheckerBuilder().with_road_boundary_obstacle(lanelet_network).build()
+    car = ccc.collision_object.Rectangle(4.5, 2.0)
+    print(cc.collides_static(car, ccc.isometry.Isometry((55.29, -1.99), 1.326)))
+    print(cc.collides_static(car, ccc.isometry.Isometry((37.33, 4.07), -2.207)))
 
     r = ccc.collision_object.Rectangle(2, 3)
     c = ccc.collision_object.Circle(1)

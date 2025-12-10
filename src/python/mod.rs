@@ -1,8 +1,8 @@
 use pyo3::prelude::*;
 
+mod collision_checker;
 mod collision_object;
 mod isometry;
-mod road_boundary;
 
 #[pyfunction]
 fn hello() -> PyResult<()> {
@@ -16,9 +16,9 @@ mod _core {
     use super::hello;
 
     #[pymodule_export]
+    use super::collision_checker::collision_checker;
+    #[pymodule_export]
     use super::collision_object::collision_object;
     #[pymodule_export]
     use super::isometry::isometry;
-    #[pymodule_export]
-    use super::road_boundary::road_boundary;
 }
