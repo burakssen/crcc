@@ -6,11 +6,11 @@ from commonroad_collision_checker.collision_checker import CollisionCheckerBuild
 
 def main():
     # read scenario
-    scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/ZAM_Merge-1_1_T-1.xml"
-    # scenario_path = "/home/lercher/datasets/exiD/exiD-commonroad-only6-no-merge-selected/scenarios/DEU_MerzenichRather-2_870_T-149.xml"
-    # scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/ZAM_Yield-1_1_T-1.xml"
-    # scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/USA_US101-6_1_T-1.xml"
-    # scenario_path = "../../commonroad/commonroad-reach-flow/scenarios/ZAM_Tutorial-1_2_T-1.xml"
+    scenario_path = "scenarios/ZAM_Merge-1_1_T-1.xml"
+    # scenario_path = "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
+    # scenario_path = "scenarios/ZAM_Yield-1_1_T-1.xml"
+    # scenario_path = "scenarios/USA_US101-6_1_T-1.xml"
+    # scenario_path = "scenarios/ZAM_Tutorial-1_2_T-1.xml"
 
     scenario, planning_problems = CommonRoadFileReader(scenario_path).open()
 
