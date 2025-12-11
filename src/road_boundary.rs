@@ -44,7 +44,7 @@ pub fn create_road_boundary_obstacle(
     {
         match PolygonCollisionObject::new(&hole) {
             Some(PolygonCollisionObject::TriMesh(mesh)) => {
-                meshes.push(mesh);
+                meshes.push(*mesh);
             }
             Some(PolygonCollisionObject::ConvexPolygon(poly)) => {
                 shapes.push((Isometry2::identity(), SharedShape::new(poly)));

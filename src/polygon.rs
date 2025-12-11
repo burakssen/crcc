@@ -5,7 +5,7 @@ use parry2d_f64::shape::{ConvexPolygon, SharedShape, TriMesh};
 
 pub enum PolygonCollisionObject {
     ConvexPolygon(ConvexPolygon),
-    TriMesh(TriMesh),
+    TriMesh(Box<TriMesh>),
 }
 
 impl PolygonCollisionObject {
@@ -29,16 +29,18 @@ impl PolygonCollisionObject {
                 let trimesh =
                     TriMesh::from_polygon(geo_line_string_to_parry_polyline(polygon.exterior()))
                         .expect("Polygon should be a valid polygon");
-                Some(Self::TriMesh(trimesh))
+                Some(Self::TriMesh(Box::new(trimesh)))
             }
-            _ => Some(Self::TriMesh(triangulate_polygon_with_holes(polygon))),
+            _ => Some(Self::TriMesh(Box::new(triangulate_polygon_with_holes(
+                polygon,
+            )))),
         }
     }
 
     pub fn into_shared(self) -> SharedShape {
         match self {
             PolygonCollisionObject::ConvexPolygon(poly) => SharedShape::new(poly),
-            PolygonCollisionObject::TriMesh(mesh) => SharedShape::new(mesh),
+            PolygonCollisionObject::TriMesh(mesh) => SharedShape::new(*mesh),
         }
     }
 }
