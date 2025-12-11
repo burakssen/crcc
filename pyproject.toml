@@ -2,7 +2,7 @@
 name = "commonroad-collision-checker"
 version = "0.1.0"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "Cyber-Physical Systems Group - Technical University of Munich", email = "commonroad@lists.lrz.de" },
 ]
@@ -11,10 +11,10 @@ keywords = []
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Operating System :: POSIX :: Linux",
 ]
 dependencies = ["commonroad-io>=2023.1"]
@@ -36,6 +36,24 @@ cache-keys = [
     { file = "pyproject.toml" },
     { file = "Cargo.toml" },
     { file = "src/**/*.rs" },
+]
+
+[tool.cibuildwheel]
+skip = ["*-musllinux*"]
+environment = { PIP_DISABLE_PIP_VERSION_CHECK = "1" }
+build-verbosity = 1
+
+[tool.cibuildwheel.linux]
+repair-wheel-command = [
+    "auditwheel repair -w {dest_dir} {wheel}",
+    # skip abi3audit for CPython 3.14 free-threaded wheels (no abi3 support yet)
+    "if [[ \"{wheel}\" != *\"-cp314t-\"* ]]; then pipx run abi3audit --strict --report {wheel}; fi",
+]
+[tool.cibuildwheel.macos]
+repair-wheel-command = [
+    "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}",
+    # skip abi3audit for CPython 3.14 free-threaded wheels (no abi3 support yet)
+    "if [[ \"{wheel}\" != *\"-cp314t-\"* ]]; then pipx run abi3audit --strict --report {wheel}; fi",
 ]
 
 [tool.ruff]
