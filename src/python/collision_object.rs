@@ -51,8 +51,8 @@ pub struct Rectangle {}
 #[pymethods]
 impl Rectangle {
     #[new]
-    fn new(width: f64, height: f64) -> (Self, Shape) {
-        let shape = Cuboid::new(Vector2::new(width / 2.0, height / 2.0));
+    fn new(length: f64, width: f64) -> (Self, Shape) {
+        let shape = Cuboid::new(Vector2::new(length / 2.0, width / 2.0));
         (Rectangle {}, Shape(SharedShape::new(shape)))
     }
 }
