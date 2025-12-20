@@ -1,0 +1,25 @@
+use geo::{IsConvex, Polygon};
+use std::ops::Deref;
+
+pub struct ConvexPolygon(pub(super) Polygon);
+
+impl ConvexPolygon {
+    pub fn new(polygon: Polygon) -> ConvexPolygon {
+        if !polygon.exterior().is_convex() || !polygon.interiors().is_empty() {
+            panic!("ConvexPolygon must be convex and may not have holes.")
+        }
+        ConvexPolygon(polygon)
+    }
+
+    pub fn polygon(&self) -> &Polygon {
+        &self.0
+    }
+}
+
+impl Deref for ConvexPolygon {
+    type Target = Polygon;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
