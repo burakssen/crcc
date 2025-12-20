@@ -1,6 +1,7 @@
 use geo::Polygon;
 use std::ops::Deref;
 
+#[derive(Debug, Clone)]
 pub struct NonConvexPolygon(pub(super) Polygon);
 
 impl NonConvexPolygon {

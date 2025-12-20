@@ -1,3 +1,4 @@
+#[derive(Debug, Clone)]
 pub struct Circle {
     pub(super) center: (f64, f64),
     pub(super) radius: f64,

@@ -1,6 +1,7 @@
 use geo::Polygon;
 use std::ops::Deref;
 
+#[derive(Debug, Clone)]
 pub struct PolygonWithHoles(pub(super) Polygon);
 
 impl PolygonWithHoles {

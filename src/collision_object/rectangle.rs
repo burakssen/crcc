@@ -1,6 +1,7 @@
 use geo::{HasDimensions, Rect};
 use std::ops::Deref;
 
+#[derive(Debug, Clone)]
 pub struct Rectangle(pub(super) Rect);
 
 impl Rectangle {

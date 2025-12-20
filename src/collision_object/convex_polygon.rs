@@ -1,6 +1,7 @@
 use geo::{IsConvex, Polygon};
 use std::ops::Deref;
 
+#[derive(Debug, Clone)]
 pub struct ConvexPolygon(pub(super) Polygon);
 
 impl ConvexPolygon {

@@ -1,21 +1,26 @@
 use geo::{HasDimensions, IsConvex, Polygon, Rect, Triangle as GeoTriangle};
+use nalgebra::{Unit, Vector2};
 
-pub mod circle;
-pub mod convex_polygon;
-pub mod non_convex_polygon;
-pub mod polygon_with_holes;
-pub mod rectangle;
-pub mod triangle;
+mod circle;
+mod convex_polygon;
+mod half_space;
+mod non_convex_polygon;
+mod polygon_with_holes;
+mod rectangle;
+mod triangle;
 
 pub use circle::Circle;
 pub use convex_polygon::ConvexPolygon;
+pub use half_space::HalfSpace;
 pub use non_convex_polygon::NonConvexPolygon;
 pub use polygon_with_holes::PolygonWithHoles;
 pub use rectangle::Rectangle;
 pub use triangle::Triangle;
 
+#[derive(Debug, Clone)]
 pub enum CollisionObject {
     Empty,
+    HalfSpace(HalfSpace),
     Circle(Circle),
     Rectangle(Rectangle),
     Triangle(Triangle),
@@ -27,6 +32,24 @@ pub enum CollisionObject {
 impl CollisionObject {
     pub fn empty() -> CollisionObject {
         CollisionObject::Empty
+    }
+
+    pub fn half_space(outward_normal: Unit<Vector2<f64>>, offset: f64) -> CollisionObject {
+        CollisionObject::HalfSpace(HalfSpace {
+            outward_normal,
+            offset,
+        })
+    }
+
+    pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> CollisionObject {
+        // Create a half space defined by the line through p1 and p2,
+        // with the outward normal pointing to the left of the line
+        CollisionObject::HalfSpace(HalfSpace::from_points(p1, p2))
+    }
+
+    pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> CollisionObject {
+        // Represents the half space ax + by <= c
+        CollisionObject::HalfSpace(HalfSpace::from_coeffs(a, b, c))
     }
 
     pub fn circle(center: (f64, f64), radius: f64) -> CollisionObject {

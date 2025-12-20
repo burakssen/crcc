@@ -1,12 +1,13 @@
 use crate::collision_object::{
-    Circle, CollisionObject, ConvexPolygon, NonConvexPolygon, PolygonWithHoles, Rectangle, Triangle,
+    Circle, CollisionObject, ConvexPolygon, HalfSpace, NonConvexPolygon, PolygonWithHoles,
+    Rectangle, Triangle,
 };
 use geo::{LineString, TriangulateEarcut, Winding};
 use itertools::Itertools;
 use nalgebra::{Isometry2, Point2, Vector2};
 use parry2d_f64::shape::{
-    Ball, ConvexPolygon as ParryConvexPolygon, Cuboid, Shape, SharedShape, TriMesh,
-    Triangle as ParryTriangle,
+    Ball, ConvexPolygon as ParryConvexPolygon, Cuboid, HalfSpace as ParryHalfSpace, Shape,
+    SharedShape, TriMesh, Triangle as ParryTriangle,
 };
 
 pub enum ParryCollisionObjectRepr {
@@ -36,6 +37,16 @@ impl From<CollisionObject> for ParryCollisionObjectRepr {
     fn from(collision_object: CollisionObject) -> Self {
         match collision_object {
             CollisionObject::Empty => ParryCollisionObjectRepr::Empty,
+            CollisionObject::HalfSpace(HalfSpace {
+                outward_normal,
+                offset,
+            }) => {
+                let support = offset * *outward_normal;
+                ParryCollisionObjectRepr::Generic {
+                    shape: Box::new(ParryHalfSpace::new(outward_normal)),
+                    position: Isometry2::translation(support.x, support.y),
+                }
+            }
             CollisionObject::Circle(circle) => convert_circle(circle),
             CollisionObject::Rectangle(rect) => convert_rectangle(rect),
             CollisionObject::Triangle(triangle) => convert_triangle(triangle),

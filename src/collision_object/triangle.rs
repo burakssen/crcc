@@ -1,6 +1,7 @@
 use geo::{HasDimensions, Triangle as GeoTriangle};
 use std::ops::Deref;
 
+#[derive(Debug, Clone)]
 pub struct Triangle(pub(super) GeoTriangle);
 
 impl Triangle {
