@@ -1,29 +1,32 @@
+use crate::collision_checker::engine::parry::collision_object::{
+    ParryCollisionObject, ParryCollisionObjectInner,
+};
 use crate::collision_object::CollisionObject;
-use crate::solver::parry::collision_object_repr::ParryCollisionObjectRepr;
 use nalgebra::Isometry2;
 use parry2d_f64::shape::{Compound, SharedShape, TriMesh, TriMeshBuilderError};
 
 #[derive(Default)]
-pub struct ParrySolverBuilder {
+pub struct ParryEngineBuilder {
     tri_meshes: Vec<TriMesh>,
     generic_objects: Vec<(Isometry2<f64>, SharedShape)>,
 }
 
-impl ParrySolverBuilder {
+impl ParryEngineBuilder {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn with_collision_object(&mut self, collision_object: CollisionObject) -> &mut Self {
-        let repr = ParryCollisionObjectRepr::from(collision_object);
-        match repr {
-            ParryCollisionObjectRepr::Empty => { /* intentionally left blank */ }
-            ParryCollisionObjectRepr::TriMesh(mesh) => {
+    pub fn with_collision_object(mut self, collision_object: CollisionObject) -> Self {
+        let inner = ParryCollisionObject::from(collision_object).0;
+        match inner {
+            ParryCollisionObjectInner::Empty => { /* intentionally left blank */ }
+            ParryCollisionObjectInner::TriMesh(mesh) => {
                 self.tri_meshes.push(*mesh);
             }
-            ParryCollisionObjectRepr::Generic { .. } => {
+            ParryCollisionObjectInner::Generic { .. } => {
                 self.generic_objects.push(
-                    repr.into_shared_shape()
+                    inner
+                        .into_shared_shape()
                         .expect("Should not be an empty shape."),
                 );
             }
@@ -31,7 +34,7 @@ impl ParrySolverBuilder {
         self
     }
 
-    pub fn build(self) -> super::ParrySolver {
+    pub fn build(self) -> super::ParryEngine {
         let tri_mesh_objects = if self.tri_meshes.is_empty() {
             None
         } else {
@@ -47,7 +50,7 @@ impl ParrySolverBuilder {
         } else {
             Some(Compound::new(self.generic_objects))
         };
-        super::ParrySolver {
+        super::ParryEngine {
             tri_mesh_objects,
             generic_objects,
         }

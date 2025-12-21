@@ -10,7 +10,9 @@ use parry2d_f64::shape::{
     SharedShape, TriMesh, Triangle as ParryTriangle,
 };
 
-pub enum ParryCollisionObjectRepr {
+pub struct ParryCollisionObject(pub(super) ParryCollisionObjectInner);
+
+pub(super) enum ParryCollisionObjectInner {
     Empty,
     TriMesh(Box<TriMesh>),
     Generic {
@@ -19,34 +21,25 @@ pub enum ParryCollisionObjectRepr {
     },
 }
 
-impl ParryCollisionObjectRepr {
+impl ParryCollisionObjectInner {
     pub fn into_shared_shape(self) -> Option<(Isometry2<f64>, SharedShape)> {
         match self {
-            ParryCollisionObjectRepr::Empty => None,
-            ParryCollisionObjectRepr::TriMesh(mesh) => {
+            ParryCollisionObjectInner::Empty => None,
+            ParryCollisionObjectInner::TriMesh(mesh) => {
                 Some((Isometry2::identity(), SharedShape::new(*mesh)))
             }
-            ParryCollisionObjectRepr::Generic { shape, position } => {
+            ParryCollisionObjectInner::Generic { shape, position } => {
                 Some((position, SharedShape(shape.into())))
             }
         }
     }
 }
 
-impl From<CollisionObject> for ParryCollisionObjectRepr {
+impl From<CollisionObject> for ParryCollisionObject {
     fn from(collision_object: CollisionObject) -> Self {
-        match collision_object {
-            CollisionObject::Empty => ParryCollisionObjectRepr::Empty,
-            CollisionObject::HalfSpace(HalfSpace {
-                outward_normal,
-                offset,
-            }) => {
-                let support = offset * *outward_normal;
-                ParryCollisionObjectRepr::Generic {
-                    shape: Box::new(ParryHalfSpace::new(outward_normal)),
-                    position: Isometry2::translation(support.x, support.y),
-                }
-            }
+        let inner = match collision_object {
+            CollisionObject::Empty => ParryCollisionObjectInner::Empty,
+            CollisionObject::HalfSpace(half_space) => convert_half_space(half_space),
             CollisionObject::Circle(circle) => convert_circle(circle),
             CollisionObject::Rectangle(rect) => convert_rectangle(rect),
             CollisionObject::Triangle(triangle) => convert_triangle(triangle),
@@ -59,27 +52,36 @@ impl From<CollisionObject> for ParryCollisionObjectRepr {
             CollisionObject::PolygonWithHoles(polygon_with_holes) => {
                 convert_polygon_with_holes(polygon_with_holes)
             }
-        }
+        };
+        ParryCollisionObject(inner)
     }
 }
 
-fn convert_circle(circle: Circle) -> ParryCollisionObjectRepr {
-    ParryCollisionObjectRepr::Generic {
+fn convert_half_space(half_space: HalfSpace) -> ParryCollisionObjectInner {
+    let support = half_space.offset * *half_space.outward_normal;
+    ParryCollisionObjectInner::Generic {
+        shape: Box::new(ParryHalfSpace::new(half_space.outward_normal)),
+        position: Isometry2::translation(support.x, support.y),
+    }
+}
+
+fn convert_circle(circle: Circle) -> ParryCollisionObjectInner {
+    ParryCollisionObjectInner::Generic {
         shape: Box::new(Ball::new(circle.radius())),
         position: make_isometry(circle.center(), 0.0),
     }
 }
 
-fn convert_rectangle(rect: Rectangle) -> ParryCollisionObjectRepr {
+fn convert_rectangle(rect: Rectangle) -> ParryCollisionObjectInner {
     let half_extents = Vector2::new(rect.width() / 2.0, rect.height() / 2.0);
-    ParryCollisionObjectRepr::Generic {
+    ParryCollisionObjectInner::Generic {
         shape: Box::new(Cuboid::new(half_extents)),
         position: make_isometry(rect.center().into(), 0.0),
     }
 }
 
-fn convert_triangle(triangle: Triangle) -> ParryCollisionObjectRepr {
-    ParryCollisionObjectRepr::Generic {
+fn convert_triangle(triangle: Triangle) -> ParryCollisionObjectInner {
+    ParryCollisionObjectInner::Generic {
         shape: Box::new(ParryTriangle::new(
             Point2::new(triangle.0.x, triangle.0.y),
             Point2::new(triangle.1.x, triangle.1.y),
@@ -89,26 +91,26 @@ fn convert_triangle(triangle: Triangle) -> ParryCollisionObjectRepr {
     }
 }
 
-fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> ParryCollisionObjectRepr {
+fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> ParryCollisionObjectInner {
     let parry_convex = ParryConvexPolygon::from_convex_polyline(geo_line_string_to_parry_polyline(
         convex_polygon.exterior(),
     ))
     .expect("Convex polygon should be a valid convex polygon");
-    ParryCollisionObjectRepr::Generic {
+    ParryCollisionObjectInner::Generic {
         shape: Box::new(parry_convex),
         position: Isometry2::identity(),
     }
 }
 
-fn convert_non_convex_polygon(non_convex_polygon: NonConvexPolygon) -> ParryCollisionObjectRepr {
+fn convert_non_convex_polygon(non_convex_polygon: NonConvexPolygon) -> ParryCollisionObjectInner {
     let trimesh = TriMesh::from_polygon(geo_line_string_to_parry_polyline(
         non_convex_polygon.exterior(),
     ))
     .expect("Non-convex polygon should be a valid polygon");
-    ParryCollisionObjectRepr::TriMesh(Box::new(trimesh))
+    ParryCollisionObjectInner::TriMesh(Box::new(trimesh))
 }
 
-fn convert_polygon_with_holes(polygon_with_holes: PolygonWithHoles) -> ParryCollisionObjectRepr {
+fn convert_polygon_with_holes(polygon_with_holes: PolygonWithHoles) -> ParryCollisionObjectInner {
     let triangulation = polygon_with_holes.earcut_triangles_raw();
     let trimesh = TriMesh::new(
         triangulation
@@ -125,7 +127,7 @@ fn convert_polygon_with_holes(polygon_with_holes: PolygonWithHoles) -> ParryColl
             .collect(),
     )
     .expect("Triangulated polygon should be a valid trimesh");
-    ParryCollisionObjectRepr::TriMesh(Box::new(trimesh))
+    ParryCollisionObjectInner::TriMesh(Box::new(trimesh))
 }
 
 fn geo_line_string_to_parry_polyline(line_string: &LineString) -> Vec<Point2<f64>> {
