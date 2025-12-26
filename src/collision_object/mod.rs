@@ -1,92 +1,61 @@
-use geo::{HasDimensions, IsConvex, Polygon, Rect, Triangle as GeoTriangle};
-use nalgebra::{Unit, Vector2};
+use crate::collision_object::simple::SimpleCollisionObject;
 
-mod circle;
-mod convex_polygon;
-mod half_space;
-mod non_convex_polygon;
-mod polygon_with_holes;
-mod rectangle;
-mod triangle;
+pub mod simple;
 
-pub use circle::Circle;
-pub use convex_polygon::ConvexPolygon;
-pub use half_space::HalfSpace;
-pub use non_convex_polygon::NonConvexPolygon;
-pub use polygon_with_holes::PolygonWithHoles;
-pub use rectangle::Rectangle;
-pub use triangle::Triangle;
+#[derive(Clone, Debug)]
+pub struct StaticCollisionObject(pub Vec<SimpleCollisionObject>);
 
-#[derive(Debug, Clone)]
-pub enum CollisionObject {
-    Empty,
-    HalfSpace(HalfSpace),
-    Circle(Circle),
-    Rectangle(Rectangle),
-    Triangle(Triangle),
-    ConvexPolygon(ConvexPolygon),
-    NonConvexPolygon(NonConvexPolygon),
-    PolygonWithHoles(PolygonWithHoles),
+impl StaticCollisionObject {
+    pub fn empty() -> Self {
+        Self(vec![])
+    }
+
+    pub fn merge(self, other: Self) -> Self {
+        Self::merge_all([self, other])
+    }
+
+    pub fn merge_all(objects: impl IntoIterator<Item = Self>) -> Self {
+        objects.into_iter().flatten().collect()
+    }
 }
 
-impl CollisionObject {
-    pub fn empty() -> CollisionObject {
-        CollisionObject::Empty
+impl Default for StaticCollisionObject {
+    fn default() -> Self {
+        Self::empty()
     }
+}
 
-    pub fn half_space(outward_normal: Unit<Vector2<f64>>, offset: f64) -> CollisionObject {
-        CollisionObject::HalfSpace(HalfSpace {
-            outward_normal,
-            offset,
-        })
-    }
-
-    pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> CollisionObject {
-        // Create a half space defined by the line through p1 and p2,
-        // with the outward normal pointing to the left of the line
-        CollisionObject::HalfSpace(HalfSpace::from_points(p1, p2))
-    }
-
-    pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> CollisionObject {
-        // Represents the half space ax + by <= c
-        CollisionObject::HalfSpace(HalfSpace::from_coeffs(a, b, c))
-    }
-
-    pub fn circle(center: (f64, f64), radius: f64) -> CollisionObject {
-        if radius <= 0.0 {
-            CollisionObject::Empty
-        } else {
-            CollisionObject::Circle(Circle { center, radius })
+impl From<SimpleCollisionObject> for StaticCollisionObject {
+    fn from(value: SimpleCollisionObject) -> Self {
+        match value {
+            SimpleCollisionObject::Empty => Self::empty(),
+            _ => Self(vec![value]),
         }
     }
+}
 
-    pub fn rectangle(rect: Rect) -> CollisionObject {
-        if rect.is_empty() {
-            CollisionObject::Empty
-        } else {
-            CollisionObject::Rectangle(Rectangle(rect))
-        }
+impl From<Vec<SimpleCollisionObject>> for StaticCollisionObject {
+    fn from(mut value: Vec<SimpleCollisionObject>) -> Self {
+        value.retain(|obj| !matches!(obj, SimpleCollisionObject::Empty));
+        Self(value)
     }
+}
 
-    pub fn triangle(triangle: GeoTriangle) -> CollisionObject {
-        if triangle.is_empty() {
-            CollisionObject::Empty
-        } else {
-            CollisionObject::Triangle(Triangle(triangle))
-        }
+impl FromIterator<SimpleCollisionObject> for StaticCollisionObject {
+    fn from_iter<T: IntoIterator<Item = SimpleCollisionObject>>(iter: T) -> Self {
+        Self(
+            iter.into_iter()
+                .filter(|obj| !matches!(obj, SimpleCollisionObject::Empty))
+                .collect(),
+        )
     }
+}
 
-    pub fn polygon(polygon: Polygon) -> CollisionObject {
-        if polygon.is_empty() {
-            return CollisionObject::Empty;
-        }
-        match (
-            polygon.exterior().is_convex(),
-            polygon.interiors().is_empty(),
-        ) {
-            (true, true) => CollisionObject::ConvexPolygon(ConvexPolygon(polygon)),
-            (false, true) => CollisionObject::NonConvexPolygon(NonConvexPolygon(polygon)),
-            _ => CollisionObject::PolygonWithHoles(PolygonWithHoles(polygon)),
-        }
+impl IntoIterator for StaticCollisionObject {
+    type Item = SimpleCollisionObject;
+    type IntoIter = <Vec<SimpleCollisionObject> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }

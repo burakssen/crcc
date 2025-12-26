@@ -1,4 +1,5 @@
 use crate::collision_checker::engine::CollisionEngine;
+use crate::collision_checker::engine::parry::ParryEngine;
 pub use builder::CollisionCheckerBuilder;
 use nalgebra::Isometry2;
 
@@ -10,8 +11,8 @@ pub enum CollisionCheckerError {
     Unsupported,
 }
 
-pub struct CollisionChecker<E> {
-    engine: E,
+pub struct CollisionChecker<E: CollisionEngine = ParryEngine> {
+    static_obstacle: E::EngineCollisionObject,
 }
 
 impl<E: CollisionEngine> CollisionChecker<E> {
@@ -24,7 +25,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         obj: &E::EngineCollisionObject,
         position: &Isometry2<f64>,
     ) -> Result<bool, CollisionCheckerError> {
-        self.engine.collides_at(obj, position)
+        E::collides_at(&self.static_obstacle, &Isometry2::identity(), obj, position)
     }
 
     /// Check collision with any convertible object at the given position.
@@ -37,6 +38,6 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         obj: impl Into<E::EngineCollisionObject>,
         position: &Isometry2<f64>,
     ) -> Result<bool, CollisionCheckerError> {
-        self.engine.collides_at(&obj.into(), position)
+        self.collides_at(&obj.into(), position)
     }
 }

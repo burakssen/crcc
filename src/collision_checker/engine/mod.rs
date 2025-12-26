@@ -1,17 +1,16 @@
 use crate::collision_checker::CollisionCheckerError;
-use crate::collision_object::CollisionObject;
+use crate::collision_object::StaticCollisionObject;
 use nalgebra::Isometry2;
 
 pub mod parry;
 
 pub trait CollisionEngine {
-    type EngineCollisionObject: From<CollisionObject>;
-
-    fn from_collision_objects(collision_objects: Vec<CollisionObject>) -> Self;
+    type EngineCollisionObject: From<StaticCollisionObject>;
 
     fn collides_at(
-        &self,
-        obj: &Self::EngineCollisionObject,
-        position: &Isometry2<f64>,
+        obj_1: &Self::EngineCollisionObject,
+        pos_1: &Isometry2<f64>,
+        obj_2: &Self::EngineCollisionObject,
+        pos_2: &Isometry2<f64>,
     ) -> Result<bool, CollisionCheckerError>;
 }

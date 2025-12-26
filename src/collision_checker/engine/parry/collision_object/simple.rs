@@ -1,6 +1,6 @@
-use crate::collision_object::{
-    Circle, CollisionObject, ConvexPolygon, HalfSpace, NonConvexPolygon, PolygonWithHoles,
-    Rectangle, Triangle,
+use crate::collision_object::simple::{
+    Circle, ConvexPolygon, HalfSpace, NonConvexPolygon, PolygonWithHoles, Rectangle,
+    SimpleCollisionObject, Triangle,
 };
 use geo::{LineString, TriangulateEarcut, Winding};
 use itertools::Itertools;
@@ -10,9 +10,7 @@ use parry2d_f64::shape::{
     SharedShape, TriMesh, Triangle as ParryTriangle,
 };
 
-pub struct ParryCollisionObject(pub(super) ParryCollisionObjectInner);
-
-pub(super) enum ParryCollisionObjectInner {
+pub enum ParrySimpleCollisionObject {
     Empty,
     TriMesh(Box<TriMesh>),
     Generic {
@@ -21,67 +19,66 @@ pub(super) enum ParryCollisionObjectInner {
     },
 }
 
-impl ParryCollisionObjectInner {
+impl ParrySimpleCollisionObject {
     pub fn into_shared_shape(self) -> Option<(Isometry2<f64>, SharedShape)> {
         match self {
-            ParryCollisionObjectInner::Empty => None,
-            ParryCollisionObjectInner::TriMesh(mesh) => {
+            ParrySimpleCollisionObject::Empty => None,
+            ParrySimpleCollisionObject::TriMesh(mesh) => {
                 Some((Isometry2::identity(), SharedShape::new(*mesh)))
             }
-            ParryCollisionObjectInner::Generic { shape, position } => {
+            ParrySimpleCollisionObject::Generic { shape, position } => {
                 Some((position, SharedShape(shape.into())))
             }
         }
     }
 }
 
-impl From<CollisionObject> for ParryCollisionObject {
-    fn from(collision_object: CollisionObject) -> Self {
-        let inner = match collision_object {
-            CollisionObject::Empty => ParryCollisionObjectInner::Empty,
-            CollisionObject::HalfSpace(half_space) => convert_half_space(half_space),
-            CollisionObject::Circle(circle) => convert_circle(circle),
-            CollisionObject::Rectangle(rect) => convert_rectangle(rect),
-            CollisionObject::Triangle(triangle) => convert_triangle(triangle),
-            CollisionObject::ConvexPolygon(convex_polygon) => {
+impl From<SimpleCollisionObject> for ParrySimpleCollisionObject {
+    fn from(collision_object: SimpleCollisionObject) -> Self {
+        match collision_object {
+            SimpleCollisionObject::Empty => ParrySimpleCollisionObject::Empty,
+            SimpleCollisionObject::HalfSpace(half_space) => convert_half_space(half_space),
+            SimpleCollisionObject::Circle(circle) => convert_circle(circle),
+            SimpleCollisionObject::Rectangle(rect) => convert_rectangle(rect),
+            SimpleCollisionObject::Triangle(triangle) => convert_triangle(triangle),
+            SimpleCollisionObject::ConvexPolygon(convex_polygon) => {
                 convert_convex_polygon(convex_polygon)
             }
-            CollisionObject::NonConvexPolygon(non_convex_polygon) => {
+            SimpleCollisionObject::NonConvexPolygon(non_convex_polygon) => {
                 convert_non_convex_polygon(non_convex_polygon)
             }
-            CollisionObject::PolygonWithHoles(polygon_with_holes) => {
+            SimpleCollisionObject::PolygonWithHoles(polygon_with_holes) => {
                 convert_polygon_with_holes(polygon_with_holes)
             }
-        };
-        ParryCollisionObject(inner)
+        }
     }
 }
 
-fn convert_half_space(half_space: HalfSpace) -> ParryCollisionObjectInner {
+fn convert_half_space(half_space: HalfSpace) -> ParrySimpleCollisionObject {
     let support = half_space.offset * *half_space.outward_normal;
-    ParryCollisionObjectInner::Generic {
+    ParrySimpleCollisionObject::Generic {
         shape: Box::new(ParryHalfSpace::new(half_space.outward_normal)),
         position: Isometry2::translation(support.x, support.y),
     }
 }
 
-fn convert_circle(circle: Circle) -> ParryCollisionObjectInner {
-    ParryCollisionObjectInner::Generic {
+fn convert_circle(circle: Circle) -> ParrySimpleCollisionObject {
+    ParrySimpleCollisionObject::Generic {
         shape: Box::new(Ball::new(circle.radius())),
         position: make_isometry(circle.center(), 0.0),
     }
 }
 
-fn convert_rectangle(rect: Rectangle) -> ParryCollisionObjectInner {
+fn convert_rectangle(rect: Rectangle) -> ParrySimpleCollisionObject {
     let half_extents = Vector2::new(rect.width() / 2.0, rect.height() / 2.0);
-    ParryCollisionObjectInner::Generic {
+    ParrySimpleCollisionObject::Generic {
         shape: Box::new(Cuboid::new(half_extents)),
         position: make_isometry(rect.center().into(), 0.0),
     }
 }
 
-fn convert_triangle(triangle: Triangle) -> ParryCollisionObjectInner {
-    ParryCollisionObjectInner::Generic {
+fn convert_triangle(triangle: Triangle) -> ParrySimpleCollisionObject {
+    ParrySimpleCollisionObject::Generic {
         shape: Box::new(ParryTriangle::new(
             Point2::new(triangle.0.x, triangle.0.y),
             Point2::new(triangle.1.x, triangle.1.y),
@@ -91,26 +88,26 @@ fn convert_triangle(triangle: Triangle) -> ParryCollisionObjectInner {
     }
 }
 
-fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> ParryCollisionObjectInner {
+fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> ParrySimpleCollisionObject {
     let parry_convex = ParryConvexPolygon::from_convex_polyline(geo_line_string_to_parry_polyline(
         convex_polygon.exterior(),
     ))
     .expect("Convex polygon should be a valid convex polygon");
-    ParryCollisionObjectInner::Generic {
+    ParrySimpleCollisionObject::Generic {
         shape: Box::new(parry_convex),
         position: Isometry2::identity(),
     }
 }
 
-fn convert_non_convex_polygon(non_convex_polygon: NonConvexPolygon) -> ParryCollisionObjectInner {
+fn convert_non_convex_polygon(non_convex_polygon: NonConvexPolygon) -> ParrySimpleCollisionObject {
     let trimesh = TriMesh::from_polygon(geo_line_string_to_parry_polyline(
         non_convex_polygon.exterior(),
     ))
     .expect("Non-convex polygon should be a valid polygon");
-    ParryCollisionObjectInner::TriMesh(Box::new(trimesh))
+    ParrySimpleCollisionObject::TriMesh(Box::new(trimesh))
 }
 
-fn convert_polygon_with_holes(polygon_with_holes: PolygonWithHoles) -> ParryCollisionObjectInner {
+fn convert_polygon_with_holes(polygon_with_holes: PolygonWithHoles) -> ParrySimpleCollisionObject {
     let triangulation = polygon_with_holes.earcut_triangles_raw();
     let trimesh = TriMesh::new(
         triangulation
@@ -127,7 +124,7 @@ fn convert_polygon_with_holes(polygon_with_holes: PolygonWithHoles) -> ParryColl
             .collect(),
     )
     .expect("Triangulated polygon should be a valid trimesh");
-    ParryCollisionObjectInner::TriMesh(Box::new(trimesh))
+    ParrySimpleCollisionObject::TriMesh(Box::new(trimesh))
 }
 
 fn geo_line_string_to_parry_polyline(line_string: &LineString) -> Vec<Point2<f64>> {
