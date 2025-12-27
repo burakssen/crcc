@@ -1,13 +1,15 @@
 use crate::collision_checker::CollisionChecker;
 use crate::collision_checker::engine::parry::ParryEngine;
-use crate::collision_object::StaticCollisionObject;
+use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
+use crate::dynamic_obstacle::DynamicObstacle;
 use geo::{Area, BooleanOps, ConvexHull, HasDimensions, Polygon, Simplify, Winding, unary_union};
 use itertools::{Itertools, chain};
 
 #[derive(Clone, Debug, Default)]
 pub struct CollisionCheckerBuilder {
-    static_obstacles: Vec<StaticCollisionObject>,
+    static_obstacles: Vec<CollisionObject>,
+    dynamic_obstacles: Vec<DynamicObstacle>,
 }
 
 impl CollisionCheckerBuilder {
@@ -15,10 +17,7 @@ impl CollisionCheckerBuilder {
         Self::default()
     }
 
-    pub fn with_static_obstacle(
-        mut self,
-        collision_object: impl Into<StaticCollisionObject>,
-    ) -> Self {
+    pub fn with_static_obstacle(mut self, collision_object: impl Into<CollisionObject>) -> Self {
         self.static_obstacles.push(collision_object.into());
         self
     }
@@ -28,17 +27,27 @@ impl CollisionCheckerBuilder {
         self.with_static_obstacle(road_boundary)
     }
 
+    pub fn with_dynamic_obstacle(mut self, dynamic_obstacle: DynamicObstacle) -> Self {
+        self.dynamic_obstacles.push(dynamic_obstacle);
+        self
+    }
+
     pub fn build_parry(self) -> CollisionChecker<ParryEngine> {
         CollisionChecker {
-            static_obstacle: StaticCollisionObject::merge_all(self.static_obstacles).into(),
+            static_obstacle: CollisionObject::merge_all(self.static_obstacles).into(),
+            dynamic_obstacles: self
+                .dynamic_obstacles
+                .into_iter()
+                .map(DynamicObstacle::convert_repr)
+                .collect(),
         }
     }
 }
 
-fn create_road_boundary_obstacle(lanelets: &[Polygon]) -> StaticCollisionObject {
+fn create_road_boundary_obstacle(lanelets: &[Polygon]) -> CollisionObject {
     let road = unary_union(lanelets).simplify(0.01); // Simplify with 1 cm tolerance to reduce artifacts
     if road.is_empty() {
-        return StaticCollisionObject::empty();
+        return CollisionObject::empty();
     }
     let road_convex_hull = road.convex_hull();
 

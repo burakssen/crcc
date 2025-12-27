@@ -1,9 +1,8 @@
 use crate::collision_checker::CollisionCheckerError;
 use crate::collision_checker::engine::CollisionEngine;
+pub use crate::collision_checker::engine::parry::collision_object::ParryCollisionObject;
 use nalgebra::Isometry2;
 use parry2d_f64::query::Unsupported;
-
-pub use crate::collision_checker::engine::parry::collision_object::ParryCollisionObject;
 
 mod collision_object;
 

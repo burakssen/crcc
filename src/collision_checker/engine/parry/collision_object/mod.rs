@@ -1,5 +1,5 @@
 use crate::collision_checker::engine::parry::collision_object::simple::ParrySimpleCollisionObject;
-use crate::collision_object::StaticCollisionObject;
+use crate::collision_object::CollisionObject;
 use nalgebra::Isometry2;
 use parry2d_f64::query::{Unsupported, intersection_test};
 use parry2d_f64::shape::{Compound, TriMesh, TriMeshBuilderError};
@@ -8,8 +8,8 @@ mod simple;
 
 pub struct ParryCollisionObject(pub(super) ParryCollisionObjectInner);
 
-impl From<StaticCollisionObject> for ParryCollisionObject {
-    fn from(value: StaticCollisionObject) -> Self {
+impl From<CollisionObject> for ParryCollisionObject {
+    fn from(value: CollisionObject) -> Self {
         Self(value.into())
     }
 }
@@ -26,7 +26,6 @@ impl ParryCollisionObjectInner {
         other: &Self,
         other_pos: &Isometry2<f64>,
     ) -> Result<bool, Unsupported> {
-        let mut unsupported = false;
         for self_comp in [&self.generic_compound, &self.tri_mesh_compound]
             .into_iter()
             .flatten()
@@ -35,23 +34,17 @@ impl ParryCollisionObjectInner {
                 .into_iter()
                 .flatten()
             {
-                let collides = intersection_test(self_pos, self_comp, other_pos, other_comp);
-                unsupported |= matches!(collides, Err(Unsupported));
-                if let Ok(true) = collides {
+                if intersection_test(self_pos, self_comp, other_pos, other_comp)? {
                     return Ok(true);
                 }
             }
         }
-        if unsupported {
-            Err(Unsupported)
-        } else {
-            Ok(false)
-        }
+        Ok(false)
     }
 }
 
-impl From<StaticCollisionObject> for ParryCollisionObjectInner {
-    fn from(value: StaticCollisionObject) -> Self {
+impl From<CollisionObject> for ParryCollisionObjectInner {
+    fn from(value: CollisionObject) -> Self {
         let mut tri_meshes = Vec::new();
         let mut generic_objects = Vec::new();
         for simple in value {

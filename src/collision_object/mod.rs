@@ -3,9 +3,9 @@ use crate::collision_object::simple::SimpleCollisionObject;
 pub mod simple;
 
 #[derive(Clone, Debug)]
-pub struct StaticCollisionObject(pub Vec<SimpleCollisionObject>);
+pub struct CollisionObject(pub Vec<SimpleCollisionObject>);
 
-impl StaticCollisionObject {
+impl CollisionObject {
     pub fn empty() -> Self {
         Self(vec![])
     }
@@ -19,13 +19,13 @@ impl StaticCollisionObject {
     }
 }
 
-impl Default for StaticCollisionObject {
+impl Default for CollisionObject {
     fn default() -> Self {
         Self::empty()
     }
 }
 
-impl From<SimpleCollisionObject> for StaticCollisionObject {
+impl From<SimpleCollisionObject> for CollisionObject {
     fn from(value: SimpleCollisionObject) -> Self {
         match value {
             SimpleCollisionObject::Empty => Self::empty(),
@@ -34,14 +34,14 @@ impl From<SimpleCollisionObject> for StaticCollisionObject {
     }
 }
 
-impl From<Vec<SimpleCollisionObject>> for StaticCollisionObject {
+impl From<Vec<SimpleCollisionObject>> for CollisionObject {
     fn from(mut value: Vec<SimpleCollisionObject>) -> Self {
         value.retain(|obj| !matches!(obj, SimpleCollisionObject::Empty));
         Self(value)
     }
 }
 
-impl FromIterator<SimpleCollisionObject> for StaticCollisionObject {
+impl FromIterator<SimpleCollisionObject> for CollisionObject {
     fn from_iter<T: IntoIterator<Item = SimpleCollisionObject>>(iter: T) -> Self {
         Self(
             iter.into_iter()
@@ -51,7 +51,7 @@ impl FromIterator<SimpleCollisionObject> for StaticCollisionObject {
     }
 }
 
-impl IntoIterator for StaticCollisionObject {
+impl IntoIterator for CollisionObject {
     type Item = SimpleCollisionObject;
     type IntoIter = <Vec<SimpleCollisionObject> as IntoIterator>::IntoIter;
 
