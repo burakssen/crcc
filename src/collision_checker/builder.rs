@@ -55,7 +55,7 @@ fn create_road_boundary_obstacle(lanelets: &[Polygon]) -> CollisionObject {
     let outer_halfspaces = road_convex_hull
         .exterior()
         .points_ccw()
-        .tuples()
+        .tuple_windows()
         .map(|(p1, p2)| SimpleCollisionObject::half_space_from_points(p1.into(), p2.into()));
 
     // Determine holes in the convex hull of the road

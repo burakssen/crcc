@@ -1,4 +1,8 @@
+use crate::collision_object::simple::{
+    SimpleCollisionObject, SimpleCollisionObjectOps, swept_areas,
+};
 use geo::{IsConvex, Polygon};
+use nalgebra::Isometry2;
 use std::ops::Deref;
 
 #[derive(Debug, Clone)]
@@ -22,5 +26,11 @@ impl Deref for ConvexPolygon {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl SimpleCollisionObjectOps for ConvexPolygon {
+    fn swept_areas(&self, positions: &[Isometry2<f64>]) -> Vec<SimpleCollisionObject> {
+        swept_areas(&self.0, positions)
     }
 }

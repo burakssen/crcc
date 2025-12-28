@@ -1,4 +1,5 @@
-use nalgebra::{Unit, Vector2};
+use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObjectOps};
+use nalgebra::{Isometry2, Unit, Vector2};
 
 #[derive(Debug, Clone)]
 pub struct HalfSpace {
@@ -39,6 +40,13 @@ impl HalfSpace {
     pub fn almost_equal_with_tol(&self, other: &HalfSpace, tol: f64) -> bool {
         (*self.outward_normal - *other.outward_normal).norm().abs() < tol
             && (self.offset - other.offset).abs() < tol
+    }
+}
+
+impl SimpleCollisionObjectOps for HalfSpace {
+    fn swept_areas(&self, _positions: &[Isometry2<f64>]) -> Vec<SimpleCollisionObject> {
+        // Always full-space if rotation changes, otherwise the one with shorter offset (?)
+        todo!("Requires support for full-space collision objects.")
     }
 }
 

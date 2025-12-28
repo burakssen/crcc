@@ -36,7 +36,7 @@ impl ParrySimpleCollisionObject {
 impl From<SimpleCollisionObject> for ParrySimpleCollisionObject {
     fn from(collision_object: SimpleCollisionObject) -> Self {
         match collision_object {
-            SimpleCollisionObject::Empty => ParrySimpleCollisionObject::Empty,
+            SimpleCollisionObject::Empty(..) => ParrySimpleCollisionObject::Empty,
             SimpleCollisionObject::HalfSpace(half_space) => convert_half_space(half_space),
             SimpleCollisionObject::Circle(circle) => convert_circle(circle),
             SimpleCollisionObject::Rectangle(rect) => convert_rectangle(rect),

@@ -11,6 +11,8 @@ fn main() {
         vec![
             Isometry2::translation(7.0, 7.0),
             Isometry2::translation(6.0, 6.0),
+            Isometry2::translation(7.0, 7.0),
+            Isometry2::translation(0.0, 0.0),
         ],
         TimeStep(0),
     );
@@ -23,4 +25,6 @@ fn main() {
     assert!(!cc.collides(&obj, TimeStep(0)).unwrap());
     assert!(cc.collides(&obj, TimeStep(1)).unwrap());
     assert!(!cc.collides(&obj, TimeStep(2)).unwrap());
+    assert!(!cc.collides(&obj, TimeStep(3)).unwrap());
+    assert!(!cc.collides(&obj, TimeStep(4)).unwrap());
 }
