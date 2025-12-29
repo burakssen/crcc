@@ -22,7 +22,17 @@ fn main() {
         .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0))
         .with_dynamic_obstacle(dyn_obs)
         .build_parry();
+
     let obj = CollisionObject::from(SimpleCollisionObject::circle((5.0, 5.0), 1.0)).into();
+    let dyn_obs2 = DynamicObstacle::new(
+        SimpleCollisionObject::circle((0.0, 0.0), 1.0).into(),
+        vec![
+            Isometry2::translation(-5.0, 3.0),
+            Isometry2::translation(5.0, 3.0),
+        ],
+        TimeStep(2),
+    )
+    .convert_repr();
     assert!(!cc.collides_with_static(&obj).unwrap());
     assert!(!cc.collides(&obj, TimeStep(0)).unwrap());
     assert!(cc.collides(&obj, TimeStep(1)).unwrap());
@@ -37,6 +47,10 @@ fn main() {
     assert_eq!(
         cc.collides_at_range(&obj, TimeStep(2)..=TimeStep(4), &Isometry2::identity())
             .unwrap(),
+        DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
+    );
+    assert_eq!(
+        cc.collides_dynamic_obstacle(&dyn_obs2).unwrap(),
         DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
     );
 }
