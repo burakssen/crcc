@@ -1,4 +1,6 @@
-use commonroad_collision_checker::collision_checker::CollisionCheckerBuilder;
+use commonroad_collision_checker::collision_checker::{
+    CollisionCheckerBuilder, DynamicCollisionResult,
+};
 use commonroad_collision_checker::collision_object::CollisionObject;
 use commonroad_collision_checker::collision_object::simple::SimpleCollisionObject;
 use commonroad_collision_checker::dynamic_obstacle::DynamicObstacle;
@@ -27,4 +29,14 @@ fn main() {
     assert!(!cc.collides(&obj, TimeStep(2)).unwrap());
     assert!(!cc.collides(&obj, TimeStep(3)).unwrap());
     assert!(!cc.collides(&obj, TimeStep(4)).unwrap());
+    assert_eq!(
+        cc.collides_at_range(&obj, .., &Isometry2::identity())
+            .unwrap(),
+        DynamicCollisionResult::FirstCollisionAt(TimeStep(1))
+    );
+    assert_eq!(
+        cc.collides_at_range(&obj, TimeStep(2)..=TimeStep(4), &Isometry2::identity())
+            .unwrap(),
+        DynamicCollisionResult::NoCollision
+    );
 }

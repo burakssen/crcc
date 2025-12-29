@@ -2,6 +2,7 @@ use crate::collision_object::CollisionObject;
 use crate::time::TimeStep;
 use itertools::Itertools;
 use nalgebra::Isometry2;
+use std::ops::Range;
 
 pub type DynamicObstacle = GenericDynamicObstacle<CollisionObject>;
 
@@ -26,6 +27,10 @@ impl<C> GenericDynamicObstacle<C> {
     pub fn convex_hull_after(&self, time_step: TimeStep) -> Option<&C> {
         let with_offset = time_step - self.time_offset;
         self.convex_hulls.get(with_offset.0 as usize)
+    }
+
+    pub fn active_times(&self) -> Range<TimeStep> {
+        self.time_offset..(self.time_offset + TimeStep(self.positions.len() as i32))
     }
 
     pub fn convert_repr<D>(self) -> GenericDynamicObstacle<D>

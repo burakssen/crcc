@@ -1,12 +1,20 @@
+use crate::collision_checker::DynamicCollisionResult::{FirstCollisionAt, NoCollision};
 use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::engine::parry::ParryEngine;
 use crate::dynamic_obstacle::GenericDynamicObstacle;
-use crate::time::TimeStep;
+use crate::time::{TimeStep, TimeStepSet};
 pub use builder::CollisionCheckerBuilder;
 use nalgebra::Isometry2;
+use std::ops::{Bound, RangeBounds};
 
 mod builder;
 mod engine;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum DynamicCollisionResult {
+    NoCollision,
+    FirstCollisionAt(TimeStep),
+}
 
 #[derive(Debug)]
 pub enum CollisionCheckerError {
@@ -16,9 +24,36 @@ pub enum CollisionCheckerError {
 pub struct CollisionChecker<E: CollisionEngine = ParryEngine> {
     static_obstacle: E::EngineCollisionObject,
     dynamic_obstacles: Vec<GenericDynamicObstacle<E::EngineCollisionObject>>,
+    active_times: TimeStepSet,
 }
 
 impl<E: CollisionEngine> CollisionChecker<E> {
+    pub fn collides_at_range(
+        &self,
+        obj: &E::EngineCollisionObject,
+        time_range: impl RangeBounds<TimeStep>,
+        position: &Isometry2<f64>,
+    ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
+        if self.collides_with_static_at(obj, position)? {
+            return Ok(FirstCollisionAt(match time_range.start_bound() {
+                Bound::Included(t) => *t,
+                Bound::Excluded(t) => t.next(),
+                Bound::Unbounded => TimeStep::MIN,
+            }));
+        }
+
+        let mut active_times = TimeStepSet::from(time_range);
+        active_times.intersect(&self.active_times);
+        for time_step in active_times.iter() {
+            for obs in &self.dynamic_obstacles {
+                if Self::dynamic_obstacle_collides(obs, obj, time_step, position)? {
+                    return Ok(FirstCollisionAt(time_step));
+                }
+            }
+        }
+        Ok(NoCollision)
+    }
+
     pub fn collides(
         &self,
         obj: &E::EngineCollisionObject,
@@ -33,15 +68,8 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         time_step: TimeStep,
         position: &Isometry2<f64>,
     ) -> Result<bool, CollisionCheckerError> {
-        if self.collides_with_static_at(obj, position)? {
-            return Ok(true);
-        }
-        for obs in &self.dynamic_obstacles {
-            if Self::dynamic_obstacle_collides(obs, obj, time_step, position)? {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        self.collides_at_range(obj, time_step..=time_step, position)
+            .map(|res| matches!(res, FirstCollisionAt(_)))
     }
 
     /// Check collision with the given object at the given position and time step.

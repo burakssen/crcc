@@ -3,6 +3,7 @@ use crate::collision_checker::engine::parry::ParryEngine;
 use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::dynamic_obstacle::DynamicObstacle;
+use crate::time::TimeStepSet;
 use geo::{Area, BooleanOps, ConvexHull, HasDimensions, Polygon, Simplify, Winding, unary_union};
 use itertools::{Itertools, chain};
 
@@ -33,6 +34,7 @@ impl CollisionCheckerBuilder {
     }
 
     pub fn build_parry(self) -> CollisionChecker<ParryEngine> {
+        let active_times = self.active_times();
         CollisionChecker {
             static_obstacle: CollisionObject::merge_all(self.static_obstacles).into(),
             dynamic_obstacles: self
@@ -40,7 +42,16 @@ impl CollisionCheckerBuilder {
                 .into_iter()
                 .map(DynamicObstacle::convert_repr)
                 .collect(),
+            active_times,
         }
+    }
+
+    fn active_times(&self) -> TimeStepSet {
+        let mut active_times = TimeStepSet::new();
+        for obs in &self.dynamic_obstacles {
+            active_times.add(obs.active_times());
+        }
+        active_times
     }
 }
 
