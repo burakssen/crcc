@@ -32,11 +32,11 @@ fn main() {
     assert_eq!(
         cc.collides_at_range(&obj, .., &Isometry2::identity())
             .unwrap(),
-        DynamicCollisionResult::FirstCollisionAt(TimeStep(1))
+        DynamicCollisionResult::FirstCollisionAt(TimeStep(0))
     );
     assert_eq!(
         cc.collides_at_range(&obj, TimeStep(2)..=TimeStep(4), &Isometry2::identity())
             .unwrap(),
-        DynamicCollisionResult::NoCollision
+        DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
     );
 }

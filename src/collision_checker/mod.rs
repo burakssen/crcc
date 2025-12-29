@@ -37,7 +37,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         if self.collides_with_static_at(obj, position)? {
             return Ok(FirstCollisionAt(match time_range.start_bound() {
                 Bound::Included(t) => *t,
-                Bound::Excluded(t) => t.next(),
+                Bound::Excluded(t) => t.succ(),
                 Bound::Unbounded => TimeStep::MIN,
             }));
         }
@@ -45,8 +45,13 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         let mut active_times = TimeStepSet::from(time_range);
         active_times.intersect(&self.active_times);
         for time_step in active_times.iter() {
+            let dyn_obs_collides = if active_times.contains(time_step.succ()) {
+                Self::dynamic_obstacle_collides_ccd
+            } else {
+                Self::dynamic_obstacle_collides
+            };
             for obs in &self.dynamic_obstacles {
-                if Self::dynamic_obstacle_collides(obs, obj, time_step, position)? {
+                if dyn_obs_collides(obs, obj, time_step, position)? {
                     return Ok(FirstCollisionAt(time_step));
                 }
             }
@@ -122,6 +127,18 @@ impl<E: CollisionEngine> CollisionChecker<E> {
     ) -> Result<bool, CollisionCheckerError> {
         match dynamic_obstacle.position_at(time_step) {
             Some(obs_pos) => E::collides_at(dynamic_obstacle.shape(), obs_pos, obj, position),
+            None => Ok(false),
+        }
+    }
+
+    fn dynamic_obstacle_collides_ccd(
+        dynamic_obstacle: &GenericDynamicObstacle<E::EngineCollisionObject>,
+        obj: &E::EngineCollisionObject,
+        time_step: TimeStep,
+        position: &Isometry2<f64>,
+    ) -> Result<bool, CollisionCheckerError> {
+        match dynamic_obstacle.convex_hull_after(time_step) {
+            Some(conv_hull) => E::collides_at(conv_hull, &Isometry2::identity(), obj, position),
             None => Ok(false),
         }
     }

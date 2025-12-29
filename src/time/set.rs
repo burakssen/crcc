@@ -48,8 +48,8 @@ impl TimeStepSet {
         // Find the old value at the upper bound
         let ub_value = match range.end_bound() {
             Bound::Included(t) => {
-                if t.next() < TimeStep::MAX {
-                    Some((t.next(), self.contains(t.next())))
+                if t.succ() < TimeStep::MAX {
+                    Some((t.succ(), self.contains(t.succ())))
                 } else {
                     None
                 }
@@ -71,7 +71,7 @@ impl TimeStepSet {
         // Set to value at the lower bound, if not already set
         let lb = match range.start_bound() {
             Bound::Included(t) => *t,
-            Bound::Excluded(t) => t.next(),
+            Bound::Excluded(t) => t.succ(),
             Bound::Unbounded => TimeStep::MIN,
         };
         if lb == TimeStep::MIN || self.contains(lb) != value {
@@ -115,7 +115,7 @@ impl TimeStepSet {
                 let Some((start, start_included)) = start else {
                     unreachable!("Only the last item should be None");
                 };
-                let end = opt_last.map(|(end, _)| end.prev()).unwrap_or(TimeStep::MAX);
+                let end = opt_last.map(|(end, _)| end.pred()).unwrap_or(TimeStep::MAX);
                 (*start..=end, *start_included)
             })
     }
