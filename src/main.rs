@@ -33,26 +33,25 @@ fn main() {
         TimeStep(2),
     )
     .convert_repr();
-    assert!(!cc.collides_with_static(&obj).unwrap());
-    assert!(!cc.collides(&obj, TimeStep(0)).unwrap());
-    assert!(cc.collides(&obj, TimeStep(1)).unwrap());
-    assert!(!cc.collides(&obj, TimeStep(2)).unwrap());
-    assert!(!cc.collides(&obj, TimeStep(3)).unwrap());
-    assert!(!cc.collides(&obj, TimeStep(4)).unwrap());
+    assert!(!cc.collides_static_at(&obj, TimeStep(0)).unwrap());
+    assert!(cc.collides_static_at(&obj, TimeStep(1)).unwrap());
+    assert!(!cc.collides_static_at(&obj, TimeStep(2)).unwrap());
+    assert!(!cc.collides_static_at(&obj, TimeStep(3)).unwrap());
+    assert!(!cc.collides_static_at(&obj, TimeStep(4)).unwrap());
     assert_eq!(
-        cc.collides_at_range(&obj, .., &Isometry2::identity())
+        cc.collides_static_range(&obj, &Isometry2::identity(), ..)
             .unwrap(),
         DynamicCollisionResult::FirstCollisionAt(TimeStep(0))
     );
     assert_eq!(
-        cc.collides_at_range(&obj, TimeStep(2)..=TimeStep(4), &Isometry2::identity())
+        cc.collides_static_range(&obj, &Isometry2::identity(), TimeStep(2)..=TimeStep(4))
             .unwrap(),
         DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
     );
     // dyn_obs2 has enough time to get out of the way of dyn_obs
     // this demonstrates that shape casting is more accurate than just using the convex hull
     assert_eq!(
-        cc.collides_dynamic_obstacle(&dyn_obs2).unwrap(),
+        cc.collides_dynamic(&dyn_obs2).unwrap(),
         DynamicCollisionResult::NoCollision
     );
 }
