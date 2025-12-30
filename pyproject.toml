@@ -17,7 +17,9 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Operating System :: POSIX :: Linux",
 ]
-dependencies = ["commonroad-io>=2023.1"]
+dependencies = [
+    "commonroad-io>=2023.1",
+]
 
 [dependency-groups]
 dev = ["pre-commit>=2.21.0", "ruff==0.14.8"]
@@ -27,6 +29,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
+features = ["python"]
 module-name = "commonroad_collision_checker._core"
 python-packages = ["commonroad_collision_checker"]
 python-source = "src"
