@@ -1,7 +1,9 @@
 use crate::collision_checker::engine::parry::collision_object::simple::ParrySimpleCollisionObject;
 use crate::collision_object::CollisionObject;
-use nalgebra::Isometry2;
-use parry2d_f64::query::{Unsupported, intersection_test};
+use nalgebra::{Isometry2, Point2};
+use parry2d_f64::query::{
+    NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, intersection_test,
+};
 use parry2d_f64::shape::{Compound, TriMesh, TriMeshBuilderError};
 
 mod simple;
@@ -22,25 +24,67 @@ pub struct ParryCollisionObjectInner {
 impl ParryCollisionObjectInner {
     pub fn collides(
         &self,
-        self_pos: &Isometry2<f64>,
+        pos_self: &Isometry2<f64>,
         other: &Self,
-        other_pos: &Isometry2<f64>,
+        pos_other: &Isometry2<f64>,
     ) -> Result<bool, Unsupported> {
-        for self_comp in [&self.generic_compound, &self.tri_mesh_compound]
+        for comp_self in [&self.generic_compound, &self.tri_mesh_compound]
             .into_iter()
             .flatten()
         {
-            for other_comp in [&other.generic_compound, &other.tri_mesh_compound]
+            for comp_other in [&other.generic_compound, &other.tri_mesh_compound]
                 .into_iter()
                 .flatten()
             {
-                if intersection_test(self_pos, self_comp, other_pos, other_comp)? {
+                if intersection_test(pos_self, comp_self, pos_other, comp_other)? {
                     return Ok(true);
                 }
             }
         }
         Ok(false)
     }
+
+    pub fn collides_continuous(
+        &self,
+        start_pos_self: &Isometry2<f64>,
+        end_pos_self: &Isometry2<f64>,
+        other: &Self,
+        start_pos_other: &Isometry2<f64>,
+        end_pos_other: &Isometry2<f64>,
+    ) -> Result<bool, Unsupported> {
+        let motion_self = motion_from_start_end(*start_pos_self, *end_pos_self);
+        let motion_other = motion_from_start_end(*start_pos_other, *end_pos_other);
+        for comp_self in [&self.generic_compound, &self.tri_mesh_compound]
+            .into_iter()
+            .flatten()
+        {
+            for comp_other in [&other.generic_compound, &other.tri_mesh_compound]
+                .into_iter()
+                .flatten()
+            {
+                if cast_shapes_nonlinear(
+                    &motion_self,
+                    comp_self,
+                    &motion_other,
+                    comp_other,
+                    0.0,
+                    1.0,
+                    true,
+                )?
+                .is_some()
+                {
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
+    }
+}
+
+fn motion_from_start_end(start: Isometry2<f64>, end: Isometry2<f64>) -> NonlinearRigidMotion {
+    let velocity = end.translation.vector - start.translation.vector;
+    let angular_velocity = end.rotation.angle() - start.rotation.angle();
+    NonlinearRigidMotion::new(start, Point2::origin(), velocity, angular_velocity)
 }
 
 impl From<CollisionObject> for ParryCollisionObjectInner {

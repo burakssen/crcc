@@ -11,7 +11,7 @@ pub struct ParryEngine {}
 impl CollisionEngine for ParryEngine {
     type EngineCollisionObject = ParryCollisionObject;
 
-    fn collides_at(
+    fn collides(
         obj_1: &Self::EngineCollisionObject,
         pos_1: &Isometry2<f64>,
         obj_2: &Self::EngineCollisionObject,
@@ -20,6 +20,23 @@ impl CollisionEngine for ParryEngine {
         obj_1
             .0
             .collides(pos_1, &obj_2.0, pos_2)
+            .map_err(|err| match err {
+                // Deliberate match with one arm to future-proof against new error variants in parry
+                Unsupported => CollisionCheckerError::Unsupported,
+            })
+    }
+
+    fn collides_continuous(
+        obj_1: &Self::EngineCollisionObject,
+        start_pos_1: &Isometry2<f64>,
+        end_pos_1: &Isometry2<f64>,
+        obj_2: &Self::EngineCollisionObject,
+        start_pos_2: &Isometry2<f64>,
+        end_pos_2: &Isometry2<f64>,
+    ) -> Result<bool, CollisionCheckerError> {
+        obj_1
+            .0
+            .collides_continuous(start_pos_1, end_pos_1, &obj_2.0, start_pos_2, end_pos_2)
             .map_err(|err| match err {
                 // Deliberate match with one arm to future-proof against new error variants in parry
                 Unsupported => CollisionCheckerError::Unsupported,

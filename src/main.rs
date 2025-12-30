@@ -11,9 +11,9 @@ fn main() {
     let dyn_obs = DynamicObstacle::new(
         SimpleCollisionObject::circle((0.0, 0.0), 1.0).into(),
         vec![
-            Isometry2::translation(7.0, 7.0),
-            Isometry2::translation(6.0, 6.0),
-            Isometry2::translation(7.0, 7.0),
+            Isometry2::translation(10.0, 10.0),
+            Isometry2::translation(9.0, 9.0),
+            Isometry2::translation(10.0, 10.0),
             Isometry2::translation(0.0, 0.0),
         ],
         TimeStep(0),
@@ -23,12 +23,12 @@ fn main() {
         .with_dynamic_obstacle(dyn_obs)
         .build_parry();
 
-    let obj = CollisionObject::from(SimpleCollisionObject::circle((5.0, 5.0), 1.0)).into();
+    let obj = CollisionObject::from(SimpleCollisionObject::circle((8.0, 8.0), 1.0)).into();
     let dyn_obs2 = DynamicObstacle::new(
         SimpleCollisionObject::circle((0.0, 0.0), 1.0).into(),
         vec![
-            Isometry2::translation(-5.0, 3.0),
-            Isometry2::translation(5.0, 3.0),
+            Isometry2::translation(5.0, 5.0),
+            Isometry2::translation(15.0, -5.0),
         ],
         TimeStep(2),
     )
@@ -49,8 +49,10 @@ fn main() {
             .unwrap(),
         DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
     );
+    // dyn_obs2 has enough time to get out of the way of dyn_obs
+    // this demonstrates that shape casting is more accurate than just using the convex hull
     assert_eq!(
         cc.collides_dynamic_obstacle(&dyn_obs2).unwrap(),
-        DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
+        DynamicCollisionResult::NoCollision
     );
 }

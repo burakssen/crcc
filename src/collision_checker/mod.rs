@@ -36,16 +36,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         active_times.intersect(&self.active_times);
         for time_step in active_times.iter() {
             let use_ccd = active_times.contains(time_step.succ());
-            let (obj, position) = Self::get_dyn_obs_collider(dynamic_obstacle, time_step, use_ccd)
-                .expect("There should be a collider since the time step is active.");
-            if use_ccd {
-                let next_position = dynamic_obstacle.position_at(time_step.succ()).expect(
-                    "There should be a next position since the next time step is also active.",
-                );
-                if self.collides_with_dynamic_ccd(obj, time_step, &position, next_position)? {
-                    return Ok(FirstCollisionAt(time_step));
-                }
-            } else if self.collides_with_dynamic(obj, time_step, &position)? {
+            if self.collides_dynamic_dynamic(dynamic_obstacle, time_step, use_ccd)? {
                 return Ok(FirstCollisionAt(time_step));
             }
         }
@@ -69,11 +60,8 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         let mut active_times = TimeStepSet::from(time_range);
         active_times.intersect(&self.active_times);
         for time_step in active_times.iter() {
-            if active_times.contains(time_step.succ()) {
-                if self.collides_with_dynamic_ccd(obj, time_step, position, position)? {
-                    return Ok(FirstCollisionAt(time_step));
-                }
-            } else if self.collides_with_dynamic(obj, time_step, position)? {
+            let use_ccd = active_times.contains(time_step.succ());
+            if self.collides_with_dynamic(obj, time_step, position, use_ccd)? {
                 return Ok(FirstCollisionAt(time_step));
             }
         }
@@ -124,7 +112,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         obj: &E::EngineCollisionObject,
         position: &Isometry2<f64>,
     ) -> Result<bool, CollisionCheckerError> {
-        E::collides_at(&self.static_obstacle, &Isometry2::identity(), obj, position)
+        E::collides(&self.static_obstacle, &Isometry2::identity(), obj, position)
     }
 
     /// Check collision of the static obstacles with any convertible object at the given position.
@@ -140,40 +128,72 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         self.collides_with_static_at(&obj.into(), position)
     }
 
+    // TODO: Refactor the next two/three methods
+
     fn collides_with_dynamic(
         &self,
         obj: &E::EngineCollisionObject,
         time_step: TimeStep,
         position: &Isometry2<f64>,
+        use_ccd: bool,
     ) -> Result<bool, CollisionCheckerError> {
         for obs in &self.dynamic_obstacles {
-            let Some((obs_shape, obs_pos)) = Self::get_dyn_obs_collider(obs, time_step, false)
+            let Some((obs_shape, obs_pos)) = Self::get_dyn_obs_collider(obs, time_step, use_ccd)
             else {
                 continue;
             };
-            if E::collides_at(obs_shape, &obs_pos, obj, position)? {
+            if E::collides(obs_shape, &obs_pos, obj, position)? {
                 return Ok(true);
             }
         }
         Ok(false)
     }
 
-    fn collides_with_dynamic_ccd(
+    fn collides_dynamic_dynamic(
         &self,
-        obj: &E::EngineCollisionObject,
+        dynamic_obstacle: &GenericDynamicObstacle<E::EngineCollisionObject>,
         time_step: TimeStep,
-        position: &Isometry2<f64>,
-        _next_position: &Isometry2<f64>,
+        use_ccd: bool,
     ) -> Result<bool, CollisionCheckerError> {
+        let Some((shape_broad, pos_broad)) =
+            Self::get_dyn_obs_collider(dynamic_obstacle, time_step, use_ccd)
+        else {
+            return Ok(false);
+        };
         for obs in &self.dynamic_obstacles {
-            let Some((obs_shape, obs_pos)) = Self::get_dyn_obs_collider(obs, time_step, true)
+            let Some((obs_shape_broad, obs_pos_broad)) =
+                Self::get_dyn_obs_collider(obs, time_step, use_ccd)
             else {
                 continue;
             };
-            if E::collides_at(obs_shape, &obs_pos, obj, position)? {
-                return Ok(true);
+            if E::collides(obs_shape_broad, &obs_pos_broad, shape_broad, &pos_broad)? {
+                if use_ccd {
+                    let (shape_narrow, pos_narrow) =
+                        Self::get_dyn_obs_collider(dynamic_obstacle, time_step, false)
+                            .expect("Should exist since CCD collider exists.");
+                    let next_pos = dynamic_obstacle
+                        .position_at(time_step.succ())
+                        .expect("There should be a next position since CCD collider exists.");
+                    let (obs_shape_narrow, obs_pos_narrow) =
+                        Self::get_dyn_obs_collider(obs, time_step, false)
+                            .expect("Should exist since CCD collider exists.");
+                    let next_obs_pos = obs
+                        .position_at(time_step.succ())
+                        .expect("There should be a next position since CCD collider exists.");
+                    if E::collides_continuous(
+                        obs_shape_narrow,
+                        &obs_pos_narrow,
+                        next_obs_pos,
+                        shape_narrow,
+                        &pos_narrow,
+                        next_pos,
+                    )? {
+                        return Ok(true);
+                    }
+                } else {
+                    return Ok(true);
+                }
             }
-            // TODO: Shape casting using next_position
         }
         Ok(false)
     }
