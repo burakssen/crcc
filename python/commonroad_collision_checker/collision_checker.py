@@ -27,7 +27,8 @@ class CollisionCheckerBuilder:
         return self.with_commonroad_shape(occupancy.shape)
 
     def with_commonroad_shape(self, shape: Shape) -> CollisionCheckerBuilder:
-        co = core_co.CollisionObject(_commonroad_shape_to_simple_collision_objects(shape))
+        objs = _commonroad_shape_to_simple_collision_objects(shape)
+        co = objs[0] if len(objs) == 1 else core_co.Compound(objs)
         self.with_static_obstacle(co)
         return self
 
@@ -44,7 +45,7 @@ class CollisionCheckerBuilder:
         return self._rust_builder.build()
 
 
-def _commonroad_shape_to_simple_collision_objects(shape: Shape) -> list[core_co.SimpleCollisionObject]:
+def _commonroad_shape_to_simple_collision_objects(shape: Shape) -> list[core_co.CollisionObject]:
     if isinstance(shape, Circle):
         return [core_co.Circle(shape.radius, tuple(shape.center))]
     elif isinstance(shape, Rectangle):
