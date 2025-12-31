@@ -29,7 +29,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
-features = ["python"]
+features = ["python_bindings"]
 module-name = "commonroad_collision_checker._core"
 python-packages = ["commonroad_collision_checker"]
 python-source = "python"
