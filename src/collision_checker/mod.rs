@@ -1,8 +1,9 @@
+pub use crate::collision_checker::builder::CollisionCheckerBuilder;
 use crate::collision_checker::engine::CollisionEngine;
+pub use crate::collision_checker::engine::parry::ParryCollisionObject;
 use crate::collision_checker::engine::parry::ParryEngine;
 use crate::dynamic_obstacle::{CCDCollider, GenericDynamicObstacle};
 use crate::time::{TimeStep, TimeStepSet};
-pub use builder::CollisionCheckerBuilder;
 use nalgebra::Isometry2;
 use std::cell::LazyCell;
 use std::ops::{Bound, RangeBounds};

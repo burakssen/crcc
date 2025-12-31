@@ -65,6 +65,7 @@ dependencies = [
  "parry2d-f64",
  "pyo3",
  "rayon",
+ "replace_with",
 ]
 
 [[package]]
@@ -780,6 +781,12 @@ dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
 ]
+
+[[package]]
+name = "replace_with"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "51743d3e274e2b18df81c4dc6caf8a5b8e15dbe799e0dca05c7617380094e884"
 
 [[package]]
 name = "robust"

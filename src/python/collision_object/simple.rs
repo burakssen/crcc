@@ -4,10 +4,17 @@ use itertools::Itertools;
 use nalgebra::{Unit, Vector2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use std::sync::Arc;
 
 #[pyclass(subclass)]
 #[derive(Clone)]
-pub struct SimpleCollisionObject(pub(in crate::python) RustSimpleCollisionObject);
+pub struct SimpleCollisionObject(pub(crate) Arc<RustSimpleCollisionObject>);
+
+impl From<RustSimpleCollisionObject> for SimpleCollisionObject {
+    fn from(value: RustSimpleCollisionObject) -> Self {
+        SimpleCollisionObject(Arc::new(value))
+    }
+}
 
 #[pyclass(extends = SimpleCollisionObject)]
 pub struct Circle {}
@@ -22,7 +29,7 @@ impl Circle {
         }
         Ok((
             Self {},
-            SimpleCollisionObject(RustSimpleCollisionObject::circle(center, radius)),
+            RustSimpleCollisionObject::circle(center, radius).into(),
         ))
     }
 }
@@ -34,10 +41,7 @@ pub struct Empty {}
 impl Empty {
     #[new]
     fn new() -> (Self, SimpleCollisionObject) {
-        (
-            Self {},
-            SimpleCollisionObject(RustSimpleCollisionObject::empty()),
-        )
+        (Self {}, RustSimpleCollisionObject::empty().into())
     }
 }
 
@@ -52,13 +56,13 @@ impl HalfSpace {
         let normalized = Unit::new_normalize(Vector2::new(outward_normal.0, outward_normal.1));
         (
             Self {},
-            SimpleCollisionObject(RustSimpleCollisionObject::half_space(normalized, offset)),
+            RustSimpleCollisionObject::half_space(normalized, offset).into(),
         )
     }
 
     #[staticmethod]
     fn from_points(py: Python<'_>, p1: (f64, f64), p2: (f64, f64)) -> PyResult<Py<PyAny>> {
-        let init = PyClassInitializer::from(SimpleCollisionObject(
+        let init = PyClassInitializer::from(SimpleCollisionObject::from(
             RustSimpleCollisionObject::half_space_from_points(p1, p2),
         ))
         .add_subclass(Self {});
@@ -68,7 +72,7 @@ impl HalfSpace {
     #[staticmethod]
     #[pyo3(signature = (a, b, c = 0.0))]
     fn from_coeffs(py: Python<'_>, a: f64, b: f64, c: f64) -> PyResult<Py<PyAny>> {
-        let init = PyClassInitializer::from(SimpleCollisionObject(
+        let init = PyClassInitializer::from(SimpleCollisionObject::from(
             RustSimpleCollisionObject::half_space_from_coeffs(a, b, c),
         ))
         .add_subclass(Self {});
@@ -95,7 +99,7 @@ impl Polygon {
         if matches!(collision_object, RustSimpleCollisionObject::Empty(_)) {
             return Err(PyValueError::new_err("Polygon must not be empty"));
         }
-        Ok((Self {}, SimpleCollisionObject(collision_object)))
+        Ok((Self {}, collision_object.into()))
     }
 }
 
@@ -114,10 +118,7 @@ impl Rectangle {
         let upper_right = coord! {x: center.0 + length / 2.0, y: center.1 + width / 2.0};
         Ok((
             Self {},
-            SimpleCollisionObject(RustSimpleCollisionObject::rectangle(Rect::new(
-                lower_left,
-                upper_right,
-            ))),
+            RustSimpleCollisionObject::rectangle(Rect::new(lower_left, upper_right)).into(),
         ))
     }
 }
@@ -134,6 +135,6 @@ impl Triangle {
         if matches!(collision_object, RustSimpleCollisionObject::Empty(..)) {
             return Err(PyValueError::new_err("Triangle must not be empty"));
         }
-        Ok((Self {}, SimpleCollisionObject(collision_object)))
+        Ok((Self {}, collision_object.into()))
     }
 }

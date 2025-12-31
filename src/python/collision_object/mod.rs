@@ -1,11 +1,17 @@
+use crate::collision_checker::ParryCollisionObject;
 use crate::collision_object::CollisionObject as RustCollisionObject;
 use crate::python::collision_object::simple::SimpleCollisionObject;
 use pyo3::prelude::*;
+use std::sync::{Arc, OnceLock};
 
 mod simple;
 
 #[pyclass]
-pub struct CollisionObject(pub(in crate::python) RustCollisionObject);
+#[derive(Clone)]
+pub struct CollisionObject {
+    pub(crate) plain_collision_object: Arc<RustCollisionObject>,
+    parry_collision_object: Arc<OnceLock<ParryCollisionObject>>,
+}
 
 #[pymethods]
 impl CollisionObject {
@@ -14,12 +20,23 @@ impl CollisionObject {
         // Note that this slices (https://en.wikipedia.org/wiki/Object_slicing) all subclass info
         // from the simple collision objects.
         // Right now, this is not a problem because all information is stored in the superclass
-        Self(RustCollisionObject(
+        let plain_collision_object = RustCollisionObject(
             simple_collision_objects
                 .into_iter()
-                .map(|obj| obj.0)
+                .map(|obj| obj.0.as_ref().clone())
                 .collect(),
-        ))
+        );
+        Self {
+            plain_collision_object: Arc::new(plain_collision_object),
+            parry_collision_object: Arc::new(OnceLock::new()),
+        }
+    }
+}
+
+impl CollisionObject {
+    pub(crate) fn get_parry(&self) -> &ParryCollisionObject {
+        self.parry_collision_object
+            .get_or_init(|| self.plain_collision_object.as_ref().clone().into())
     }
 }
 

@@ -6,7 +6,6 @@ from commonroad.scenario.obstacle import StaticObstacle
 
 import commonroad_collision_checker._core.collision_checker as core_cc
 import commonroad_collision_checker._core.collision_object as core_co
-import commonroad_collision_checker._core.isometry as core_iso
 
 
 class CollisionCheckerBuilder:
@@ -17,10 +16,9 @@ class CollisionCheckerBuilder:
 
     def with_static_obstacle(
         self,
-        shape: core_co.Shape,
-        position: core_iso.Isometry,
+        static_obstacle: core_co.CollisionObject,
     ) -> CollisionCheckerBuilder:
-        self._rust_builder.with_static_obstacle(shape, position)
+        self._rust_builder.with_static_obstacle(static_obstacle)
         return self
 
     def with_commonroad_static_obstacle(self, static_obstacle: StaticObstacle) -> CollisionCheckerBuilder:
@@ -29,23 +27,8 @@ class CollisionCheckerBuilder:
         return self.with_commonroad_shape(occupancy.shape)
 
     def with_commonroad_shape(self, shape: Shape) -> CollisionCheckerBuilder:
-        if isinstance(shape, Circle):
-            self._rust_builder.with_static_obstacle(
-                core_co.Circle(shape.radius), core_iso.Isometry.translation(tuple(shape.center))
-            )
-        elif isinstance(shape, Rectangle):
-            self._rust_builder.with_static_obstacle(
-                core_co.Rectangle(shape.length, shape.width), core_iso.Isometry(tuple(shape.center), shape.orientation)
-            )
-        elif isinstance(shape, Polygon):
-            self._rust_builder.with_static_obstacle(
-                core_co.Polygon([tuple(v) for v in shape.vertices], []), core_iso.Isometry.identity()
-            )
-        elif isinstance(shape, ShapeGroup):
-            for s in shape.shapes:
-                self.with_commonroad_shape(s)
-        else:
-            raise ValueError(f"Unknown shape type {type(shape)}")
+        co = core_co.CollisionObject(_commonroad_shape_to_simple_collision_objects(shape))
+        self.with_static_obstacle(co)
         return self
 
     def with_road_boundary_obstacle(
@@ -61,18 +44,15 @@ class CollisionCheckerBuilder:
         return self._rust_builder.build()
 
 
-class CollisionChecker:
-    _rust_cc: core_cc.CollisionChecker
-
-    def __init__(self, rust_cc: core_cc.CollisionChecker) -> None:
-        self._rust_cc = rust_cc
-
-    def collides_static(
-        self,
-        shape: core_cc.Shape,
-        position: core_iso.Isometry,
-    ) -> bool:
-        return self._rust_cc.collides_static(
-            shape,
-            position,
-        )
+def _commonroad_shape_to_simple_collision_objects(shape: Shape) -> list[core_co.SimpleCollisionObject]:
+    if isinstance(shape, Circle):
+        return [core_co.Circle(shape.radius, tuple(shape.center))]
+    elif isinstance(shape, Rectangle):
+        # TODO: consider orientation
+        return [core_co.Rectangle(shape.length, shape.width, tuple(shape.center))]
+    elif isinstance(shape, Polygon):
+        return [core_co.Polygon([tuple(v) for v in shape.vertices], [])]
+    elif isinstance(shape, ShapeGroup):
+        return [obj for s in shape.shapes for obj in _commonroad_shape_to_simple_collision_objects(s)]
+    else:
+        raise ValueError(f"Unknown shape type {type(shape)}")

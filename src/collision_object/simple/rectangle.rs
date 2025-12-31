@@ -5,6 +5,7 @@ use geo::{HasDimensions, Rect};
 use nalgebra::Isometry2;
 use std::ops::Deref;
 
+// TODO: Add orientation support.
 #[derive(Debug, Clone)]
 pub struct Rectangle(pub(super) Rect);
 

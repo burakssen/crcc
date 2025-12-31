@@ -19,3 +19,4 @@ nalgebra = "0.34.1"
 parry2d-f64 = "0.25.3"
 pyo3 = { version = "0.27.1", features = ["abi3-py310"], optional = true }
 rayon = "1.11.0"
+replace_with = "0.1.8"

@@ -2,6 +2,7 @@ use nalgebra::{Isometry2, Vector2};
 use pyo3::prelude::*;
 
 #[pyclass]
+#[derive(Clone, Copy)]
 pub struct Isometry(pub(crate) Isometry2<f64>);
 
 #[pymethods]

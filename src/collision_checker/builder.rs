@@ -33,6 +33,10 @@ impl CollisionCheckerBuilder {
         self
     }
 
+    pub fn build(self) -> CollisionChecker {
+        self.build_parry()
+    }
+
     pub fn build_parry(self) -> CollisionChecker<ParryEngine> {
         let active_times = self.active_times();
         CollisionChecker {
