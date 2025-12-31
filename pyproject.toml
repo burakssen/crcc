@@ -32,7 +32,7 @@ build-backend = "maturin"
 features = ["python"]
 module-name = "commonroad_collision_checker._core"
 python-packages = ["commonroad_collision_checker"]
-python-source = "src"
+python-source = "python"
 
 [tool.uv]
 cache-keys = [
