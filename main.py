@@ -24,12 +24,12 @@ def main():
         .build()
     )
     car = ccc.collision_object.Rectangle(4.5, 2.0)
-    print("Should collide", cc.collides_static(car, ccc.isometry.Isometry((55.29, -1.99), 1.326)))
-    print("Should not collide", cc.collides_static(car, ccc.isometry.Isometry((37.33, 4.07), -2.207)))
+    print("Should collide", cc.collides_static(car, ccc.pose.Pose((55.29, -1.99), 1.326)))
+    print("Should not collide", cc.collides_static(car, ccc.pose.Pose((37.33, 4.07), -2.207)))
 
     # r = ccc.collision_object.Rectangle(2, 3)
     # c = ccc.collision_object.Circle(1)
-    # print(r.collides(c, pos_self=ccc.isometry.Isometry((0, 0), 0), pos_other=ccc.isometry.Isometry((1.5, 0), 0)))
+    # print(r.collides(c, pos_self=ccc.pose.Pose((0, 0), 0), pos_other=ccc.isometry.Pose((1.5, 0), 0)))
     #
     # poly1 = ccc.collision_object.Polygon(
     #     exterior=[(0, 0), (4, 0), (4, 4), (0, 4)],

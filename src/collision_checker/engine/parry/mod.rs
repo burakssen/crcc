@@ -1,7 +1,7 @@
 use crate::collision_checker::CollisionCheckerError;
 use crate::collision_checker::engine::CollisionEngine;
 pub use crate::collision_checker::engine::parry::collision_object::ParryCollisionObject;
-use nalgebra::Isometry2;
+use glamx::DPose2;
 use parry2d_f64::query::Unsupported;
 
 mod collision_object;
@@ -13,9 +13,9 @@ impl CollisionEngine for ParryEngine {
 
     fn collides(
         obj_1: &Self::EngineCollisionObject,
-        pos_1: &Isometry2<f64>,
+        pos_1: &DPose2,
         obj_2: &Self::EngineCollisionObject,
-        pos_2: &Isometry2<f64>,
+        pos_2: &DPose2,
     ) -> Result<bool, CollisionCheckerError> {
         obj_1
             .0
@@ -28,11 +28,11 @@ impl CollisionEngine for ParryEngine {
 
     fn collides_continuous(
         obj_1: &Self::EngineCollisionObject,
-        start_pos_1: &Isometry2<f64>,
-        end_pos_1: &Isometry2<f64>,
+        start_pos_1: &DPose2,
+        end_pos_1: &DPose2,
         obj_2: &Self::EngineCollisionObject,
-        start_pos_2: &Isometry2<f64>,
-        end_pos_2: &Isometry2<f64>,
+        start_pos_2: &DPose2,
+        end_pos_2: &DPose2,
     ) -> Result<bool, CollisionCheckerError> {
         obj_1
             .0

@@ -1,6 +1,6 @@
 use crate::collision_checker::engine::parry::collision_object::simple::ParrySimpleCollisionObject;
 use crate::collision_object::CollisionObject;
-use nalgebra::{Isometry2, Point2};
+use glamx::{DPose2, DVec2};
 use parry2d_f64::query::{
     NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, intersection_test,
 };
@@ -24,9 +24,9 @@ pub struct ParryCollisionObjectInner {
 impl ParryCollisionObjectInner {
     pub fn collides(
         &self,
-        pos_self: &Isometry2<f64>,
+        pos_self: &DPose2,
         other: &Self,
-        pos_other: &Isometry2<f64>,
+        pos_other: &DPose2,
     ) -> Result<bool, Unsupported> {
         for comp_self in [&self.generic_compound, &self.tri_mesh_compound]
             .into_iter()
@@ -46,11 +46,11 @@ impl ParryCollisionObjectInner {
 
     pub fn collides_continuous(
         &self,
-        start_pos_self: &Isometry2<f64>,
-        end_pos_self: &Isometry2<f64>,
+        start_pos_self: &DPose2,
+        end_pos_self: &DPose2,
         other: &Self,
-        start_pos_other: &Isometry2<f64>,
-        end_pos_other: &Isometry2<f64>,
+        start_pos_other: &DPose2,
+        end_pos_other: &DPose2,
     ) -> Result<bool, Unsupported> {
         let motion_self = motion_from_start_end(*start_pos_self, *end_pos_self);
         let motion_other = motion_from_start_end(*start_pos_other, *end_pos_other);
@@ -81,10 +81,10 @@ impl ParryCollisionObjectInner {
     }
 }
 
-fn motion_from_start_end(start: Isometry2<f64>, end: Isometry2<f64>) -> NonlinearRigidMotion {
-    let velocity = end.translation.vector - start.translation.vector;
+fn motion_from_start_end(start: DPose2, end: DPose2) -> NonlinearRigidMotion {
+    let velocity = end.translation - start.translation;
     let angular_velocity = end.rotation.angle() - start.rotation.angle();
-    NonlinearRigidMotion::new(start, Point2::origin(), velocity, angular_velocity)
+    NonlinearRigidMotion::new(start, DVec2::ZERO, velocity, angular_velocity)
 }
 
 impl From<CollisionObject> for ParryCollisionObjectInner {

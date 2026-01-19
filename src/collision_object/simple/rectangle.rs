@@ -2,7 +2,7 @@ use crate::collision_object::simple::{
     SimpleCollisionObject, SimpleCollisionObjectOps, swept_areas,
 };
 use geo::{HasDimensions, Polygon, Rect, Rotate};
-use nalgebra::Isometry2;
+use glamx::DPose2;
 
 #[derive(Debug, Clone)]
 pub struct Rectangle {
@@ -40,7 +40,7 @@ impl Rectangle {
 }
 
 impl SimpleCollisionObjectOps for Rectangle {
-    fn swept_areas(&self, positions: &[Isometry2<f64>]) -> Vec<SimpleCollisionObject> {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         let mut poly = Polygon::from(self.rect);
         poly.rotate_around_center_mut(self.orientation.to_degrees());
         swept_areas(&poly, positions)

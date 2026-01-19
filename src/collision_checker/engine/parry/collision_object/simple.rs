@@ -3,8 +3,8 @@ use crate::collision_object::simple::{
     SimpleCollisionObject, Triangle,
 };
 use geo::{LineString, TriangulateEarcut, Winding};
+use glamx::{DPose2, DVec2};
 use itertools::Itertools;
-use nalgebra::{Isometry2, Point2, Vector2};
 use parry2d_f64::shape::{
     Ball, ConvexPolygon as ParryConvexPolygon, Cuboid, HalfSpace as ParryHalfSpace, Shape,
     SharedShape, TriMesh, Triangle as ParryTriangle,
@@ -15,16 +15,16 @@ pub enum ParrySimpleCollisionObject {
     TriMesh(Box<TriMesh>),
     Generic {
         shape: Box<dyn Shape>,
-        position: Isometry2<f64>,
+        position: DPose2,
     },
 }
 
 impl ParrySimpleCollisionObject {
-    pub fn into_shared_shape(self) -> Option<(Isometry2<f64>, SharedShape)> {
+    pub fn into_shared_shape(self) -> Option<(DPose2, SharedShape)> {
         match self {
             ParrySimpleCollisionObject::Empty => None,
             ParrySimpleCollisionObject::TriMesh(mesh) => {
-                Some((Isometry2::identity(), SharedShape::new(*mesh)))
+                Some((DPose2::identity(), SharedShape::new(*mesh)))
             }
             ParrySimpleCollisionObject::Generic { shape, position } => {
                 Some((position, SharedShape(shape.into())))
@@ -55,36 +55,36 @@ impl From<SimpleCollisionObject> for ParrySimpleCollisionObject {
 }
 
 fn convert_half_space(half_space: HalfSpace) -> ParrySimpleCollisionObject {
-    let support = half_space.offset * *half_space.outward_normal;
+    let support = half_space.offset * half_space.outward_normal;
     ParrySimpleCollisionObject::Generic {
         shape: Box::new(ParryHalfSpace::new(half_space.outward_normal)),
-        position: Isometry2::translation(support.x, support.y),
+        position: DPose2::translation(support.x, support.y),
     }
 }
 
 fn convert_circle(circle: Circle) -> ParrySimpleCollisionObject {
     ParrySimpleCollisionObject::Generic {
         shape: Box::new(Ball::new(circle.radius())),
-        position: make_isometry(circle.center(), 0.0),
+        position: make_pose(circle.center(), 0.0),
     }
 }
 
 fn convert_rectangle(rectangle: Rectangle) -> ParrySimpleCollisionObject {
-    let half_extents = Vector2::new(rectangle.width() / 2.0, rectangle.height() / 2.0);
+    let half_extents = DVec2::new(rectangle.width() / 2.0, rectangle.height() / 2.0);
     ParrySimpleCollisionObject::Generic {
         shape: Box::new(Cuboid::new(half_extents)),
-        position: make_isometry(rectangle.center(), rectangle.orientation()),
+        position: make_pose(rectangle.center(), rectangle.orientation()),
     }
 }
 
 fn convert_triangle(triangle: Triangle) -> ParrySimpleCollisionObject {
     ParrySimpleCollisionObject::Generic {
         shape: Box::new(ParryTriangle::new(
-            Point2::new(triangle.0.x, triangle.0.y),
-            Point2::new(triangle.1.x, triangle.1.y),
-            Point2::new(triangle.2.x, triangle.2.y),
+            DVec2::new(triangle.0.x, triangle.0.y),
+            DVec2::new(triangle.1.x, triangle.1.y),
+            DVec2::new(triangle.2.x, triangle.2.y),
         )),
-        position: Isometry2::identity(),
+        position: DPose2::identity(),
     }
 }
 
@@ -95,7 +95,7 @@ fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> ParrySimpleCollision
     .expect("Convex polygon should be a valid convex polygon");
     ParrySimpleCollisionObject::Generic {
         shape: Box::new(parry_convex),
-        position: Isometry2::identity(),
+        position: DPose2::identity(),
     }
 }
 
@@ -113,8 +113,8 @@ fn convert_polygon_with_holes(polygon_with_holes: PolygonWithHoles) -> ParrySimp
         triangulation
             .vertices
             .into_iter()
-            .tuples()
-            .map(|(x, y)| Point2::new(x, y))
+            .tuples::<(_, _)>()
+            .map_into()
             .collect(),
         triangulation
             .triangle_indices
@@ -127,14 +127,14 @@ fn convert_polygon_with_holes(polygon_with_holes: PolygonWithHoles) -> ParrySimp
     ParrySimpleCollisionObject::TriMesh(Box::new(trimesh))
 }
 
-fn geo_line_string_to_parry_polyline(line_string: &LineString) -> Vec<Point2<f64>> {
+fn geo_line_string_to_parry_polyline(line_string: &LineString) -> Vec<DVec2> {
     line_string
         .points_ccw()
         .skip(1) // Skip duplicate first point
-        .map(|point| Point2::new(point.x(), point.y()))
+        .map(|point| DVec2::new(point.x(), point.y()))
         .collect()
 }
 
-fn make_isometry(translation: (f64, f64), rotation: f64) -> Isometry2<f64> {
-    Isometry2::new(Vector2::new(translation.0, translation.1), rotation)
+fn make_pose(translation: impl Into<DVec2>, rotation: f64) -> DPose2 {
+    DPose2::new(translation.into(), rotation)
 }

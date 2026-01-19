@@ -1,13 +1,13 @@
 use crate::collision_object::CollisionObject;
 use crate::time::TimeStep;
+use glamx::DPose2;
 use itertools::Itertools;
-use nalgebra::Isometry2;
 use std::ops::Range;
 
 pub(crate) struct CCDCollider<'a, C> {
     pub shape: &'a C,
-    pub position: &'a Isometry2<f64>,
-    pub next_position: &'a Isometry2<f64>,
+    pub position: &'a DPose2,
+    pub next_position: &'a DPose2,
     pub convex_hull: &'a C,
 }
 
@@ -16,7 +16,7 @@ pub type DynamicObstacle = GenericDynamicObstacle<CollisionObject>;
 #[derive(Clone, Debug)]
 pub struct GenericDynamicObstacle<C> {
     shape: C,
-    positions: Vec<Isometry2<f64>>,
+    positions: Vec<DPose2>,
     time_offset: TimeStep,
     convex_hulls: Vec<C>,
 }
@@ -26,7 +26,7 @@ impl<C> GenericDynamicObstacle<C> {
         &self.shape
     }
 
-    pub fn position_at(&self, time_step: TimeStep) -> Option<&Isometry2<f64>> {
+    pub fn position_at(&self, time_step: TimeStep) -> Option<&DPose2> {
         let with_offset = time_step - self.time_offset;
         self.positions.get(with_offset.0 as usize)
     }
@@ -63,11 +63,7 @@ impl<C> GenericDynamicObstacle<C> {
 }
 
 impl DynamicObstacle {
-    pub fn new(
-        shape: CollisionObject,
-        positions: Vec<Isometry2<f64>>,
-        time_offset: TimeStep,
-    ) -> Self {
+    pub fn new(shape: CollisionObject, positions: Vec<DPose2>, time_offset: TimeStep) -> Self {
         let convex_hulls = shape.swept_areas(&positions);
         Self {
             shape,

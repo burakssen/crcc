@@ -3,7 +3,6 @@ use crate::collision_object::CollisionObject as RustCollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use geo::{Polygon as GeoPolygon, Rect, Triangle as GeoTriangle, coord};
 use itertools::Itertools;
-use nalgebra::{Unit, Vector2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::sync::{Arc, OnceLock};
@@ -96,10 +95,9 @@ impl HalfSpace {
     #[new]
     #[pyo3(signature = (outward_normal, offset = 0.0))]
     fn new(outward_normal: (f64, f64), offset: f64) -> (Self, CollisionObject) {
-        let normalized = Unit::new_normalize(Vector2::new(outward_normal.0, outward_normal.1));
         (
             Self,
-            SimpleCollisionObject::half_space(normalized, offset).into(),
+            SimpleCollisionObject::half_space(outward_normal, offset).into(),
         )
     }
 

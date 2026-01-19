@@ -1,7 +1,7 @@
 use crate::collision_checker::ParryCollisionObject;
 use crate::dynamic_obstacle::{DynamicObstacle as RustDynamicObstacle, GenericDynamicObstacle};
 use crate::python::collision_object::CollisionObject;
-use crate::python::isometry::Isometry;
+use crate::python::pose::Pose;
 use crate::time::TimeStepInner;
 use pyo3::prelude::*;
 use std::sync::{Arc, OnceLock};
@@ -15,11 +15,7 @@ pub struct DynamicObstacle {
 #[pymethods]
 impl DynamicObstacle {
     #[new]
-    pub fn new(
-        shape: &CollisionObject,
-        positions: Vec<Isometry>,
-        time_offset: TimeStepInner,
-    ) -> Self {
+    pub fn new(shape: &CollisionObject, positions: Vec<Pose>, time_offset: TimeStepInner) -> Self {
         let plain_dyn_obs = RustDynamicObstacle::new(
             shape.plain_collision_object.as_ref().clone(),
             positions.into_iter().map(|iso| iso.0).collect(),

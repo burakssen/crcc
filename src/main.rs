@@ -6,17 +6,17 @@ use commonroad_collision_checker::collision_object::simple::SimpleCollisionObjec
 use commonroad_collision_checker::dynamic_obstacle::DynamicObstacle;
 use commonroad_collision_checker::time::TimeStep;
 use geo::Rect;
-use nalgebra::Isometry2;
+use glamx::DPose2;
 use std::f64::consts::FRAC_PI_2;
 
 fn main() {
     let dyn_obs = DynamicObstacle::new(
         SimpleCollisionObject::circle((0.0, 0.0), 1.0).into(),
         vec![
-            Isometry2::translation(10.0, 10.0),
-            Isometry2::translation(9.0, 9.0),
-            Isometry2::translation(10.0, 10.0),
-            Isometry2::translation(0.0, 0.0),
+            DPose2::translation(10.0, 10.0),
+            DPose2::translation(9.0, 9.0),
+            DPose2::translation(10.0, 10.0),
+            DPose2::translation(0.0, 0.0),
         ],
         TimeStep(0),
     );
@@ -29,8 +29,8 @@ fn main() {
     let dyn_obs2 = DynamicObstacle::new(
         SimpleCollisionObject::circle((0.0, 0.0), 1.0).into(),
         vec![
-            Isometry2::translation(5.0, 5.0),
-            Isometry2::translation(15.0, -5.0),
+            DPose2::translation(5.0, 5.0),
+            DPose2::translation(15.0, -5.0),
         ],
         TimeStep(2),
     )
@@ -41,12 +41,12 @@ fn main() {
     assert!(!cc.collides_static_at(&obj, TimeStep(3)).unwrap());
     assert!(!cc.collides_static_at(&obj, TimeStep(4)).unwrap());
     assert_eq!(
-        cc.collides_static_range(&obj, &Isometry2::identity(), ..)
+        cc.collides_static_range(&obj, &DPose2::identity(), ..)
             .unwrap(),
         DynamicCollisionResult::FirstCollisionAt(TimeStep(0))
     );
     assert_eq!(
-        cc.collides_static_range(&obj, &Isometry2::identity(), TimeStep(2)..=TimeStep(4))
+        cc.collides_static_range(&obj, &DPose2::identity(), TimeStep(2)..=TimeStep(4))
             .unwrap(),
         DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
     );

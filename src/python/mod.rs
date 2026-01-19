@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 mod collision_checker;
 mod collision_object;
 mod dynamic_obstacle;
-mod isometry;
+mod pose;
 
 #[pyfunction]
 fn hello() -> PyResult<()> {
@@ -23,5 +23,5 @@ mod _core {
     #[pymodule_export]
     use super::dynamic_obstacle::dynamic_obstacle;
     #[pymodule_export]
-    use super::isometry::isometry;
+    use super::pose::pose;
 }

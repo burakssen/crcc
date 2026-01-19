@@ -1,7 +1,7 @@
 use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObjectOps};
 use geo::{Buffer, LineString, coord};
+use glamx::{DPose2, DVec2};
 use itertools::Itertools;
-use nalgebra::{Isometry2, Point2};
 
 #[derive(Debug, Clone)]
 pub struct Circle {
@@ -27,10 +27,10 @@ impl Circle {
 }
 
 impl SimpleCollisionObjectOps for Circle {
-    fn swept_areas(&self, positions: &[Isometry2<f64>]) -> Vec<SimpleCollisionObject> {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         let mut swept_areas = Vec::with_capacity(positions.len().saturating_sub(1));
         for (start_pos, end_pos) in positions.iter().tuple_windows() {
-            let center = Point2::new(self.center.0, self.center.1);
+            let center = DVec2::from(self.center);
             let start = start_pos * center;
             let end = end_pos * center;
             let line = LineString::new(vec![

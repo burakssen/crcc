@@ -6,9 +6,9 @@ use geo::{
     AffineOps, AffineTransform, BooleanOps, ConvexHull, HasDimensions, IsConvex, Polygon, Rect,
     Triangle as GeoTriangle,
 };
+use glamx::{DPose2, DVec2};
 pub use half_space::HalfSpace;
 use itertools::Itertools;
-use nalgebra::{Isometry2, Unit, Vector2};
 pub use non_convex_polygon::NonConvexPolygon;
 pub use polygon_with_holes::PolygonWithHoles;
 pub use rectangle::Rectangle;
@@ -41,9 +41,9 @@ impl SimpleCollisionObject {
         SimpleCollisionObject::Empty(Empty {})
     }
 
-    pub fn half_space(outward_normal: Unit<Vector2<f64>>, offset: f64) -> SimpleCollisionObject {
+    pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> SimpleCollisionObject {
         SimpleCollisionObject::HalfSpace(HalfSpace {
-            outward_normal,
+            outward_normal: outward_normal.into().normalize(),
             offset,
         })
     }
@@ -103,13 +103,9 @@ impl SimpleCollisionObject {
 
 #[enum_dispatch]
 pub trait SimpleCollisionObjectOps {
-    fn swept_areas(&self, positions: &[Isometry2<f64>]) -> Vec<SimpleCollisionObject>;
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject>;
 
-    fn swept_area(
-        &self,
-        start_pos: &Isometry2<f64>,
-        end_pos: &Isometry2<f64>,
-    ) -> SimpleCollisionObject {
+    fn swept_area(&self, start_pos: &DPose2, end_pos: &DPose2) -> SimpleCollisionObject {
         self.swept_areas(&[*start_pos, *end_pos])
             .pop()
             .expect("Should return exactly one area, as two positions were given.")
@@ -119,11 +115,11 @@ pub trait SimpleCollisionObjectOps {
 /// Common helper function for the swept_areas implementations
 fn swept_areas(
     shape: &(impl AffineOps<f64> + Into<Polygon>),
-    positions: &[Isometry2<f64>],
+    positions: &[DPose2],
 ) -> Vec<SimpleCollisionObject> {
     let transformed_shapes = positions
         .iter()
-        .map(isometry_to_affine)
+        .map(pose_to_affine)
         .map(|affine| shape.affine_transform(&affine))
         .map_into()
         .collect_vec();
@@ -135,7 +131,7 @@ fn swept_areas(
         .collect()
 }
 
-fn isometry_to_affine(isometry: &Isometry2<f64>) -> AffineTransform {
-    AffineTransform::rotate(isometry.rotation.angle().to_degrees(), (0.0, 0.0))
-        .translated(isometry.translation.x, isometry.translation.y)
+fn pose_to_affine(pose: &DPose2) -> AffineTransform {
+    AffineTransform::rotate(pose.rotation.angle().to_degrees(), (0.0, 0.0))
+        .translated(pose.translation.x, pose.translation.y)
 }

@@ -5,11 +5,11 @@ use crate::collision_checker::{
 };
 use crate::python::collision_object::CollisionObject;
 use crate::python::dynamic_obstacle::DynamicObstacle;
-use crate::python::isometry::Isometry;
+use crate::python::pose::Pose;
 use crate::time::{TimeStep, TimeStepInner};
 use geo::Polygon;
+use glamx::DPose2;
 use itertools::Itertools;
-use nalgebra::Isometry2;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use replace_with::replace_with;
@@ -24,13 +24,13 @@ impl CollisionChecker {
     pub fn collides_static(
         &self,
         static_obstacle: &CollisionObject,
-        position: Option<&Isometry>,
+        position: Option<&Pose>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Option<TimeStepInner>> {
         let position = match position {
             Some(position) => &position.0,
-            None => &Isometry2::identity(),
+            None => &DPose2::identity(),
         };
         let parry_co_ref = static_obstacle.get_parry();
         let res = self.0.collides_static_range(

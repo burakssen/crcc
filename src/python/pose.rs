@@ -1,49 +1,49 @@
-use nalgebra::{Isometry2, Vector2};
+use glamx::{DPose2, DVec2};
 use pyo3::prelude::*;
 
 #[pyclass]
 #[derive(Clone, Copy)]
-pub struct Isometry(pub(crate) Isometry2<f64>);
+pub struct Pose(pub(crate) DPose2);
 
 #[pymethods]
-impl Isometry {
+impl Pose {
     #[new]
     pub fn translation_rotation(shift: (f64, f64), angle: f64) -> Self {
-        Isometry(Isometry2::new(Vector2::new(shift.0, shift.1), angle))
+        Pose(DPose2::new(DVec2::new(shift.0, shift.1), angle))
     }
 
     #[staticmethod]
     pub fn identity() -> Self {
-        Isometry(Isometry2::identity())
+        Pose(DPose2::identity())
     }
 
     #[staticmethod]
     pub fn translation(shift: (f64, f64)) -> Self {
-        Isometry(Isometry2::translation(shift.0, shift.1))
+        Pose(DPose2::translation(shift.0, shift.1))
     }
 
     #[staticmethod]
     pub fn rotation(angle: f64) -> Self {
-        Isometry(Isometry2::rotation(angle))
+        Pose(DPose2::rotation(angle))
     }
 
     pub fn and_then(&self, other: &Self) -> Self {
-        Isometry(self.0 * other.0)
+        Pose(self.0 * other.0)
     }
 }
 
-impl Default for Isometry {
+impl Default for Pose {
     fn default() -> Self {
         Self::identity()
     }
 }
 
 #[pymodule]
-pub(super) mod isometry {
+pub(super) mod pose {
     use pyo3::prelude::*;
 
     #[pymodule_export]
-    use super::Isometry;
+    use super::Pose;
 
     /// Hack: workaround for https://github.com/PyO3/pyo3/issues/759
     #[pymodule_init]
@@ -51,7 +51,7 @@ pub(super) mod isometry {
         Python::attach(|py| {
             py.import("sys")?
                 .getattr("modules")?
-                .set_item("commonroad_collision_checker._core.isometry", m)
+                .set_item("commonroad_collision_checker._core.pose", m)
         })
     }
 }

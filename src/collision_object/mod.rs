@@ -1,7 +1,7 @@
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::collision_object::simple::SimpleCollisionObjectOps;
+use glamx::DPose2;
 use itertools::Itertools;
-use nalgebra::Isometry2;
 
 pub mod simple;
 
@@ -21,7 +21,7 @@ impl CollisionObject {
         objects.into_iter().flatten().collect()
     }
 
-    pub fn swept_areas(&self, positions: &[Isometry2<f64>]) -> Vec<CollisionObject> {
+    pub fn swept_areas(&self, positions: &[DPose2]) -> Vec<CollisionObject> {
         let mut swept_areas_simple = self
             .0
             .iter()
@@ -45,11 +45,7 @@ impl CollisionObject {
         result
     }
 
-    pub fn swept_area(
-        &self,
-        start_pos: &Isometry2<f64>,
-        end_pos: &Isometry2<f64>,
-    ) -> CollisionObject {
+    pub fn swept_area(&self, start_pos: &DPose2, end_pos: &DPose2) -> CollisionObject {
         self.swept_areas(&[*start_pos, *end_pos])
             .pop()
             .expect("Should return exactly one area, as two positions were given.")
