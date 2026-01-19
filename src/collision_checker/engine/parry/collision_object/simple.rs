@@ -12,8 +12,9 @@ use parry2d_f64::shape::{
 
 pub enum ParrySimpleCollisionObject {
     Empty,
+    FullSpace,
     TriMesh(Box<TriMesh>),
-    Generic {
+    Shape {
         shape: Box<dyn Shape>,
         position: DPose2,
     },
@@ -22,11 +23,11 @@ pub enum ParrySimpleCollisionObject {
 impl ParrySimpleCollisionObject {
     pub fn into_shared_shape(self) -> Option<(DPose2, SharedShape)> {
         match self {
-            ParrySimpleCollisionObject::Empty => None,
+            ParrySimpleCollisionObject::Empty | ParrySimpleCollisionObject::FullSpace => None,
             ParrySimpleCollisionObject::TriMesh(mesh) => {
                 Some((DPose2::identity(), SharedShape::new(*mesh)))
             }
-            ParrySimpleCollisionObject::Generic { shape, position } => {
+            ParrySimpleCollisionObject::Shape { shape, position } => {
                 Some((position, SharedShape(shape.into())))
             }
         }
@@ -37,6 +38,7 @@ impl From<SimpleCollisionObject> for ParrySimpleCollisionObject {
     fn from(collision_object: SimpleCollisionObject) -> Self {
         match collision_object {
             SimpleCollisionObject::Empty(..) => ParrySimpleCollisionObject::Empty,
+            SimpleCollisionObject::FullSpace(..) => ParrySimpleCollisionObject::FullSpace,
             SimpleCollisionObject::HalfSpace(half_space) => convert_half_space(half_space),
             SimpleCollisionObject::Circle(circle) => convert_circle(circle),
             SimpleCollisionObject::Rectangle(rect) => convert_rectangle(rect),
@@ -56,14 +58,14 @@ impl From<SimpleCollisionObject> for ParrySimpleCollisionObject {
 
 fn convert_half_space(half_space: HalfSpace) -> ParrySimpleCollisionObject {
     let support = half_space.offset * half_space.outward_normal;
-    ParrySimpleCollisionObject::Generic {
+    ParrySimpleCollisionObject::Shape {
         shape: Box::new(ParryHalfSpace::new(half_space.outward_normal)),
         position: DPose2::translation(support.x, support.y),
     }
 }
 
 fn convert_circle(circle: Circle) -> ParrySimpleCollisionObject {
-    ParrySimpleCollisionObject::Generic {
+    ParrySimpleCollisionObject::Shape {
         shape: Box::new(Ball::new(circle.radius())),
         position: make_pose(circle.center(), 0.0),
     }
@@ -71,14 +73,14 @@ fn convert_circle(circle: Circle) -> ParrySimpleCollisionObject {
 
 fn convert_rectangle(rectangle: Rectangle) -> ParrySimpleCollisionObject {
     let half_extents = DVec2::new(rectangle.width() / 2.0, rectangle.height() / 2.0);
-    ParrySimpleCollisionObject::Generic {
+    ParrySimpleCollisionObject::Shape {
         shape: Box::new(Cuboid::new(half_extents)),
         position: make_pose(rectangle.center(), rectangle.orientation()),
     }
 }
 
 fn convert_triangle(triangle: Triangle) -> ParrySimpleCollisionObject {
-    ParrySimpleCollisionObject::Generic {
+    ParrySimpleCollisionObject::Shape {
         shape: Box::new(ParryTriangle::new(
             DVec2::new(triangle.0.x, triangle.0.y),
             DVec2::new(triangle.1.x, triangle.1.y),
@@ -93,7 +95,7 @@ fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> ParrySimpleCollision
         convex_polygon.exterior(),
     ))
     .expect("Convex polygon should be a valid convex polygon");
-    ParrySimpleCollisionObject::Generic {
+    ParrySimpleCollisionObject::Shape {
         shape: Box::new(parry_convex),
         position: DPose2::identity(),
     }

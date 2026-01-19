@@ -18,8 +18,7 @@ impl CollisionEngine for ParryEngine {
         pos_2: &DPose2,
     ) -> Result<bool, CollisionCheckerError> {
         obj_1
-            .0
-            .collides(pos_1, &obj_2.0, pos_2)
+            .collides(pos_1, obj_2, pos_2)
             .map_err(|err| match err {
                 // Deliberate match with one arm to future-proof against new error variants in parry
                 Unsupported => CollisionCheckerError::Unsupported,
@@ -35,8 +34,7 @@ impl CollisionEngine for ParryEngine {
         end_pos_2: &DPose2,
     ) -> Result<bool, CollisionCheckerError> {
         obj_1
-            .0
-            .collides_continuous(start_pos_1, end_pos_1, &obj_2.0, start_pos_2, end_pos_2)
+            .collides_continuous(start_pos_1, end_pos_1, obj_2, start_pos_2, end_pos_2)
             .map_err(|err| match err {
                 // Deliberate match with one arm to future-proof against new error variants in parry
                 Unsupported => CollisionCheckerError::Unsupported,

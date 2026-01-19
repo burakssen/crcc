@@ -2,10 +2,10 @@ use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObje
 use glamx::DPose2;
 
 #[derive(Debug, Clone, Copy)]
-pub struct Empty;
+pub struct FullSpace;
 
-impl SimpleCollisionObjectOps for Empty {
+impl SimpleCollisionObjectOps for FullSpace {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
-        vec![SimpleCollisionObject::empty(); positions.len().saturating_sub(1)]
+        vec![SimpleCollisionObject::full_space(); positions.len().saturating_sub(1)]
     }
 }

@@ -1,5 +1,6 @@
 use crate::collision_checker::engine::parry::collision_object::simple::ParrySimpleCollisionObject;
 use crate::collision_object::CollisionObject;
+use delegate::delegate;
 use glamx::{DPose2, DVec2};
 use parry2d_f64::query::{
     NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, intersection_test,
@@ -8,7 +9,29 @@ use parry2d_f64::shape::{Compound, TriMesh, TriMeshBuilderError};
 
 mod simple;
 
-pub struct ParryCollisionObject(pub(super) ParryCollisionObjectInner);
+pub struct ParryCollisionObject(ParryCollisionObjectInner);
+
+impl ParryCollisionObject {
+    delegate! {
+        to self.0 {
+            pub fn collides(
+                &self,
+                pos_self: &DPose2,
+                #[as_ref] other: &Self,
+                pos_other: &DPose2,
+            ) -> Result<bool, Unsupported>;
+
+            pub fn collides_continuous(
+                &self,
+                start_pos_self: &DPose2,
+                end_pos_self: &DPose2,
+                #[as_ref] other: &Self,
+                start_pos_other: &DPose2,
+                end_pos_other: &DPose2,
+            ) -> Result<bool, Unsupported>;
+        }
+    }
+}
 
 impl From<CollisionObject> for ParryCollisionObject {
     fn from(value: CollisionObject) -> Self {
@@ -16,12 +39,75 @@ impl From<CollisionObject> for ParryCollisionObject {
     }
 }
 
-pub struct ParryCollisionObjectInner {
+impl AsRef<ParryCollisionObjectInner> for ParryCollisionObject {
+    fn as_ref(&self) -> &ParryCollisionObjectInner {
+        &self.0
+    }
+}
+
+// Most collision objects will be non-trivial, so boxing them would be counter-productive.
+// See https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#large_enum_variant
+#[allow(clippy::large_enum_variant)]
+enum ParryCollisionObjectInner {
+    Empty,
+    FullSpace,
+    NonTrivial(NonTrivial),
+}
+
+struct NonTrivial {
     tri_mesh_compound: Option<Compound>,
     generic_compound: Option<Compound>,
 }
 
 impl ParryCollisionObjectInner {
+    pub fn collides(
+        &self,
+        pos_self: &DPose2,
+        other: &Self,
+        pos_other: &DPose2,
+    ) -> Result<bool, Unsupported> {
+        match (self, other) {
+            (ParryCollisionObjectInner::Empty, _) | (_, ParryCollisionObjectInner::Empty) => {
+                Ok(false)
+            }
+            (ParryCollisionObjectInner::FullSpace, _)
+            | (_, ParryCollisionObjectInner::FullSpace) => Ok(true),
+            (
+                ParryCollisionObjectInner::NonTrivial(slf),
+                ParryCollisionObjectInner::NonTrivial(other),
+            ) => slf.collides(pos_self, other, pos_other),
+        }
+    }
+
+    pub fn collides_continuous(
+        &self,
+        start_pos_self: &DPose2,
+        end_pos_self: &DPose2,
+        other: &Self,
+        start_pos_other: &DPose2,
+        end_pos_other: &DPose2,
+    ) -> Result<bool, Unsupported> {
+        match (self, other) {
+            (ParryCollisionObjectInner::Empty, _) | (_, ParryCollisionObjectInner::Empty) => {
+                Ok(false)
+            }
+            (ParryCollisionObjectInner::FullSpace, _)
+            | (_, ParryCollisionObjectInner::FullSpace) => Ok(true),
+            (
+                ParryCollisionObjectInner::NonTrivial(slf),
+                ParryCollisionObjectInner::NonTrivial(other),
+            ) => slf.collides_continuous(
+                start_pos_self,
+                end_pos_self,
+                other,
+                start_pos_other,
+                end_pos_other,
+            ),
+        }
+    }
+}
+
+impl NonTrivial {
     pub fn collides(
         &self,
         pos_self: &DPose2,
@@ -95,10 +181,14 @@ impl From<CollisionObject> for ParryCollisionObjectInner {
             let converted = ParrySimpleCollisionObject::from(simple);
             match converted {
                 ParrySimpleCollisionObject::Empty => { /* intentionally left blank */ }
+                ParrySimpleCollisionObject::FullSpace => {
+                    // immediately return FullSpace, as it dominates all other objects
+                    return Self::FullSpace;
+                }
                 ParrySimpleCollisionObject::TriMesh(mesh) => {
                     tri_meshes.push(*mesh);
                 }
-                ParrySimpleCollisionObject::Generic { .. } => {
+                ParrySimpleCollisionObject::Shape { .. } => {
                     generic_objects.push(
                         converted
                             .into_shared_shape()
@@ -124,9 +214,12 @@ impl From<CollisionObject> for ParryCollisionObjectInner {
             Some(Compound::new(generic_objects))
         };
 
-        Self {
-            tri_mesh_compound,
-            generic_compound,
+        match (&tri_mesh_compound, &generic_compound) {
+            (None, None) => Self::Empty,
+            _ => Self::NonTrivial(NonTrivial {
+                tri_mesh_compound,
+                generic_compound,
+            }),
         }
     }
 }

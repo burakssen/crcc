@@ -6,11 +6,31 @@ use itertools::Itertools;
 pub mod simple;
 
 #[derive(Clone, Debug)]
-pub struct CollisionObject(pub Vec<SimpleCollisionObject>);
+pub struct CollisionObject(Vec<SimpleCollisionObject>);
 
 impl CollisionObject {
     pub fn empty() -> Self {
         Self(vec![])
+    }
+
+    pub fn full_space() -> Self {
+        Self(vec![SimpleCollisionObject::full_space()])
+    }
+
+    pub fn collision_objects(&self) -> &[SimpleCollisionObject] {
+        &self.0
+    }
+
+    pub fn into_collision_objects(self) -> Vec<SimpleCollisionObject> {
+        self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn is_full_space(&self) -> bool {
+        self.0.len() == 1 && self.0[0].is_full_space()
     }
 
     pub fn merge(self, other: Self) -> Self {
@@ -69,14 +89,26 @@ impl From<SimpleCollisionObject> for CollisionObject {
 
 impl From<Vec<SimpleCollisionObject>> for CollisionObject {
     fn from(mut value: Vec<SimpleCollisionObject>) -> Self {
-        value.retain(|obj| !obj.is_empty());
-        Self(value)
+        if value.iter().any(|obj| obj.is_full_space()) {
+            Self::full_space()
+        } else {
+            value.retain(|obj| !obj.is_empty());
+            Self(value)
+        }
     }
 }
 
 impl FromIterator<SimpleCollisionObject> for CollisionObject {
     fn from_iter<T: IntoIterator<Item = SimpleCollisionObject>>(iter: T) -> Self {
-        Self(iter.into_iter().filter(|obj| !obj.is_empty()).collect())
+        let none_if_full_space = iter
+            .into_iter()
+            .filter(|obj| !obj.is_empty())
+            .map(|obj| if obj.is_full_space() { None } else { Some(obj) })
+            .collect();
+        match none_if_full_space {
+            Some(objs) => Self(objs),
+            None => Self::full_space(),
+        }
     }
 }
 

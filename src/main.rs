@@ -56,6 +56,11 @@ fn main() {
         cc.collides_dynamic(&dyn_obs2).unwrap(),
         DynamicCollisionResult::NoCollision
     );
+    assert_ne!(
+        cc.collides_static(&CollisionObject::from(SimpleCollisionObject::full_space()).into())
+            .unwrap(),
+        DynamicCollisionResult::NoCollision
+    );
 
     // Test orientation for rectangles
     let rect1 = SimpleCollisionObject::rectangle(Rect::new((0.0, 0.0), (2.0, 1.0)), 0.0);
@@ -65,6 +70,11 @@ fn main() {
         .build_parry();
     assert_ne!(
         cc.collides_static(&CollisionObject::from(rect2).into())
+            .unwrap(),
+        DynamicCollisionResult::NoCollision
+    );
+    assert_ne!(
+        cc.collides_static(&CollisionObject::from(SimpleCollisionObject::full_space()).into())
             .unwrap(),
         DynamicCollisionResult::NoCollision
     );

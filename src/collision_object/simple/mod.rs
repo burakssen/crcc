@@ -1,14 +1,16 @@
-pub use circle::Circle;
-pub use convex_polygon::ConvexPolygon;
-pub use empty::Empty;
 use enum_dispatch::enum_dispatch;
 use geo::{
     AffineOps, AffineTransform, BooleanOps, ConvexHull, HasDimensions, IsConvex, Polygon, Rect,
     Triangle as GeoTriangle,
 };
 use glamx::{DPose2, DVec2};
-pub use half_space::HalfSpace;
 use itertools::Itertools;
+
+pub use circle::Circle;
+pub use convex_polygon::ConvexPolygon;
+pub use empty::Empty;
+pub use full_space::FullSpace;
+pub use half_space::HalfSpace;
 pub use non_convex_polygon::NonConvexPolygon;
 pub use polygon_with_holes::PolygonWithHoles;
 pub use rectangle::Rectangle;
@@ -17,6 +19,7 @@ pub use triangle::Triangle;
 mod circle;
 mod convex_polygon;
 mod empty;
+mod full_space;
 mod half_space;
 mod non_convex_polygon;
 mod polygon_with_holes;
@@ -27,6 +30,7 @@ mod triangle;
 #[enum_dispatch(SimpleCollisionObjectOps)]
 pub enum SimpleCollisionObject {
     Empty(Empty),
+    FullSpace(FullSpace),
     HalfSpace(HalfSpace),
     Circle(Circle),
     Rectangle(Rectangle),
@@ -38,7 +42,11 @@ pub enum SimpleCollisionObject {
 
 impl SimpleCollisionObject {
     pub fn empty() -> SimpleCollisionObject {
-        SimpleCollisionObject::Empty(Empty {})
+        SimpleCollisionObject::Empty(Empty)
+    }
+
+    pub fn full_space() -> SimpleCollisionObject {
+        SimpleCollisionObject::FullSpace(FullSpace)
     }
 
     pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> SimpleCollisionObject {
@@ -98,6 +106,10 @@ impl SimpleCollisionObject {
     }
     pub fn is_empty(&self) -> bool {
         matches!(self, SimpleCollisionObject::Empty(_))
+    }
+
+    pub fn is_full_space(&self) -> bool {
+        matches!(self, SimpleCollisionObject::FullSpace(_))
     }
 }
 
