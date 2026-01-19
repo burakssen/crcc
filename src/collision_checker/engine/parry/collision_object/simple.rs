@@ -69,11 +69,11 @@ fn convert_circle(circle: Circle) -> ParrySimpleCollisionObject {
     }
 }
 
-fn convert_rectangle(rect: Rectangle) -> ParrySimpleCollisionObject {
-    let half_extents = Vector2::new(rect.width() / 2.0, rect.height() / 2.0);
+fn convert_rectangle(rectangle: Rectangle) -> ParrySimpleCollisionObject {
+    let half_extents = Vector2::new(rectangle.width() / 2.0, rectangle.height() / 2.0);
     ParrySimpleCollisionObject::Generic {
         shape: Box::new(Cuboid::new(half_extents)),
-        position: make_isometry(rect.center().into(), 0.0),
+        position: make_isometry(rectangle.center(), rectangle.orientation()),
     }
 }
 

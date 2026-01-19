@@ -152,8 +152,13 @@ pub struct Rectangle;
 #[pymethods]
 impl Rectangle {
     #[new]
-    #[pyo3(signature = (length, width, center = (0.0, 0.0)))]
-    fn new(length: f64, width: f64, center: (f64, f64)) -> PyResult<(Self, CollisionObject)> {
+    #[pyo3(signature = (length, width, orientation = 0.0, center = (0.0, 0.0)))]
+    fn new(
+        length: f64,
+        width: f64,
+        orientation: f64,
+        center: (f64, f64),
+    ) -> PyResult<(Self, CollisionObject)> {
         if length <= 0.0 || width <= 0.0 {
             return Err(PyValueError::new_err("Length and width must be positive"));
         }
@@ -161,7 +166,8 @@ impl Rectangle {
         let upper_right = coord! {x: center.0 + length / 2.0, y: center.1 + width / 2.0};
         Ok((
             Self,
-            SimpleCollisionObject::rectangle(Rect::new(lower_left, upper_right)).into(),
+            SimpleCollisionObject::rectangle(Rect::new(lower_left, upper_right), orientation)
+                .into(),
         ))
     }
 }

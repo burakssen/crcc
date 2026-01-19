@@ -5,7 +5,9 @@ use commonroad_collision_checker::collision_object::CollisionObject;
 use commonroad_collision_checker::collision_object::simple::SimpleCollisionObject;
 use commonroad_collision_checker::dynamic_obstacle::DynamicObstacle;
 use commonroad_collision_checker::time::TimeStep;
+use geo::Rect;
 use nalgebra::Isometry2;
+use std::f64::consts::FRAC_PI_2;
 
 fn main() {
     let dyn_obs = DynamicObstacle::new(
@@ -52,6 +54,18 @@ fn main() {
     // this demonstrates that shape casting is more accurate than just using the convex hull
     assert_eq!(
         cc.collides_dynamic(&dyn_obs2).unwrap(),
+        DynamicCollisionResult::NoCollision
+    );
+
+    // Test orientation for rectangles
+    let rect1 = SimpleCollisionObject::rectangle(Rect::new((0.0, 0.0), (2.0, 1.0)), 0.0);
+    let rect2 = SimpleCollisionObject::rectangle(Rect::new((0.0, 1.1), (2.0, 2.1)), FRAC_PI_2);
+    let cc = CollisionCheckerBuilder::new()
+        .with_static_obstacle(rect1)
+        .build_parry();
+    assert_ne!(
+        cc.collides_static(&CollisionObject::from(rect2).into())
+            .unwrap(),
         DynamicCollisionResult::NoCollision
     );
 }

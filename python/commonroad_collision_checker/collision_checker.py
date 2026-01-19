@@ -49,8 +49,7 @@ def _commonroad_shape_to_simple_collision_objects(shape: Shape) -> list[core_co.
     if isinstance(shape, Circle):
         return [core_co.Circle(shape.radius, tuple(shape.center))]
     elif isinstance(shape, Rectangle):
-        # TODO: consider orientation
-        return [core_co.Rectangle(shape.length, shape.width, tuple(shape.center))]
+        return [core_co.Rectangle(shape.length, shape.width, shape.orientation, tuple(shape.center))]
     elif isinstance(shape, Polygon):
         return [core_co.Polygon([tuple(v) for v in shape.vertices], [])]
     elif isinstance(shape, ShapeGroup):

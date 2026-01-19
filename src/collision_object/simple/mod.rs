@@ -12,7 +12,6 @@ use nalgebra::{Isometry2, Unit, Vector2};
 pub use non_convex_polygon::NonConvexPolygon;
 pub use polygon_with_holes::PolygonWithHoles;
 pub use rectangle::Rectangle;
-use std::f64::consts::PI;
 pub use triangle::Triangle;
 
 mod circle;
@@ -68,11 +67,11 @@ impl SimpleCollisionObject {
         }
     }
 
-    pub fn rectangle(rect: Rect) -> SimpleCollisionObject {
+    pub fn rectangle(rect: Rect, orientation: f64) -> SimpleCollisionObject {
         if rect.is_empty() {
             SimpleCollisionObject::empty()
         } else {
-            SimpleCollisionObject::Rectangle(Rectangle(rect))
+            SimpleCollisionObject::Rectangle(Rectangle { rect, orientation })
         }
     }
 
@@ -137,6 +136,6 @@ fn swept_areas(
 }
 
 fn isometry_to_affine(isometry: &Isometry2<f64>) -> AffineTransform {
-    AffineTransform::rotate(isometry.rotation.angle() * (180.0 / PI), (0.0, 0.0))
+    AffineTransform::rotate(isometry.rotation.angle().to_degrees(), (0.0, 0.0))
         .translated(isometry.translation.x, isometry.translation.y)
 }
