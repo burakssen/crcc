@@ -7,22 +7,51 @@ use crate::dynamic_obstacle::GenericDynamicObstacle;
 use crate::time::{TimeStep, TimeStepSet};
 use glamx::DPose2;
 use std::cell::LazyCell;
-use std::ops::{Bound, RangeBounds};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::ops::RangeBounds;
 
 mod builder;
 mod ccd_collider;
 mod engine;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum DynamicCollisionResult {
+pub enum CollisionStatus {
     NoCollision,
-    FirstCollisionAt(TimeStep),
+    CollidesStatic,
+    CollidesDynamic(TimeStep),
+}
+
+impl CollisionStatus {
+    pub fn collides(&self) -> bool {
+        match self {
+            CollisionStatus::NoCollision => false,
+            CollisionStatus::CollidesStatic | CollisionStatus::CollidesDynamic(_) => true,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum CollisionCheckerError {
     Unsupported,
 }
+
+impl Display for CollisionCheckerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CollisionCheckerError::Unsupported => {
+                write!(
+                    f,
+                    "collision checking of shape combination is not supported"
+                )
+            }
+        }
+    }
+}
+
+impl Error for CollisionCheckerError {}
+
+pub type CollisionResult = Result<CollisionStatus, CollisionCheckerError>;
 
 pub struct CollisionChecker<E: CollisionEngine = ParryEngine> {
     static_obstacle: E::EngineCollisionObject,
@@ -31,17 +60,14 @@ pub struct CollisionChecker<E: CollisionEngine = ParryEngine> {
 }
 
 impl<E: CollisionEngine> CollisionChecker<E> {
-    pub fn collides_static(
-        &self,
-        static_obstacle: &E::EngineCollisionObject,
-    ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
+    pub fn collides_static(&self, static_obstacle: &E::EngineCollisionObject) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, ..)
     }
 
     pub fn collides_dynamic(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E::EngineCollisionObject>,
-    ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
+    ) -> CollisionResult {
         self.collides_dynamic_range(dynamic_obstacle, ..)
     }
 
@@ -49,25 +75,23 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         &self,
         static_obstacle: &E::EngineCollisionObject,
         time_step: TimeStep,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, time_step..=time_step)
-            .map(|res| matches!(res, DynamicCollisionResult::FirstCollisionAt(_)))
     }
 
     pub fn collides_dynamic_at(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E::EngineCollisionObject>,
         time_step: TimeStep,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> CollisionResult {
         self.collides_dynamic_range(dynamic_obstacle, time_step..=time_step)
-            .map(|res| matches!(res, DynamicCollisionResult::FirstCollisionAt(_)))
     }
 
     pub fn collides_static_pos(
         &self,
         static_obstacle: &E::EngineCollisionObject,
         position: DPose2,
-    ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
+    ) -> CollisionResult {
         self.collides_static_range(static_obstacle, position, ..)
     }
 
@@ -76,9 +100,8 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         static_obstacle: &E::EngineCollisionObject,
         position: DPose2,
         time_step: TimeStep,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> CollisionResult {
         self.collides_static_range(static_obstacle, position, time_step..=time_step)
-            .map(|res| matches!(res, DynamicCollisionResult::FirstCollisionAt(_)))
     }
 
     pub fn collides_static_range(
@@ -86,15 +109,9 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         static_obstacle: &E::EngineCollisionObject,
         position: DPose2,
         time_range: impl RangeBounds<TimeStep>,
-    ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
+    ) -> CollisionResult {
         if self.check_collision_static_static(static_obstacle, position)? {
-            return Ok(DynamicCollisionResult::FirstCollisionAt(
-                match time_range.start_bound() {
-                    Bound::Included(t) => *t,
-                    Bound::Excluded(t) => t.succ(),
-                    Bound::Unbounded => TimeStep::MIN,
-                },
-            ));
+            return Ok(CollisionStatus::CollidesStatic);
         }
 
         let ccd_collider = LazyCell::new(|| CCDCollider {
@@ -110,20 +127,20 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         for time_step in active_times.iter() {
             if active_times.contains(time_step.succ()) {
                 if self.check_collision_dynamic_ccd(&ccd_collider, time_step)? {
-                    return Ok(DynamicCollisionResult::FirstCollisionAt(time_step));
+                    return Ok(CollisionStatus::CollidesDynamic(time_step));
                 }
             } else if self.check_collision_dynamic_static(static_obstacle, position, time_step)? {
-                return Ok(DynamicCollisionResult::FirstCollisionAt(time_step));
+                return Ok(CollisionStatus::CollidesDynamic(time_step));
             }
         }
-        Ok(DynamicCollisionResult::NoCollision)
+        Ok(CollisionStatus::NoCollision)
     }
 
     pub fn collides_dynamic_range(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E::EngineCollisionObject>,
         time_range: impl RangeBounds<TimeStep>,
-    ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
+    ) -> CollisionResult {
         let shape = dynamic_obstacle.shape();
         let mut active_times = TimeStepSet::from(time_range);
         active_times.intersect(&dynamic_obstacle.active_times().into());
@@ -136,7 +153,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
                 if self.check_collision_static_static(ccd_collider.convex_hull, DPose2::IDENTITY)?
                     || self.check_collision_dynamic_ccd(&ccd_collider, time_step)?
                 {
-                    return Ok(DynamicCollisionResult::FirstCollisionAt(time_step));
+                    return Ok(CollisionStatus::CollidesDynamic(time_step));
                 }
             } else {
                 let position = dynamic_obstacle
@@ -145,11 +162,11 @@ impl<E: CollisionEngine> CollisionChecker<E> {
                 if self.check_collision_static_static(shape, position)?
                     || self.check_collision_dynamic_static(shape, position, time_step)?
                 {
-                    return Ok(DynamicCollisionResult::FirstCollisionAt(time_step));
+                    return Ok(CollisionStatus::CollidesDynamic(time_step));
                 }
             }
         }
-        Ok(DynamicCollisionResult::NoCollision)
+        Ok(CollisionStatus::NoCollision)
     }
 
     fn check_collision_static_static(

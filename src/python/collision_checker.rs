@@ -1,7 +1,7 @@
 use crate::collision_checker::CollisionCheckerError;
 use crate::collision_checker::{
     CollisionChecker as RustCollisionChecker,
-    CollisionCheckerBuilder as RustCollisionCheckerBuilder, DynamicCollisionResult,
+    CollisionCheckerBuilder as RustCollisionCheckerBuilder, CollisionStatus as RustCollisionStatus,
 };
 use crate::python::collision_object::CollisionObject;
 use crate::python::dynamic_obstacle::DynamicObstacle;
@@ -13,7 +13,50 @@ use itertools::Itertools;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use replace_with::replace_with;
+use std::fmt::Display;
 use std::ops::RangeInclusive;
+
+#[pyclass]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+pub enum CollisionStatus {
+    NoCollision(),
+    CollidesStatic(),
+    CollidesDynamic(TimeStepInner),
+}
+
+#[pymethods]
+impl CollisionStatus {
+    pub fn collides(&self) -> bool {
+        match self {
+            CollisionStatus::NoCollision() => false,
+            CollisionStatus::CollidesStatic() | CollisionStatus::CollidesDynamic(_) => true,
+        }
+    }
+
+    pub fn __str__(&self) -> String {
+        format!("{}", self)
+    }
+}
+
+impl Display for CollisionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CollisionStatus::NoCollision() => write!(f, "NoCollision"),
+            CollisionStatus::CollidesStatic() => write!(f, "CollidesStatic"),
+            CollisionStatus::CollidesDynamic(t) => write!(f, "CollidesDynamic({})", t),
+        }
+    }
+}
+
+impl From<RustCollisionStatus> for CollisionStatus {
+    fn from(value: RustCollisionStatus) -> Self {
+        match value {
+            RustCollisionStatus::NoCollision => CollisionStatus::NoCollision(),
+            RustCollisionStatus::CollidesStatic => CollisionStatus::CollidesStatic(),
+            RustCollisionStatus::CollidesDynamic(t) => CollisionStatus::CollidesDynamic(t.0),
+        }
+    }
+}
 
 #[pyclass]
 pub struct CollisionChecker(pub(crate) RustCollisionChecker);
@@ -27,7 +70,7 @@ impl CollisionChecker {
         position: Option<&Pose>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
-    ) -> PyResult<Option<TimeStepInner>> {
+    ) -> PyResult<CollisionStatus> {
         let position = match position {
             Some(position) => position.0,
             None => DPose2::IDENTITY,
@@ -38,10 +81,7 @@ impl CollisionChecker {
             position,
             min_max_to_range(min_time, max_time),
         )?;
-        Ok(match res {
-            DynamicCollisionResult::FirstCollisionAt(t) => Some(t.0),
-            DynamicCollisionResult::NoCollision => None,
-        })
+        Ok(res.into())
     }
 
     #[pyo3(signature = (dynamic_obstacle, min_time=None, max_time=None))]
@@ -50,15 +90,12 @@ impl CollisionChecker {
         dynamic_obstacle: &DynamicObstacle,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
-    ) -> PyResult<Option<TimeStepInner>> {
+    ) -> PyResult<CollisionStatus> {
         let parry_co_ref = dynamic_obstacle.get_parry();
         let res = self
             .0
             .collides_dynamic_range(parry_co_ref, min_max_to_range(min_time, max_time))?;
-        Ok(match res {
-            DynamicCollisionResult::FirstCollisionAt(t) => Some(t.0),
-            DynamicCollisionResult::NoCollision => None,
-        })
+        Ok(res.into())
     }
 }
 

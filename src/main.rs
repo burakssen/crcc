@@ -1,6 +1,4 @@
-use commonroad_collision_checker::collision_checker::{
-    CollisionCheckerBuilder, DynamicCollisionResult,
-};
+use commonroad_collision_checker::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
 use commonroad_collision_checker::collision_object::CollisionObject;
 use commonroad_collision_checker::collision_object::simple::SimpleCollisionObject;
 use commonroad_collision_checker::dynamic_obstacle::DynamicObstacle;
@@ -35,31 +33,31 @@ fn main() {
         TimeStep(2),
     )
     .convert_repr();
-    assert!(!cc.collides_static_at(&obj, TimeStep(0)).unwrap());
-    assert!(cc.collides_static_at(&obj, TimeStep(1)).unwrap());
-    assert!(!cc.collides_static_at(&obj, TimeStep(2)).unwrap());
-    assert!(!cc.collides_static_at(&obj, TimeStep(3)).unwrap());
-    assert!(!cc.collides_static_at(&obj, TimeStep(4)).unwrap());
+    assert!(!cc.collides_static_at(&obj, TimeStep(0)).unwrap().collides());
+    assert!(cc.collides_static_at(&obj, TimeStep(1)).unwrap().collides());
+    assert!(!cc.collides_static_at(&obj, TimeStep(2)).unwrap().collides());
+    assert!(!cc.collides_static_at(&obj, TimeStep(3)).unwrap().collides());
+    assert!(!cc.collides_static_at(&obj, TimeStep(4)).unwrap().collides());
     assert_eq!(
         cc.collides_static_range(&obj, DPose2::IDENTITY, ..)
             .unwrap(),
-        DynamicCollisionResult::FirstCollisionAt(TimeStep(0))
+        CollisionStatus::CollidesDynamic(TimeStep(0))
     );
     assert_eq!(
         cc.collides_static_range(&obj, DPose2::IDENTITY, TimeStep(2)..=TimeStep(4))
             .unwrap(),
-        DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
+        CollisionStatus::CollidesDynamic(TimeStep(2))
     );
     // dyn_obs2 has enough time to get out of the way of dyn_obs
     // this demonstrates that shape casting is more accurate than just using the convex hull
     assert_eq!(
         cc.collides_dynamic(&dyn_obs2).unwrap(),
-        DynamicCollisionResult::NoCollision
+        CollisionStatus::NoCollision
     );
     assert_ne!(
         cc.collides_static(&CollisionObject::from(SimpleCollisionObject::full_space()).into())
             .unwrap(),
-        DynamicCollisionResult::NoCollision
+        CollisionStatus::NoCollision
     );
 
     // Test orientation for rectangles
@@ -71,11 +69,11 @@ fn main() {
     assert_ne!(
         cc.collides_static(&CollisionObject::from(rect2).into())
             .unwrap(),
-        DynamicCollisionResult::NoCollision
+        CollisionStatus::NoCollision
     );
     assert_ne!(
         cc.collides_static(&CollisionObject::from(SimpleCollisionObject::full_space()).into())
             .unwrap(),
-        DynamicCollisionResult::NoCollision
+        CollisionStatus::NoCollision
     );
 }
