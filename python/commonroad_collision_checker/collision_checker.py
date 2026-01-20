@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from commonroad.geometry.shape import Circle, Polygon, Rectangle, Shape, ShapeGroup
+from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.scenario.lanelet import LaneletNetwork
-from commonroad.scenario.obstacle import StaticObstacle
+from commonroad.scenario.obstacle import DynamicObstacle, StaticObstacle
+from commonroad.scenario.state import TraceState
 
 import commonroad_collision_checker._core.collision_checker as core_cc
 import commonroad_collision_checker._core.collision_object as core_co
+import commonroad_collision_checker._core.dynamic_obstacle as core_do
+from commonroad_collision_checker._core.pose import Pose
 
 
 class CollisionCheckerBuilder:
@@ -21,14 +25,31 @@ class CollisionCheckerBuilder:
         self._rust_builder.with_static_obstacle(static_obstacle)
         return self
 
+    def with_dynamic_obstacle(
+        self,
+        dynamic_obstacle: core_do.DynamicObstacle,
+    ) -> CollisionCheckerBuilder:
+        self._rust_builder.with_dynamic_obstacle(dynamic_obstacle)
+        return self
+
     def with_commonroad_static_obstacle(self, static_obstacle: StaticObstacle) -> CollisionCheckerBuilder:
-        initial_time = static_obstacle.initial_state.time_step
-        occupancy = static_obstacle.occupancy_at_time(initial_time)
-        return self.with_commonroad_shape(occupancy.shape)
+        return self.with_commonroad_shape(static_obstacle.obstacle_shape)
+
+    def with_commonroad_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder:
+        initial_time = dynamic_obstacle.initial_state.time_step
+        if isinstance(dynamic_obstacle.prediction, TrajectoryPrediction):
+            trajectory = dynamic_obstacle.prediction.trajectory
+            states = [dynamic_obstacle.initial_state] + trajectory.state_list
+            poses = [_commonroad_state_to_pose(state) for state in states]
+            shape = _commonroad_shape_to_collision_object(dynamic_obstacle.obstacle_shape)
+            rust_dynamic_obstacle = core_do.DynamicObstacle(shape, poses, initial_time)
+            self.with_dynamic_obstacle(rust_dynamic_obstacle)
+        else:
+            raise NotImplementedError("Only TrajectoryPrediction is supported for dynamic obstacles.")
+        return self
 
     def with_commonroad_shape(self, shape: Shape) -> CollisionCheckerBuilder:
-        objs = _commonroad_shape_to_simple_collision_objects(shape)
-        co = objs[0] if len(objs) == 1 else core_co.Compound(objs)
+        co = _commonroad_shape_to_collision_object(shape)
         self.with_static_obstacle(co)
         return self
 
@@ -45,7 +66,15 @@ class CollisionCheckerBuilder:
         return self._rust_builder.build()
 
 
-def _commonroad_shape_to_simple_collision_objects(shape: Shape) -> list[core_co.CollisionObject]:
+def _commonroad_shape_to_collision_object(shape: Shape) -> core_co.CollisionObject:
+    objs = _commonroad_shape_to_collision_objects(shape)
+    if len(objs) == 1:
+        return objs[0]
+    else:
+        return core_co.Compound(objs)
+
+
+def _commonroad_shape_to_collision_objects(shape: Shape) -> list[core_co.CollisionObject]:
     if isinstance(shape, Circle):
         return [core_co.Circle(shape.radius, tuple(shape.center))]
     elif isinstance(shape, Rectangle):
@@ -53,6 +82,13 @@ def _commonroad_shape_to_simple_collision_objects(shape: Shape) -> list[core_co.
     elif isinstance(shape, Polygon):
         return [core_co.Polygon([tuple(v) for v in shape.vertices], [])]
     elif isinstance(shape, ShapeGroup):
-        return [obj for s in shape.shapes for obj in _commonroad_shape_to_simple_collision_objects(s)]
+        return [obj for s in shape.shapes for obj in _commonroad_shape_to_collision_objects(s)]
     else:
         raise ValueError(f"Unknown shape type {type(shape)}")
+
+
+def _commonroad_state_to_pose(state: TraceState) -> Pose:
+    return Pose(
+        translation=(state.position[0], state.position[1]),
+        angle=state.orientation,
+    )

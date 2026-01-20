@@ -1,7 +1,5 @@
 import commonroad_collision_checker._core as ccc
-import numpy as np
 from commonroad.common.file_reader import CommonRoadFileReader
-from commonroad.geometry.shape import Polygon
 from commonroad_collision_checker.collision_checker import CollisionCheckerBuilder
 
 
@@ -17,15 +15,16 @@ def main():
 
     lanelet_network = scenario.lanelet_network
 
-    cc = (
-        CollisionCheckerBuilder()
-        .with_road_boundary_obstacle(lanelet_network)
-        .with_commonroad_shape(Polygon(np.array([[0, 0], [1, 0], [1, 1]])))
-        .build()
-    )
+    builder = CollisionCheckerBuilder().with_road_boundary_obstacle(lanelet_network)
+    for obstacle in scenario.static_obstacles:
+        builder.with_commonroad_static_obstacle(obstacle)
+    for obstacle in scenario.dynamic_obstacles:
+        builder.with_commonroad_dynamic_obstacle(obstacle)
+    cc = builder.build()
+
     car = ccc.collision_object.Rectangle(4.5, 2.0)
-    print("Should collide", cc.collides_static(car, ccc.pose.Pose((55.29, -1.99), 1.326)))
-    print("Should not collide", cc.collides_static(car, ccc.pose.Pose((37.33, 4.07), -2.207)))
+    print("Collides with road boundary", cc.collides_static(car, ccc.pose.Pose((55.29, -1.99), 1.326)))
+    print("Collides between step 26 and 27", cc.collides_static(car, ccc.pose.Pose((37.33, 4.07), -2.207)))
 
     # r = ccc.collision_object.Rectangle(2, 3)
     # c = ccc.collision_object.Circle(1)

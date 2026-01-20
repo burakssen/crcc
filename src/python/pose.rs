@@ -8,8 +8,8 @@ pub struct Pose(pub(crate) DPose2);
 #[pymethods]
 impl Pose {
     #[new]
-    pub fn translation_rotation(shift: (f64, f64), angle: f64) -> Self {
-        Pose(DPose2::new(DVec2::new(shift.0, shift.1), angle))
+    pub fn translation_rotation(translation: (f64, f64), angle: f64) -> Self {
+        Pose(DPose2::new(DVec2::new(translation.0, translation.1), angle))
     }
 
     #[staticmethod]
@@ -18,8 +18,8 @@ impl Pose {
     }
 
     #[staticmethod]
-    pub fn translation(shift: (f64, f64)) -> Self {
-        Pose(DPose2::translation(shift.0, shift.1))
+    pub fn translation(translation: (f64, f64)) -> Self {
+        Pose(DPose2::translation(translation.0, translation.1))
     }
 
     #[staticmethod]

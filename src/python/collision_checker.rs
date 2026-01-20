@@ -93,9 +93,15 @@ impl CollisionCheckerBuilder {
         CollisionCheckerBuilder(RustCollisionCheckerBuilder::new())
     }
 
-    pub fn with_static_obstacle(&mut self, collision_object: CollisionObject) {
+    pub fn with_static_obstacle(&mut self, collision_object: &CollisionObject) {
         replace_with(&mut self.0, Default::default, |builder| {
             builder.with_static_obstacle(collision_object.plain_collision_object.as_ref().clone())
+        });
+    }
+
+    pub fn with_dynamic_obstacle(&mut self, dynamic_obstacle: &DynamicObstacle) {
+        replace_with(&mut self.0, Default::default, |builder| {
+            builder.with_dynamic_obstacle(dynamic_obstacle.plain_dyn_obs.as_ref().clone())
         });
     }
 
