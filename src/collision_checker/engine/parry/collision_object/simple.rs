@@ -25,7 +25,7 @@ impl ParrySimpleCollisionObject {
         match self {
             ParrySimpleCollisionObject::Empty | ParrySimpleCollisionObject::FullSpace => None,
             ParrySimpleCollisionObject::TriMesh(mesh) => {
-                Some((DPose2::identity(), SharedShape::new(*mesh)))
+                Some((DPose2::IDENTITY, SharedShape::new(*mesh)))
             }
             ParrySimpleCollisionObject::Shape { shape, position } => {
                 Some((position, SharedShape(shape.into())))
@@ -86,7 +86,7 @@ fn convert_triangle(triangle: Triangle) -> ParrySimpleCollisionObject {
             DVec2::new(triangle.1.x, triangle.1.y),
             DVec2::new(triangle.2.x, triangle.2.y),
         )),
-        position: DPose2::identity(),
+        position: DPose2::IDENTITY,
     }
 }
 
@@ -97,7 +97,7 @@ fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> ParrySimpleCollision
     .expect("Convex polygon should be a valid convex polygon");
     ParrySimpleCollisionObject::Shape {
         shape: Box::new(parry_convex),
-        position: DPose2::identity(),
+        position: DPose2::IDENTITY,
     }
 }
 

@@ -41,12 +41,12 @@ fn main() {
     assert!(!cc.collides_static_at(&obj, TimeStep(3)).unwrap());
     assert!(!cc.collides_static_at(&obj, TimeStep(4)).unwrap());
     assert_eq!(
-        cc.collides_static_range(&obj, &DPose2::identity(), ..)
+        cc.collides_static_range(&obj, DPose2::IDENTITY, ..)
             .unwrap(),
         DynamicCollisionResult::FirstCollisionAt(TimeStep(0))
     );
     assert_eq!(
-        cc.collides_static_range(&obj, &DPose2::identity(), TimeStep(2)..=TimeStep(4))
+        cc.collides_static_range(&obj, DPose2::IDENTITY, TimeStep(2)..=TimeStep(4))
             .unwrap(),
         DynamicCollisionResult::FirstCollisionAt(TimeStep(2))
     );

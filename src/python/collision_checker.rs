@@ -29,8 +29,8 @@ impl CollisionChecker {
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Option<TimeStepInner>> {
         let position = match position {
-            Some(position) => &position.0,
-            None => &DPose2::identity(),
+            Some(position) => position.0,
+            None => DPose2::IDENTITY,
         };
         let parry_co_ref = static_obstacle.get_parry();
         let res = self.0.collides_static_range(

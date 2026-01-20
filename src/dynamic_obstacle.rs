@@ -6,8 +6,8 @@ use std::ops::Range;
 
 pub(crate) struct CCDCollider<'a, C> {
     pub shape: &'a C,
-    pub position: &'a DPose2,
-    pub next_position: &'a DPose2,
+    pub position: DPose2,
+    pub next_position: DPose2,
     pub convex_hull: &'a C,
 }
 
@@ -26,9 +26,9 @@ impl<C> GenericDynamicObstacle<C> {
         &self.shape
     }
 
-    pub fn position_at(&self, time_step: TimeStep) -> Option<&DPose2> {
+    pub fn position_at(&self, time_step: TimeStep) -> Option<DPose2> {
         let with_offset = time_step - self.time_offset;
-        self.positions.get(with_offset.0 as usize)
+        self.positions.get(with_offset.0 as usize).copied()
     }
 
     pub fn convex_hull_after(&self, time_step: TimeStep) -> Option<&C> {

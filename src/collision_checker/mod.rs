@@ -33,7 +33,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         &self,
         static_obstacle: &E::EngineCollisionObject,
     ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
-        self.collides_static_range(static_obstacle, &DPose2::identity(), ..)
+        self.collides_static_range(static_obstacle, DPose2::IDENTITY, ..)
     }
 
     pub fn collides_dynamic(
@@ -48,7 +48,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         static_obstacle: &E::EngineCollisionObject,
         time_step: TimeStep,
     ) -> Result<bool, CollisionCheckerError> {
-        self.collides_static_range(static_obstacle, &DPose2::identity(), time_step..=time_step)
+        self.collides_static_range(static_obstacle, DPose2::IDENTITY, time_step..=time_step)
             .map(|res| matches!(res, DynamicCollisionResult::FirstCollisionAt(_)))
     }
 
@@ -64,7 +64,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
     pub fn collides_static_pos(
         &self,
         static_obstacle: &E::EngineCollisionObject,
-        position: &DPose2,
+        position: DPose2,
     ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
         self.collides_static_range(static_obstacle, position, ..)
     }
@@ -72,7 +72,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
     pub fn collides_static_pos_at(
         &self,
         static_obstacle: &E::EngineCollisionObject,
-        position: &DPose2,
+        position: DPose2,
         time_step: TimeStep,
     ) -> Result<bool, CollisionCheckerError> {
         self.collides_static_range(static_obstacle, position, time_step..=time_step)
@@ -82,7 +82,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
     pub fn collides_static_range(
         &self,
         static_obstacle: &E::EngineCollisionObject,
-        position: &DPose2,
+        position: DPose2,
         time_range: impl RangeBounds<TimeStep>,
     ) -> Result<DynamicCollisionResult, CollisionCheckerError> {
         if self.check_collision_static_static(static_obstacle, position)? {
@@ -130,8 +130,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
                 let ccd_collider = dynamic_obstacle
                     .ccd_collider_at(time_step)
                     .expect("Should exist since the time step and its successor are active");
-                if self
-                    .check_collision_static_static(ccd_collider.convex_hull, &DPose2::identity())?
+                if self.check_collision_static_static(ccd_collider.convex_hull, DPose2::IDENTITY)?
                     || self.check_collision_dynamic_ccd(&ccd_collider, time_step)?
                 {
                     return Ok(DynamicCollisionResult::FirstCollisionAt(time_step));
@@ -153,11 +152,11 @@ impl<E: CollisionEngine> CollisionChecker<E> {
     fn check_collision_static_static(
         &self,
         static_obstacle: &E::EngineCollisionObject,
-        position: &DPose2,
+        position: DPose2,
     ) -> Result<bool, CollisionCheckerError> {
         E::collides(
             &self.static_obstacle,
-            &DPose2::identity(),
+            DPose2::IDENTITY,
             static_obstacle,
             position,
         )
@@ -166,7 +165,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
     fn check_collision_dynamic_static(
         &self,
         static_obstacle: &E::EngineCollisionObject,
-        position: &DPose2,
+        position: DPose2,
         time_step: TimeStep,
     ) -> Result<bool, CollisionCheckerError> {
         for obs in &self.dynamic_obstacles {
@@ -187,7 +186,6 @@ impl<E: CollisionEngine> CollisionChecker<E> {
         ccd_collider: &CCDCollider<E::EngineCollisionObject>,
         time_step: TimeStep,
     ) -> Result<bool, CollisionCheckerError> {
-        let identity = DPose2::identity();
         for obs in &self.dynamic_obstacles {
             let Some(obs_ccd_collider) = obs.ccd_collider_at(time_step) else {
                 continue;
@@ -195,9 +193,9 @@ impl<E: CollisionEngine> CollisionChecker<E> {
             if E::collides(
                 // Broad-phase check with convex hull
                 obs_ccd_collider.convex_hull,
-                &identity,
+                DPose2::IDENTITY,
                 ccd_collider.convex_hull,
-                &identity,
+                DPose2::IDENTITY,
             )? && E::collides_continuous(
                 // Narrow-phase check with CCD
                 obs_ccd_collider.shape,

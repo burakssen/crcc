@@ -14,7 +14,7 @@ impl Pose {
 
     #[staticmethod]
     pub fn identity() -> Self {
-        Pose(DPose2::identity())
+        Pose(DPose2::IDENTITY)
     }
 
     #[staticmethod]

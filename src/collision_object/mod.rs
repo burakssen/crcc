@@ -65,8 +65,8 @@ impl CollisionObject {
         result
     }
 
-    pub fn swept_area(&self, start_pos: &DPose2, end_pos: &DPose2) -> CollisionObject {
-        self.swept_areas(&[*start_pos, *end_pos])
+    pub fn swept_area(&self, start_pos: DPose2, end_pos: DPose2) -> CollisionObject {
+        self.swept_areas(&[start_pos, end_pos])
             .pop()
             .expect("Should return exactly one area, as two positions were given.")
     }

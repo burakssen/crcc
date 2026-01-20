@@ -120,8 +120,8 @@ pub trait SimpleCollisionObjectOps {
     /// the swept area between two consecutive positions.
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject>;
 
-    fn swept_area(&self, start_pos: &DPose2, end_pos: &DPose2) -> SimpleCollisionObject {
-        self.swept_areas(&[*start_pos, *end_pos])
+    fn swept_area(&self, start_pos: DPose2, end_pos: DPose2) -> SimpleCollisionObject {
+        self.swept_areas(&[start_pos, end_pos])
             .pop()
             .expect("Should return exactly one area, as two positions were given.")
     }
@@ -134,6 +134,7 @@ fn swept_areas(
 ) -> Vec<SimpleCollisionObject> {
     let transformed_shapes = positions
         .iter()
+        .copied()
         .map(pose_to_affine)
         .map(|affine| shape.affine_transform(&affine))
         .map_into()
@@ -146,7 +147,7 @@ fn swept_areas(
         .collect()
 }
 
-fn pose_to_affine(pose: &DPose2) -> AffineTransform {
+fn pose_to_affine(pose: DPose2) -> AffineTransform {
     AffineTransform::rotate(pose.rotation.angle().to_degrees(), (0.0, 0.0))
         .translated(pose.translation.x, pose.translation.y)
 }

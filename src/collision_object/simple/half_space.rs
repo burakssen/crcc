@@ -84,8 +84,8 @@ mod tests {
     fn test_swept_area() {
         let hs = HalfSpace::from_coeffs(1.0, 0.0, 5.0); // x <= 5.0
         let swept_area = hs.swept_area(
-            &DPose2::new(DVec2::new(0.0, 1.0), FRAC_PI_2),
-            &DPose2::new(DVec2::new(0.0, -1.0), FRAC_PI_2),
+            DPose2::new(DVec2::new(0.0, 1.0), FRAC_PI_2),
+            DPose2::new(DVec2::new(0.0, -1.0), FRAC_PI_2),
         );
         let expected = HalfSpace::from_coeffs(0.0, 1.0, 4.0); // y <= 4.0
         match swept_area {

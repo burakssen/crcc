@@ -16,18 +16,18 @@ impl ParryCollisionObject {
         to self.0 {
             pub fn collides(
                 &self,
-                pos_self: &DPose2,
+                pos_self: DPose2,
                 #[as_ref] other: &Self,
-                pos_other: &DPose2,
+                pos_other: DPose2,
             ) -> Result<bool, Unsupported>;
 
             pub fn collides_continuous(
                 &self,
-                start_pos_self: &DPose2,
-                end_pos_self: &DPose2,
+                start_pos_self: DPose2,
+                end_pos_self: DPose2,
                 #[as_ref] other: &Self,
-                start_pos_other: &DPose2,
-                end_pos_other: &DPose2,
+                start_pos_other: DPose2,
+                end_pos_other: DPose2,
             ) -> Result<bool, Unsupported>;
         }
     }
@@ -62,9 +62,9 @@ struct NonTrivial {
 impl ParryCollisionObjectInner {
     pub fn collides(
         &self,
-        pos_self: &DPose2,
+        pos_self: DPose2,
         other: &Self,
-        pos_other: &DPose2,
+        pos_other: DPose2,
     ) -> Result<bool, Unsupported> {
         match (self, other) {
             (ParryCollisionObjectInner::Empty, _) | (_, ParryCollisionObjectInner::Empty) => {
@@ -81,11 +81,11 @@ impl ParryCollisionObjectInner {
 
     pub fn collides_continuous(
         &self,
-        start_pos_self: &DPose2,
-        end_pos_self: &DPose2,
+        start_pos_self: DPose2,
+        end_pos_self: DPose2,
         other: &Self,
-        start_pos_other: &DPose2,
-        end_pos_other: &DPose2,
+        start_pos_other: DPose2,
+        end_pos_other: DPose2,
     ) -> Result<bool, Unsupported> {
         match (self, other) {
             (ParryCollisionObjectInner::Empty, _) | (_, ParryCollisionObjectInner::Empty) => {
@@ -110,9 +110,9 @@ impl ParryCollisionObjectInner {
 impl NonTrivial {
     pub fn collides(
         &self,
-        pos_self: &DPose2,
+        pos_self: DPose2,
         other: &Self,
-        pos_other: &DPose2,
+        pos_other: DPose2,
     ) -> Result<bool, Unsupported> {
         for comp_self in [&self.generic_compound, &self.tri_mesh_compound]
             .into_iter()
@@ -122,7 +122,7 @@ impl NonTrivial {
                 .into_iter()
                 .flatten()
             {
-                if intersection_test(pos_self, comp_self, pos_other, comp_other)? {
+                if intersection_test(&pos_self, comp_self, &pos_other, comp_other)? {
                     return Ok(true);
                 }
             }
@@ -132,14 +132,14 @@ impl NonTrivial {
 
     pub fn collides_continuous(
         &self,
-        start_pos_self: &DPose2,
-        end_pos_self: &DPose2,
+        start_pos_self: DPose2,
+        end_pos_self: DPose2,
         other: &Self,
-        start_pos_other: &DPose2,
-        end_pos_other: &DPose2,
+        start_pos_other: DPose2,
+        end_pos_other: DPose2,
     ) -> Result<bool, Unsupported> {
-        let motion_self = motion_from_start_end(*start_pos_self, *end_pos_self);
-        let motion_other = motion_from_start_end(*start_pos_other, *end_pos_other);
+        let motion_self = motion_from_start_end(start_pos_self, end_pos_self);
+        let motion_other = motion_from_start_end(start_pos_other, end_pos_other);
         for comp_self in [&self.generic_compound, &self.tri_mesh_compound]
             .into_iter()
             .flatten()
