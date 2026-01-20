@@ -1,14 +1,16 @@
 pub use crate::collision_checker::builder::CollisionCheckerBuilder;
+use crate::collision_checker::ccd_collider::{CCDCollider, CCDColliderAt};
 use crate::collision_checker::engine::CollisionEngine;
 pub use crate::collision_checker::engine::parry::ParryCollisionObject;
 use crate::collision_checker::engine::parry::ParryEngine;
-use crate::dynamic_obstacle::{CCDCollider, GenericDynamicObstacle};
+use crate::dynamic_obstacle::GenericDynamicObstacle;
 use crate::time::{TimeStep, TimeStepSet};
 use glamx::DPose2;
 use std::cell::LazyCell;
 use std::ops::{Bound, RangeBounds};
 
 mod builder;
+mod ccd_collider;
 mod engine;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -100,6 +102,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
             position,
             next_position: position,
             convex_hull: static_obstacle,
+            convex_hull_position: position,
         });
 
         let mut active_times = TimeStepSet::from(time_range);
@@ -193,9 +196,9 @@ impl<E: CollisionEngine> CollisionChecker<E> {
             if E::collides(
                 // Broad-phase check with convex hull
                 obs_ccd_collider.convex_hull,
-                DPose2::IDENTITY,
+                obs_ccd_collider.convex_hull_position,
                 ccd_collider.convex_hull,
-                DPose2::IDENTITY,
+                ccd_collider.convex_hull_position,
             )? && E::collides_continuous(
                 // Narrow-phase check with CCD
                 obs_ccd_collider.shape,

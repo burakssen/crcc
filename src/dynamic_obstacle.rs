@@ -4,13 +4,6 @@ use glamx::DPose2;
 use itertools::Itertools;
 use std::ops::Range;
 
-pub(crate) struct CCDCollider<'a, C> {
-    pub shape: &'a C,
-    pub position: DPose2,
-    pub next_position: DPose2,
-    pub convex_hull: &'a C,
-}
-
 pub type DynamicObstacle = GenericDynamicObstacle<CollisionObject>;
 
 #[derive(Clone, Debug)]
@@ -50,15 +43,6 @@ impl<C> GenericDynamicObstacle<C> {
             time_offset: self.time_offset,
             convex_hulls: self.convex_hulls.into_iter().map_into().collect(),
         }
-    }
-
-    pub(crate) fn ccd_collider_at(&self, time_step: TimeStep) -> Option<CCDCollider<'_, C>> {
-        Some(CCDCollider {
-            shape: self.shape(),
-            position: self.position_at(time_step)?,
-            next_position: self.position_at(time_step.succ())?,
-            convex_hull: self.convex_hull_after(time_step)?,
-        })
     }
 }
 

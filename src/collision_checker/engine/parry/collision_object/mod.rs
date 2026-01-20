@@ -9,6 +9,7 @@ use parry2d_f64::shape::{Compound, TriMesh, TriMeshBuilderError};
 
 mod simple;
 
+#[derive(Debug)]
 pub struct ParryCollisionObject(ParryCollisionObjectInner);
 
 impl ParryCollisionObject {
@@ -48,12 +49,14 @@ impl AsRef<ParryCollisionObjectInner> for ParryCollisionObject {
 // Most collision objects will be non-trivial, so boxing them would be counter-productive.
 // See https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#large_enum_variant
 #[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
 enum ParryCollisionObjectInner {
     Empty,
     FullSpace,
     NonTrivial(NonTrivial),
 }
 
+#[derive(Debug)]
 struct NonTrivial {
     tri_mesh_compound: Option<Compound>,
     generic_compound: Option<Compound>,
