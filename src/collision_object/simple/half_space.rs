@@ -1,5 +1,6 @@
 use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObjectOps};
 use glamx::{DPose2, DVec2};
+use itertools::Itertools;
 
 #[derive(Debug, Clone)]
 pub struct HalfSpace {
@@ -43,15 +44,29 @@ impl HalfSpace {
 }
 
 impl SimpleCollisionObjectOps for HalfSpace {
-    fn swept_areas(&self, _positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
-        // Always full-space if rotation changes, otherwise the one with shorter offset (?)
-        todo!("Requires support for full-space collision objects.")
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        // This could still be optimized if we allow to return a regular CollisionObject,
+        // which would allow us to return a union of half spaces.
+        let mut swept_areas = Vec::with_capacity(positions.len().saturating_sub(1));
+        for (start_pos, end_pos) in positions.iter().tuple_windows() {
+            if (start_pos.rotation.angle() - end_pos.rotation.angle()).abs() > 1e-9 {
+                swept_areas.push(SimpleCollisionObject::full_space());
+            } else {
+                let outward_normal = start_pos.rotation * self.outward_normal;
+                let start_offset = outward_normal.dot(start_pos.translation);
+                let end_offset = outward_normal.dot(end_pos.translation);
+                let offset = start_offset.min(end_offset) + self.offset;
+                swept_areas.push(SimpleCollisionObject::half_space(outward_normal, offset));
+            }
+        }
+        swept_areas
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::FRAC_PI_2;
 
     #[test]
     fn test_constructors() {
@@ -63,5 +78,21 @@ mod tests {
         let hs_from_coeffs = HalfSpace::from_coeffs(4.0, 3.0, 25.0);
         assert!(hs.almost_equal(&hs_from_points));
         assert!(hs.almost_equal(&hs_from_coeffs));
+    }
+
+    #[test]
+    fn test_swept_area() {
+        let hs = HalfSpace::from_coeffs(1.0, 0.0, 5.0); // x <= 5.0
+        let swept_area = hs.swept_area(
+            &DPose2::new(DVec2::new(0.0, 1.0), FRAC_PI_2),
+            &DPose2::new(DVec2::new(0.0, -1.0), FRAC_PI_2),
+        );
+        let expected = HalfSpace::from_coeffs(0.0, 1.0, 4.0); // y <= 4.0
+        match swept_area {
+            SimpleCollisionObject::HalfSpace(swept_hs) => {
+                assert!(swept_hs.almost_equal(&expected));
+            }
+            _ => panic!("Expected HalfSpace"),
+        }
     }
 }

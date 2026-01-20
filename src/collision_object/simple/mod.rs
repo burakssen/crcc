@@ -115,6 +115,9 @@ impl SimpleCollisionObject {
 
 #[enum_dispatch]
 pub trait SimpleCollisionObjectOps {
+    /// Overapproximates the area the object covers while moving through the given positions.
+    /// The returned vector has length `positions.len() - 1`, with each entry corresponding to
+    /// the swept area between two consecutive positions.
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject>;
 
     fn swept_area(&self, start_pos: &DPose2, end_pos: &DPose2) -> SimpleCollisionObject {
