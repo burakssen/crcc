@@ -39,6 +39,9 @@ class HalfSpace(CollisionObject):
     @staticmethod
     def from_coeffs(a: float, b: float, c: float = 0.0) -> HalfSpace: ...
 
+class FullSpace(CollisionObject):
+    def __init__(self) -> None: ...
+
 class Polygon(CollisionObject):
     def __init__(
         self, exterior: List[Tuple[float, float]], interiors: Optional[List[List[Tuple[float, float]]]] = None
@@ -58,6 +61,7 @@ __all__ = [
     "Circle",
     "Empty",
     "HalfSpace",
+    "FullSpace",
     "Polygon",
     "Rectangle",
     "Triangle",

@@ -7,6 +7,7 @@ Compound = core.Compound
 Circle = core.Circle
 Empty = core.Empty
 HalfSpace = core.HalfSpace
+FullSpace = core.FullSpace
 Polygon = core.Polygon
 Rectangle = core.Rectangle
 Triangle = core.Triangle

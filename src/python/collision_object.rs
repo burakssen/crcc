@@ -84,7 +84,7 @@ pub struct Compound;
 #[pymethods]
 impl Compound {
     #[new]
-    fn new(collision_objects: Vec<CollisionObject>) -> (Self, CollisionObject) {
+    pub fn new(collision_objects: Vec<CollisionObject>) -> (Self, CollisionObject) {
         // Note that this slices (https://en.wikipedia.org/wiki/Object_slicing) all subclass info
         // from the simple collision objects.
         // Right now, this is not a problem because all information is stored in the superclass
@@ -107,7 +107,7 @@ pub struct Circle;
 impl Circle {
     #[new]
     #[pyo3(signature = (radius, center = (0.0, 0.0)))]
-    fn new(radius: f64, center: (f64, f64)) -> PyResult<(Self, CollisionObject)> {
+    pub fn new(radius: f64, center: (f64, f64)) -> PyResult<(Self, CollisionObject)> {
         if radius <= 0.0 {
             return Err(PyValueError::new_err("Radius must be positive"));
         }
@@ -121,8 +121,19 @@ pub struct Empty;
 #[pymethods]
 impl Empty {
     #[new]
-    fn new() -> (Self, CollisionObject) {
+    pub fn new() -> (Self, CollisionObject) {
         (Self, SimpleCollisionObject::empty().into())
+    }
+}
+
+#[pyclass(extends = CollisionObject)]
+pub struct FullSpace;
+
+#[pymethods]
+impl FullSpace {
+    #[new]
+    pub fn new() -> (Self, CollisionObject) {
+        (Self, SimpleCollisionObject::full_space().into())
     }
 }
 
@@ -133,7 +144,7 @@ pub struct HalfSpace;
 impl HalfSpace {
     #[new]
     #[pyo3(signature = (outward_normal, offset = 0.0))]
-    fn new(outward_normal: (f64, f64), offset: f64) -> (Self, CollisionObject) {
+    pub fn new(outward_normal: (f64, f64), offset: f64) -> (Self, CollisionObject) {
         (
             Self,
             SimpleCollisionObject::half_space(outward_normal, offset).into(),
@@ -141,7 +152,7 @@ impl HalfSpace {
     }
 
     #[staticmethod]
-    fn from_points(py: Python<'_>, p1: (f64, f64), p2: (f64, f64)) -> PyResult<Py<PyAny>> {
+    pub fn from_points(py: Python<'_>, p1: (f64, f64), p2: (f64, f64)) -> PyResult<Py<PyAny>> {
         let init = PyClassInitializer::from(CollisionObject::from(
             SimpleCollisionObject::half_space_from_points(p1, p2),
         ))
@@ -151,7 +162,7 @@ impl HalfSpace {
 
     #[staticmethod]
     #[pyo3(signature = (a, b, c = 0.0))]
-    fn from_coeffs(py: Python<'_>, a: f64, b: f64, c: f64) -> PyResult<Py<PyAny>> {
+    pub fn from_coeffs(py: Python<'_>, a: f64, b: f64, c: f64) -> PyResult<Py<PyAny>> {
         let init = PyClassInitializer::from(CollisionObject::from(
             SimpleCollisionObject::half_space_from_coeffs(a, b, c),
         ))
@@ -167,7 +178,7 @@ pub struct Polygon;
 impl Polygon {
     #[new]
     #[pyo3(signature = (exterior, interiors = None))]
-    fn new(
+    pub fn new(
         exterior: Vec<(f64, f64)>,
         interiors: Option<Vec<Vec<(f64, f64)>>>,
     ) -> PyResult<(Self, CollisionObject)> {
@@ -190,7 +201,7 @@ pub struct Rectangle;
 impl Rectangle {
     #[new]
     #[pyo3(signature = (length, width, orientation = 0.0, center = (0.0, 0.0)))]
-    fn new(
+    pub fn new(
         length: f64,
         width: f64,
         orientation: f64,
@@ -215,7 +226,7 @@ pub struct Triangle;
 #[pymethods]
 impl Triangle {
     #[new]
-    fn new(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> PyResult<(Self, CollisionObject)> {
+    pub fn new(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> PyResult<(Self, CollisionObject)> {
         let collision_object =
             SimpleCollisionObject::triangle(GeoTriangle::new(a.into(), b.into(), c.into()));
         if matches!(collision_object, SimpleCollisionObject::Empty(..)) {
@@ -231,7 +242,8 @@ pub(super) mod collision_object {
 
     #[pymodule_export]
     use super::{
-        Circle, CollisionObject, Compound, Empty, HalfSpace, Polygon, Rectangle, Triangle,
+        Circle, CollisionObject, Compound, Empty, FullSpace, HalfSpace, Polygon, Rectangle,
+        Triangle,
     };
 
     /// Hack: workaround for https://github.com/PyO3/pyo3/issues/759
