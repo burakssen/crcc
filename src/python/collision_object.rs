@@ -1,5 +1,7 @@
+use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_object::CollisionObject as RustCollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
+use crate::python::pose::Pose;
 use geo::{Polygon as GeoPolygon, Rect, Triangle as GeoTriangle, coord};
 use itertools::Itertools;
 use pyo3::exceptions::PyValueError;
@@ -9,6 +11,54 @@ use std::sync::Arc;
 #[pyclass(subclass)]
 #[derive(Clone)]
 pub struct CollisionObject(Arc<RustCollisionObject>);
+
+#[pymethods]
+impl CollisionObject {
+    #[pyo3(signature = (other, pos_self = Pose::identity(), pos_other = Pose::identity()))]
+    pub fn collides(
+        &self,
+        other: &CollisionObject,
+        pos_self: Pose,
+        pos_other: Pose,
+    ) -> PyResult<bool> {
+        Ok(self
+            .as_ref()
+            .collides_at(pos_self.0, other.as_ref(), pos_other.0)?)
+    }
+
+    pub fn collides_continuous(
+        &self,
+        start_pos_self: Pose,
+        end_pos_self: Pose,
+        other: &CollisionObject,
+        start_pos_other: Pose,
+        end_pos_other: Pose,
+    ) -> PyResult<bool> {
+        Ok(self.as_ref().collides_continuous(
+            start_pos_self.0,
+            end_pos_self.0,
+            other.as_ref(),
+            start_pos_other.0,
+            end_pos_other.0,
+        )?)
+    }
+
+    pub fn merge(&self, other: &CollisionObject) -> CollisionObject {
+        CollisionObject::from(RustCollisionObject::merge(
+            self.as_ref().clone(),
+            other.as_ref().clone(),
+        ))
+    }
+
+    #[staticmethod]
+    pub fn merge_all(collision_objects: Vec<CollisionObject>) -> CollisionObject {
+        CollisionObject::from(RustCollisionObject::merge_all(
+            collision_objects
+                .into_iter()
+                .map(|obj| obj.as_ref().clone()),
+        ))
+    }
+}
 
 impl From<RustCollisionObject> for CollisionObject {
     fn from(value: RustCollisionObject) -> Self {

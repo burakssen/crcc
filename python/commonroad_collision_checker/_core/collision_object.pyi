@@ -2,7 +2,26 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
-class CollisionObject: ...
+from .pose import Pose
+
+class CollisionObject:
+    def collides(
+        self,
+        other: CollisionObject,
+        pos_self: Pose = Pose.identity(),
+        pos_other: Pose = Pose.identity(),
+    ) -> bool: ...
+    def collides_continuous(
+        self,
+        start_pos_self: Pose,
+        end_pos_self: Pose,
+        other: CollisionObject,
+        start_pos_other: Pose,
+        end_pos_other: Pose,
+    ) -> bool: ...
+    def merge(self, other: CollisionObject) -> CollisionObject: ...
+    @staticmethod
+    def merge_all(collision_objects: List[CollisionObject]) -> CollisionObject: ...
 
 class Compound(CollisionObject):
     def __init__(self, collision_objects: List[CollisionObject]) -> None: ...
