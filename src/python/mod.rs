@@ -10,17 +10,8 @@ compile_error!(
     "you must choose a default collision engine when building Python bindings, e.g., `parry-default-engine`"
 );
 
-#[pyfunction]
-fn hello() -> PyResult<()> {
-    println!("Hello from Rust!");
-    Ok(())
-}
-
 #[pymodule]
 mod _core {
-    #[pymodule_export]
-    use super::hello;
-
     #[pymodule_export]
     use super::collision_checker::collision_checker;
     #[pymodule_export]

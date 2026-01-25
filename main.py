@@ -1,6 +1,7 @@
-import commonroad_collision_checker._core as ccc
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad_collision_checker.collision_checker import CollisionCheckerBuilder
+from commonroad_collision_checker.collision_object import Rectangle
+from commonroad_collision_checker.pose import Pose
 
 
 def main():
@@ -22,9 +23,9 @@ def main():
         builder.with_commonroad_dynamic_obstacle(obstacle)
     cc = builder.build()
 
-    car = ccc.collision_object.Rectangle(4.5, 2.0)
-    print("Collides with road boundary", cc.collides_static(car, ccc.pose.Pose((55.29, -1.99), 1.326)))
-    print("Collides between step 26 and 27", cc.collides_static(car, ccc.pose.Pose((37.33, 4.07), -2.207)))
+    car = Rectangle(4.5, 2.0)
+    print("Collides with road boundary", cc.collides_static(car, Pose((55.29, -1.99), 1.326)))
+    print("Collides between step 26 and 27", cc.collides_static(car, Pose((37.33, 4.07), -2.207)))
 
     # r = ccc.collision_object.Rectangle(2, 3)
     # c = ccc.collision_object.Circle(1)

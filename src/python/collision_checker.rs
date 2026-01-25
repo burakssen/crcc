@@ -174,7 +174,7 @@ pub(super) mod collision_checker {
     use pyo3::prelude::*;
 
     #[pymodule_export]
-    use super::{CollisionChecker, CollisionCheckerBuilder};
+    use super::{CollisionChecker, CollisionCheckerBuilder, CollisionStatus};
 
     /// Hack: workaround for https://github.com/PyO3/pyo3/issues/759
     #[pymodule_init]
