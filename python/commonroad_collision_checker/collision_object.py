@@ -1,10 +1,12 @@
-from commonroad_collision_checker._core.collision_object import (  # noqa: F401
-    Circle as Circle,
-    CollisionObject as CollisionObject,
-    Compound as Compound,
-    Empty as Empty,
-    HalfSpace as HalfSpace,
-    Polygon as Polygon,
-    Rectangle as Rectangle,
-    Triangle as Triangle,
-)
+import commonroad_collision_checker._core.collision_object as core
+
+# explicitly re-export classes to define the public API of this module
+# this enables us to add wrappers for the Rust objects later as a non-breaking change
+CollisionObject = core.CollisionObject
+Compound = core.Compound
+Circle = core.Circle
+Empty = core.Empty
+HalfSpace = core.HalfSpace
+Polygon = core.Polygon
+Rectangle = core.Rectangle
+Triangle = core.Triangle

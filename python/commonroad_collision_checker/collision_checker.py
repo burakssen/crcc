@@ -6,21 +6,22 @@ from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.scenario.lanelet import LaneletNetwork
 from commonroad.scenario.state import TraceState
 
-import commonroad_collision_checker._core.collision_checker as core_cc
-from commonroad_collision_checker._core.collision_checker import (  # noqa: F401
-    CollisionChecker as CollisionChecker,
-    CollisionStatus as CollisionStatus,
-)
+import commonroad_collision_checker._core.collision_checker as core
 from commonroad_collision_checker.collision_object import Circle, CollisionObject, Compound, Polygon, Rectangle
 from commonroad_collision_checker.dynamic_obstacle import DynamicObstacle
 from commonroad_collision_checker.pose import Pose
 
+# explicitly re-export classes to define the public API of this module
+# this enables us to add wrappers for the Rust objects later as a non-breaking change
+CollisionStatus = core.CollisionStatus
+CollisionChecker = core.CollisionChecker
+
 
 class CollisionCheckerBuilder:
-    _rust_builder: core_cc.CollisionCheckerBuilder
+    _rust_builder: core.CollisionCheckerBuilder
 
     def __init__(self) -> None:
-        self._rust_builder = core_cc.CollisionCheckerBuilder()
+        self._rust_builder = core.CollisionCheckerBuilder()
 
     def with_static_obstacle(
         self,
@@ -68,7 +69,7 @@ class CollisionCheckerBuilder:
         )
         return self
 
-    def build(self) -> core_cc.CollisionChecker:
+    def build(self) -> core.CollisionChecker:
         return self._rust_builder.build()
 
 
