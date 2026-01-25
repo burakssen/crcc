@@ -1,41 +1,30 @@
-use crate::collision_checker::ParryCollisionObject;
 use crate::collision_object::CollisionObject as RustCollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use geo::{Polygon as GeoPolygon, Rect, Triangle as GeoTriangle, coord};
 use itertools::Itertools;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 #[pyclass(subclass)]
 #[derive(Clone)]
-pub struct CollisionObject {
-    pub(crate) plain_collision_object: Arc<RustCollisionObject>,
-    parry_collision_object: Arc<OnceLock<ParryCollisionObject>>,
-}
-
-impl CollisionObject {
-    pub(crate) fn get_parry(&self) -> &ParryCollisionObject {
-        self.parry_collision_object
-            .get_or_init(|| self.plain_collision_object.as_ref().clone().into())
-    }
-}
+pub struct CollisionObject(Arc<RustCollisionObject>);
 
 impl From<RustCollisionObject> for CollisionObject {
     fn from(value: RustCollisionObject) -> Self {
-        Self {
-            plain_collision_object: Arc::new(value),
-            parry_collision_object: Arc::new(OnceLock::new()),
-        }
+        Self(Arc::new(value))
     }
 }
 
 impl From<SimpleCollisionObject> for CollisionObject {
     fn from(value: SimpleCollisionObject) -> Self {
-        Self {
-            plain_collision_object: Arc::new(value.into()),
-            parry_collision_object: Arc::new(OnceLock::new()),
-        }
+        Self(Arc::new(value.into()))
+    }
+}
+
+impl AsRef<RustCollisionObject> for CollisionObject {
+    fn as_ref(&self) -> &RustCollisionObject {
+        &self.0
     }
 }
 
@@ -54,7 +43,7 @@ impl Compound {
             RustCollisionObject::merge_all(
                 collision_objects
                     .into_iter()
-                    .map(|obj| obj.plain_collision_object.as_ref().clone()),
+                    .map(|obj| obj.as_ref().clone()),
             )
             .into(),
         )

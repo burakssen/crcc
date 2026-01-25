@@ -1,36 +1,58 @@
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::collision_object::simple::SimpleCollisionObjectOps;
+use cfg_if::cfg_if;
 use glamx::DPose2;
 use itertools::Itertools;
 
+cfg_if!(
+    if #[cfg(feature = "default-engine")] {
+        use crate::collision_checker::engine::default::DefaultEngineCollisionObject;
+        use crate::collision_checker::CollisionCheckerError;
+        use crate::collision_checker::engine::EngineCollisionObject;
+        use std::sync::OnceLock;
+    }
+);
+
 pub mod simple;
 
-#[derive(Clone, Debug)]
-pub struct CollisionObject(Vec<SimpleCollisionObject>);
+#[derive(Debug, Clone)]
+pub struct CollisionObject {
+    collision_objects: Vec<SimpleCollisionObject>,
+    #[cfg(feature = "default-engine")]
+    engine_collision_object: OnceLock<DefaultEngineCollisionObject>,
+}
 
 impl CollisionObject {
+    fn new(collision_objects: Vec<SimpleCollisionObject>) -> Self {
+        Self {
+            collision_objects,
+            #[cfg(feature = "default-engine")]
+            engine_collision_object: OnceLock::new(),
+        }
+    }
+
     pub fn empty() -> Self {
-        Self(vec![])
+        Self::new(Vec::new())
     }
 
     pub fn full_space() -> Self {
-        Self(vec![SimpleCollisionObject::full_space()])
+        Self::new(vec![SimpleCollisionObject::full_space()])
     }
 
     pub fn collision_objects(&self) -> &[SimpleCollisionObject] {
-        &self.0
+        &self.collision_objects
     }
 
     pub fn into_collision_objects(self) -> Vec<SimpleCollisionObject> {
-        self.0
+        self.collision_objects
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.collision_objects.is_empty()
     }
 
     pub fn is_full_space(&self) -> bool {
-        self.0.len() == 1 && self.0[0].is_full_space()
+        self.collision_objects.len() == 1 && self.collision_objects[0].is_full_space()
     }
 
     pub fn merge(self, other: Self) -> Self {
@@ -43,7 +65,7 @@ impl CollisionObject {
 
     pub fn swept_areas(&self, positions: &[DPose2]) -> Vec<CollisionObject> {
         let mut swept_areas_simple = self
-            .0
+            .collision_objects
             .iter()
             .map(|obj| obj.swept_areas(positions))
             .collect_vec();
@@ -72,6 +94,47 @@ impl CollisionObject {
     }
 }
 
+#[cfg(feature = "default-engine")]
+impl CollisionObject {
+    fn engine_collision_object(&self) -> &DefaultEngineCollisionObject {
+        self.engine_collision_object
+            .get_or_init(|| DefaultEngineCollisionObject::from(self.clone()))
+    }
+}
+
+#[cfg(feature = "default-engine")]
+impl EngineCollisionObject for CollisionObject {
+    fn collides_at(
+        &self,
+        pos_self: DPose2,
+        other: &Self,
+        pos_other: DPose2,
+    ) -> Result<bool, CollisionCheckerError> {
+        self.engine_collision_object().collides_at(
+            pos_self,
+            other.engine_collision_object(),
+            pos_other,
+        )
+    }
+
+    fn collides_continuous(
+        &self,
+        start_pos_self: DPose2,
+        end_pos_self: DPose2,
+        other: &Self,
+        start_pos_other: DPose2,
+        end_pos_other: DPose2,
+    ) -> Result<bool, CollisionCheckerError> {
+        self.engine_collision_object().collides_continuous(
+            start_pos_self,
+            end_pos_self,
+            other.engine_collision_object(),
+            start_pos_other,
+            end_pos_other,
+        )
+    }
+}
+
 impl Default for CollisionObject {
     fn default() -> Self {
         Self::empty()
@@ -82,7 +145,7 @@ impl From<SimpleCollisionObject> for CollisionObject {
     fn from(value: SimpleCollisionObject) -> Self {
         match value {
             SimpleCollisionObject::Empty(..) => Self::empty(),
-            _ => Self(vec![value]),
+            _ => Self::new(vec![value]),
         }
     }
 }
@@ -93,7 +156,7 @@ impl From<Vec<SimpleCollisionObject>> for CollisionObject {
             Self::full_space()
         } else {
             value.retain(|obj| !obj.is_empty());
-            Self(value)
+            Self::new(value)
         }
     }
 }
@@ -106,7 +169,7 @@ impl FromIterator<SimpleCollisionObject> for CollisionObject {
             .map(|obj| if obj.is_full_space() { None } else { Some(obj) })
             .collect();
         match none_if_full_space {
-            Some(objs) => Self(objs),
+            Some(objs) => Self::new(objs),
             None => Self::full_space(),
         }
     }
@@ -117,6 +180,6 @@ impl IntoIterator for CollisionObject {
     type IntoIter = <Vec<SimpleCollisionObject> as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        self.collision_objects.into_iter()
     }
 }

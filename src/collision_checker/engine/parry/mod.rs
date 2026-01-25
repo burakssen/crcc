@@ -8,11 +8,11 @@ use parry2d_f64::query::Unsupported;
 mod inner;
 mod simple;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParryCollisionObject(ParryCollisionObjectInner);
 
 impl EngineCollisionObject for ParryCollisionObject {
-    fn collides(
+    fn collides_at(
         &self,
         pos_self: DPose2,
         other: &Self,

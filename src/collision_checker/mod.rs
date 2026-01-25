@@ -1,7 +1,5 @@
-pub use crate::collision_checker::builder::CollisionCheckerBuilder;
 use crate::collision_checker::ccd_collider::{CCDCollider, CCDColliderAt};
 use crate::collision_checker::engine::EngineCollisionObject;
-pub use crate::collision_checker::engine::parry::ParryCollisionObject;
 use crate::dynamic_obstacle::GenericDynamicObstacle;
 use crate::time::{TimeStep, TimeStepSet};
 use glamx::DPose2;
@@ -12,7 +10,9 @@ use std::ops::RangeBounds;
 
 mod builder;
 mod ccd_collider;
-mod engine;
+pub mod engine;
+
+pub use builder::CollisionCheckerBuilder;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CollisionStatus {
@@ -52,7 +52,7 @@ impl Error for CollisionCheckerError {}
 
 pub type CollisionResult = Result<CollisionStatus, CollisionCheckerError>;
 
-pub struct CollisionChecker<E: EngineCollisionObject = ParryCollisionObject> {
+pub struct CollisionChecker<E: EngineCollisionObject> {
     static_obstacle: E,
     dynamic_obstacles: Vec<GenericDynamicObstacle<E>>,
     active_times: TimeStepSet,
@@ -165,7 +165,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         static_obstacle: &E,
         position: DPose2,
     ) -> Result<bool, CollisionCheckerError> {
-        E::collides(
+        E::collides_at(
             &self.static_obstacle,
             DPose2::IDENTITY,
             static_obstacle,
@@ -185,7 +185,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
             else {
                 continue;
             };
-            if E::collides(obs_shape, obs_pos, static_obstacle, position)? {
+            if E::collides_at(obs_shape, obs_pos, static_obstacle, position)? {
                 return Ok(true);
             }
         }
@@ -201,7 +201,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
             let Some(obs_ccd_collider) = obs.ccd_collider_at(time_step) else {
                 continue;
             };
-            if E::collides(
+            if E::collides_at(
                 // Broad-phase check with convex hull
                 obs_ccd_collider.convex_hull,
                 obs_ccd_collider.convex_hull_position,

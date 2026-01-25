@@ -1,37 +1,29 @@
-use crate::collision_checker::ParryCollisionObject;
-use crate::dynamic_obstacle::{DynamicObstacle as RustDynamicObstacle, GenericDynamicObstacle};
+use crate::dynamic_obstacle::DynamicObstacle as RustDynamicObstacle;
 use crate::python::collision_object::CollisionObject;
 use crate::python::pose::Pose;
 use crate::time::TimeStepInner;
 use pyo3::prelude::*;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 #[pyclass]
-pub struct DynamicObstacle {
-    pub(crate) plain_dyn_obs: Arc<RustDynamicObstacle>,
-    parry_dyn_obs: Arc<OnceLock<GenericDynamicObstacle<ParryCollisionObject>>>,
+pub struct DynamicObstacle(Arc<RustDynamicObstacle>);
+
+impl AsRef<RustDynamicObstacle> for DynamicObstacle {
+    fn as_ref(&self) -> &RustDynamicObstacle {
+        &self.0
+    }
 }
 
 #[pymethods]
 impl DynamicObstacle {
     #[new]
     pub fn new(shape: &CollisionObject, positions: Vec<Pose>, time_offset: TimeStepInner) -> Self {
-        let plain_dyn_obs = RustDynamicObstacle::new(
-            shape.plain_collision_object.as_ref().clone(),
-            positions.into_iter().map(|iso| iso.0).collect(),
+        let dyn_obs = RustDynamicObstacle::new(
+            shape.as_ref().clone(),
+            positions.into_iter().map(|pos| pos.0).collect(),
             time_offset.into(),
         );
-        Self {
-            plain_dyn_obs: Arc::new(plain_dyn_obs),
-            parry_dyn_obs: Arc::new(OnceLock::new()),
-        }
-    }
-}
-
-impl DynamicObstacle {
-    pub(crate) fn get_parry(&self) -> &GenericDynamicObstacle<ParryCollisionObject> {
-        self.parry_dyn_obs
-            .get_or_init(|| self.plain_dyn_obs.as_ref().clone().convert_repr())
+        Self(Arc::new(dyn_obs))
     }
 }
 

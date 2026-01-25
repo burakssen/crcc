@@ -1,3 +1,4 @@
+use commonroad_collision_checker::collision_checker::engine::parry::ParryCollisionObject;
 use commonroad_collision_checker::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
 use commonroad_collision_checker::collision_object::CollisionObject;
 use commonroad_collision_checker::collision_object::simple::SimpleCollisionObject;
@@ -21,7 +22,7 @@ fn main() {
     let cc = CollisionCheckerBuilder::new()
         .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0))
         .with_dynamic_obstacle(dyn_obs)
-        .build_parry();
+        .build::<ParryCollisionObject>();
 
     let obj = CollisionObject::from(SimpleCollisionObject::circle((8.0, 8.0), 1.0)).into();
     let dyn_obs2 = DynamicObstacle::new(
@@ -65,7 +66,7 @@ fn main() {
     let rect2 = SimpleCollisionObject::rectangle(Rect::new((0.0, 1.1), (2.0, 2.1)), FRAC_PI_2);
     let cc = CollisionCheckerBuilder::new()
         .with_static_obstacle(rect1)
-        .build_parry();
+        .build::<ParryCollisionObject>();
     assert_ne!(
         cc.collides_static(&CollisionObject::from(rect2).into())
             .unwrap(),

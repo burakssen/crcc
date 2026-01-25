@@ -5,6 +5,11 @@ mod collision_object;
 mod dynamic_obstacle;
 mod pose;
 
+#[cfg(not(feature = "default-engine"))]
+compile_error!(
+    "you must choose a default collision engine when building Python bindings, e.g., `parry-default-engine`"
+);
+
 #[pyfunction]
 fn hello() -> PyResult<()> {
     println!("Hello from Rust!");

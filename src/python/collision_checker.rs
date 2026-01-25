@@ -3,6 +3,7 @@ use crate::collision_checker::{
     CollisionChecker as RustCollisionChecker,
     CollisionCheckerBuilder as RustCollisionCheckerBuilder, CollisionStatus as RustCollisionStatus,
 };
+use crate::collision_object::CollisionObject as RustCollisionObject;
 use crate::python::collision_object::CollisionObject;
 use crate::python::dynamic_obstacle::DynamicObstacle;
 use crate::python::pose::Pose;
@@ -59,7 +60,13 @@ impl From<RustCollisionStatus> for CollisionStatus {
 }
 
 #[pyclass]
-pub struct CollisionChecker(pub(crate) RustCollisionChecker);
+pub struct CollisionChecker(RustCollisionChecker<RustCollisionObject>);
+
+impl AsRef<RustCollisionChecker<RustCollisionObject>> for CollisionChecker {
+    fn as_ref(&self) -> &RustCollisionChecker<RustCollisionObject> {
+        &self.0
+    }
+}
 
 #[pymethods]
 impl CollisionChecker {
@@ -75,9 +82,8 @@ impl CollisionChecker {
             Some(position) => position.0,
             None => DPose2::IDENTITY,
         };
-        let parry_co_ref = static_obstacle.get_parry();
         let res = self.0.collides_static_range(
-            parry_co_ref,
+            static_obstacle.as_ref(),
             position,
             min_max_to_range(min_time, max_time),
         )?;
@@ -91,10 +97,10 @@ impl CollisionChecker {
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<CollisionStatus> {
-        let parry_co_ref = dynamic_obstacle.get_parry();
-        let res = self
-            .0
-            .collides_dynamic_range(parry_co_ref, min_max_to_range(min_time, max_time))?;
+        let res = self.0.collides_dynamic_range(
+            dynamic_obstacle.as_ref(),
+            min_max_to_range(min_time, max_time),
+        )?;
         Ok(res.into())
     }
 }
@@ -132,13 +138,13 @@ impl CollisionCheckerBuilder {
 
     pub fn with_static_obstacle(&mut self, collision_object: &CollisionObject) {
         replace_with(&mut self.0, Default::default, |builder| {
-            builder.with_static_obstacle(collision_object.plain_collision_object.as_ref().clone())
+            builder.with_static_obstacle(collision_object.as_ref().clone())
         });
     }
 
     pub fn with_dynamic_obstacle(&mut self, dynamic_obstacle: &DynamicObstacle) {
         replace_with(&mut self.0, Default::default, |builder| {
-            builder.with_dynamic_obstacle(dynamic_obstacle.plain_dyn_obs.as_ref().clone())
+            builder.with_dynamic_obstacle(dynamic_obstacle.as_ref().clone())
         });
     }
 
