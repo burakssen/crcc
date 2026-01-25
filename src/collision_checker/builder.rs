@@ -1,5 +1,4 @@
-use crate::collision_checker::CollisionChecker;
-use crate::collision_checker::engine::parry::ParryEngine;
+use crate::collision_checker::{CollisionChecker, ParryCollisionObject};
 use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::dynamic_obstacle::DynamicObstacle;
@@ -37,7 +36,7 @@ impl CollisionCheckerBuilder {
         self.build_parry()
     }
 
-    pub fn build_parry(self) -> CollisionChecker<ParryEngine> {
+    pub fn build_parry(self) -> CollisionChecker<ParryCollisionObject> {
         let active_times = self.active_times();
         CollisionChecker {
             static_obstacle: CollisionObject::merge_all(self.static_obstacles).into(),

@@ -11,7 +11,6 @@ crate-type = ["cdylib", "rlib"]
 python_bindings = ["dep:pyo3"]
 
 [dependencies]
-delegate = "0.13.5"
 derive_more = { version = "2.1.1", features = ["add", "mul", "sum"] }
 enum_dispatch = "0.3.13"
 geo = "0.32.0"

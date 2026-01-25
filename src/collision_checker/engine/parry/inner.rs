@@ -1,63 +1,23 @@
-use crate::collision_checker::engine::parry::collision_object::simple::ParrySimpleCollisionObject;
+use crate::collision_checker::engine::parry::simple::ParrySimpleCollisionObject;
 use crate::collision_object::CollisionObject;
-use delegate::delegate;
 use glamx::{DPose2, DVec2};
 use parry2d_f64::query::{
     NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, intersection_test,
 };
 use parry2d_f64::shape::{Compound, TriMesh, TriMeshBuilderError};
 
-mod simple;
-
-#[derive(Debug)]
-pub struct ParryCollisionObject(ParryCollisionObjectInner);
-
-impl ParryCollisionObject {
-    delegate! {
-        to self.0 {
-            pub fn collides(
-                &self,
-                pos_self: DPose2,
-                #[as_ref] other: &Self,
-                pos_other: DPose2,
-            ) -> Result<bool, Unsupported>;
-
-            pub fn collides_continuous(
-                &self,
-                start_pos_self: DPose2,
-                end_pos_self: DPose2,
-                #[as_ref] other: &Self,
-                start_pos_other: DPose2,
-                end_pos_other: DPose2,
-            ) -> Result<bool, Unsupported>;
-        }
-    }
-}
-
-impl From<CollisionObject> for ParryCollisionObject {
-    fn from(value: CollisionObject) -> Self {
-        Self(value.into())
-    }
-}
-
-impl AsRef<ParryCollisionObjectInner> for ParryCollisionObject {
-    fn as_ref(&self) -> &ParryCollisionObjectInner {
-        &self.0
-    }
-}
-
 // Most collision objects will be non-trivial, so boxing them would be counter-productive.
 // See https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#large_enum_variant
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
-enum ParryCollisionObjectInner {
+pub enum ParryCollisionObjectInner {
     Empty,
     FullSpace,
     NonTrivial(NonTrivial),
 }
 
 #[derive(Debug)]
-struct NonTrivial {
+pub struct NonTrivial {
     tri_mesh_compound: Option<Compound>,
     generic_compound: Option<Compound>,
 }

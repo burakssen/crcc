@@ -1,8 +1,7 @@
 pub use crate::collision_checker::builder::CollisionCheckerBuilder;
 use crate::collision_checker::ccd_collider::{CCDCollider, CCDColliderAt};
-use crate::collision_checker::engine::CollisionEngine;
+use crate::collision_checker::engine::EngineCollisionObject;
 pub use crate::collision_checker::engine::parry::ParryCollisionObject;
-use crate::collision_checker::engine::parry::ParryEngine;
 use crate::dynamic_obstacle::GenericDynamicObstacle;
 use crate::time::{TimeStep, TimeStepSet};
 use glamx::DPose2;
@@ -53,51 +52,43 @@ impl Error for CollisionCheckerError {}
 
 pub type CollisionResult = Result<CollisionStatus, CollisionCheckerError>;
 
-pub struct CollisionChecker<E: CollisionEngine = ParryEngine> {
-    static_obstacle: E::EngineCollisionObject,
-    dynamic_obstacles: Vec<GenericDynamicObstacle<E::EngineCollisionObject>>,
+pub struct CollisionChecker<E: EngineCollisionObject = ParryCollisionObject> {
+    static_obstacle: E,
+    dynamic_obstacles: Vec<GenericDynamicObstacle<E>>,
     active_times: TimeStepSet,
 }
 
-impl<E: CollisionEngine> CollisionChecker<E> {
-    pub fn collides_static(&self, static_obstacle: &E::EngineCollisionObject) -> CollisionResult {
+impl<E: EngineCollisionObject> CollisionChecker<E> {
+    pub fn collides_static(&self, static_obstacle: &E) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, ..)
     }
 
     pub fn collides_dynamic(
         &self,
-        dynamic_obstacle: &GenericDynamicObstacle<E::EngineCollisionObject>,
+        dynamic_obstacle: &GenericDynamicObstacle<E>,
     ) -> CollisionResult {
         self.collides_dynamic_range(dynamic_obstacle, ..)
     }
 
-    pub fn collides_static_at(
-        &self,
-        static_obstacle: &E::EngineCollisionObject,
-        time_step: TimeStep,
-    ) -> CollisionResult {
+    pub fn collides_static_at(&self, static_obstacle: &E, time_step: TimeStep) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, time_step..=time_step)
     }
 
     pub fn collides_dynamic_at(
         &self,
-        dynamic_obstacle: &GenericDynamicObstacle<E::EngineCollisionObject>,
+        dynamic_obstacle: &GenericDynamicObstacle<E>,
         time_step: TimeStep,
     ) -> CollisionResult {
         self.collides_dynamic_range(dynamic_obstacle, time_step..=time_step)
     }
 
-    pub fn collides_static_pos(
-        &self,
-        static_obstacle: &E::EngineCollisionObject,
-        position: DPose2,
-    ) -> CollisionResult {
+    pub fn collides_static_pos(&self, static_obstacle: &E, position: DPose2) -> CollisionResult {
         self.collides_static_range(static_obstacle, position, ..)
     }
 
     pub fn collides_static_pos_at(
         &self,
-        static_obstacle: &E::EngineCollisionObject,
+        static_obstacle: &E,
         position: DPose2,
         time_step: TimeStep,
     ) -> CollisionResult {
@@ -106,7 +97,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
 
     pub fn collides_static_range(
         &self,
-        static_obstacle: &E::EngineCollisionObject,
+        static_obstacle: &E,
         position: DPose2,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
@@ -138,7 +129,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
 
     pub fn collides_dynamic_range(
         &self,
-        dynamic_obstacle: &GenericDynamicObstacle<E::EngineCollisionObject>,
+        dynamic_obstacle: &GenericDynamicObstacle<E>,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
         let shape = dynamic_obstacle.shape();
@@ -171,7 +162,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
 
     fn check_collision_static_static(
         &self,
-        static_obstacle: &E::EngineCollisionObject,
+        static_obstacle: &E,
         position: DPose2,
     ) -> Result<bool, CollisionCheckerError> {
         E::collides(
@@ -184,7 +175,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
 
     fn check_collision_dynamic_static(
         &self,
-        static_obstacle: &E::EngineCollisionObject,
+        static_obstacle: &E,
         position: DPose2,
         time_step: TimeStep,
     ) -> Result<bool, CollisionCheckerError> {
@@ -203,7 +194,7 @@ impl<E: CollisionEngine> CollisionChecker<E> {
 
     fn check_collision_dynamic_ccd(
         &self,
-        ccd_collider: &CCDCollider<E::EngineCollisionObject>,
+        ccd_collider: &CCDCollider<E>,
         time_step: TimeStep,
     ) -> Result<bool, CollisionCheckerError> {
         for obs in &self.dynamic_obstacles {

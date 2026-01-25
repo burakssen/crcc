@@ -1,43 +1,63 @@
 use crate::collision_checker::CollisionCheckerError;
-use crate::collision_checker::engine::CollisionEngine;
-pub use crate::collision_checker::engine::parry::collision_object::ParryCollisionObject;
+use crate::collision_checker::engine::EngineCollisionObject;
+use crate::collision_checker::engine::parry::inner::ParryCollisionObjectInner;
+use crate::collision_object::CollisionObject;
 use glamx::DPose2;
 use parry2d_f64::query::Unsupported;
 
-mod collision_object;
+mod inner;
+mod simple;
 
-pub struct ParryEngine {}
+#[derive(Debug)]
+pub struct ParryCollisionObject(ParryCollisionObjectInner);
 
-impl CollisionEngine for ParryEngine {
-    type EngineCollisionObject = ParryCollisionObject;
-
+impl EngineCollisionObject for ParryCollisionObject {
     fn collides(
-        obj_1: &Self::EngineCollisionObject,
-        pos_1: DPose2,
-        obj_2: &Self::EngineCollisionObject,
-        pos_2: DPose2,
+        &self,
+        pos_self: DPose2,
+        other: &Self,
+        pos_other: DPose2,
     ) -> Result<bool, CollisionCheckerError> {
-        obj_1
-            .collides(pos_1, obj_2, pos_2)
-            .map_err(|err| match err {
-                // Deliberate match with one arm to future-proof against new error variants in parry
-                Unsupported => CollisionCheckerError::Unsupported,
-            })
+        Ok(self
+            .as_ref()
+            .collides(pos_self, other.as_ref(), pos_other)?)
     }
 
     fn collides_continuous(
-        obj_1: &Self::EngineCollisionObject,
-        start_pos_1: DPose2,
-        end_pos_1: DPose2,
-        obj_2: &Self::EngineCollisionObject,
-        start_pos_2: DPose2,
-        end_pos_2: DPose2,
+        &self,
+        start_pos_self: DPose2,
+        end_pos_self: DPose2,
+        other: &Self,
+        start_pos_other: DPose2,
+        end_pos_other: DPose2,
     ) -> Result<bool, CollisionCheckerError> {
-        obj_1
-            .collides_continuous(start_pos_1, end_pos_1, obj_2, start_pos_2, end_pos_2)
-            .map_err(|err| match err {
-                // Deliberate match with one arm to future-proof against new error variants in parry
-                Unsupported => CollisionCheckerError::Unsupported,
-            })
+        Ok(self.as_ref().collides_continuous(
+            start_pos_self,
+            end_pos_self,
+            other.as_ref(),
+            start_pos_other,
+            end_pos_other,
+        )?)
+    }
+}
+
+impl From<CollisionObject> for ParryCollisionObject {
+    fn from(value: CollisionObject) -> Self {
+        Self(value.into())
+    }
+}
+
+impl AsRef<ParryCollisionObjectInner> for ParryCollisionObject {
+    fn as_ref(&self) -> &ParryCollisionObjectInner {
+        &self.0
+    }
+}
+
+impl From<Unsupported> for CollisionCheckerError {
+    fn from(error: Unsupported) -> Self {
+        match error {
+            // Deliberate match with one arm to future-proof against new error variants in parry
+            Unsupported => CollisionCheckerError::Unsupported,
+        }
     }
 }
