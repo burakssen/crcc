@@ -1,4 +1,5 @@
 use commonroad_collision_checker::collision_checker::engine::parry::ParryCollisionObject;
+use commonroad_collision_checker::collision_checker::parallel::ParallelCollisionChecker;
 use commonroad_collision_checker::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
 use commonroad_collision_checker::collision_object::CollisionObject;
 use commonroad_collision_checker::collision_object::simple::SimpleCollisionObject;
@@ -6,7 +7,10 @@ use commonroad_collision_checker::dynamic_obstacle::DynamicObstacle;
 use commonroad_collision_checker::time::TimeStep;
 use geo::Rect;
 use glamx::DPose2;
+use itertools::Itertools;
+use rayon::prelude::*;
 use std::f64::consts::FRAC_PI_2;
+use std::time::Instant;
 
 fn main() {
     let dyn_obs = DynamicObstacle::new(
@@ -77,4 +81,73 @@ fn main() {
             .unwrap(),
         CollisionStatus::NoCollision
     );
+
+    demo_parallel_collision_checks();
+}
+
+fn demo_parallel_collision_checks() {
+    let cc = CollisionCheckerBuilder::new()
+        .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 2.0))
+        .build::<CollisionObject>();
+
+    let now = Instant::now();
+    let test_objects: Vec<_> = (0..50000)
+        .into_par_iter()
+        .map(|i| CollisionObject::from(SimpleCollisionObject::circle((i as f64, 0.0), 1.0)))
+        .map(|co| (co, DPose2::IDENTITY))
+        .collect();
+    println!(
+        "Creating {} test objects took {:?}",
+        test_objects.len(),
+        Instant::now() - now
+    );
+    // Clone so that LazyLock remains uninitialized for the sequential test as well
+    let test_objects_seq = test_objects.clone();
+
+    let now = Instant::now();
+    let results = cc.par_collides_static(test_objects.par_iter().map(|(co, pos)| (co, *pos)), ..);
+    println!("Parallel collision checks took {:?}", Instant::now() - now);
+    for (i, result) in results.iter().enumerate() {
+        let collides = result.as_ref().unwrap().collides();
+        if i < 4 {
+            assert!(collides);
+        } else {
+            assert!(!collides);
+        }
+    }
+    let now = Instant::now();
+    let results = cc.par_collides_static(test_objects.par_iter().map(|(co, pos)| (co, *pos)), ..);
+    println!(
+        "Parallel collision checks (second run) took {:?}",
+        Instant::now() - now
+    );
+
+    let now = Instant::now();
+    let seq_results = test_objects_seq
+        .iter()
+        .map(|(co, pos)| cc.collides_static_range(co, *pos, ..))
+        .collect_vec();
+    println!(
+        "Sequential collision checks took {:?}",
+        Instant::now() - now
+    );
+    for (i, result) in seq_results.iter().enumerate() {
+        let collides = result.as_ref().unwrap().collides();
+        if i < 4 {
+            assert!(collides);
+        } else {
+            assert!(!collides);
+        }
+    }
+    let now = Instant::now();
+    let seq_results = test_objects_seq
+        .iter()
+        .map(|(co, pos)| cc.collides_static_range(co, *pos, ..))
+        .collect_vec();
+    println!(
+        "Sequential collision checks (second run) took {:?}",
+        Instant::now() - now
+    );
+
+    assert_eq!(results, seq_results);
 }

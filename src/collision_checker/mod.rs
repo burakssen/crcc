@@ -11,10 +11,12 @@ use std::ops::RangeBounds;
 mod builder;
 mod ccd_collider;
 pub mod engine;
+#[cfg(feature = "rayon")]
+pub mod parallel;
 
 pub use builder::CollisionCheckerBuilder;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CollisionStatus {
     NoCollision,
     CollidesStatic,
@@ -30,7 +32,7 @@ impl CollisionStatus {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CollisionCheckerError {
     Unsupported,
 }

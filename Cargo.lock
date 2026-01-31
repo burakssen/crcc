@@ -66,6 +66,7 @@ dependencies = [
  "itertools 0.14.0",
  "parry2d-f64",
  "pyo3",
+ "rayon",
  "replace_with",
 ]
 
