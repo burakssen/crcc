@@ -136,26 +136,38 @@ impl CollisionCheckerBuilder {
         CollisionCheckerBuilder(RustCollisionCheckerBuilder::new())
     }
 
-    pub fn with_static_obstacle(&mut self, collision_object: &CollisionObject) {
-        replace_with(&mut self.0, Default::default, |builder| {
+    pub fn with_static_obstacle<'a>(
+        mut slf: PyRefMut<'a, Self>,
+        collision_object: &CollisionObject,
+    ) -> PyRefMut<'a, Self> {
+        replace_with(&mut slf.0, Default::default, |builder| {
             builder.with_static_obstacle(collision_object.as_ref().clone())
         });
+        slf
     }
 
-    pub fn with_dynamic_obstacle(&mut self, dynamic_obstacle: &DynamicObstacle) {
-        replace_with(&mut self.0, Default::default, |builder| {
+    pub fn with_dynamic_obstacle<'a>(
+        mut slf: PyRefMut<'a, Self>,
+        dynamic_obstacle: &DynamicObstacle,
+    ) -> PyRefMut<'a, Self> {
+        replace_with(&mut slf.0, Default::default, |builder| {
             builder.with_dynamic_obstacle(dynamic_obstacle.as_ref().clone())
         });
+        slf
     }
 
-    pub fn with_road_boundary_obstacle(&mut self, lanelets: Vec<Vec<(f64, f64)>>) {
+    pub fn with_road_boundary_obstacle(
+        mut slf: PyRefMut<Self>,
+        lanelets: Vec<Vec<(f64, f64)>>,
+    ) -> PyRefMut<Self> {
         let lanelets = lanelets
             .into_iter()
             .map(|exterior| Polygon::new(exterior.into(), vec![]))
             .collect_vec();
-        replace_with(&mut self.0, Default::default, |builder| {
+        replace_with(&mut slf.0, Default::default, |builder| {
             builder.with_road_boundary_obstacle(&lanelets)
         });
+        slf
     }
 
     pub fn build(&self) -> CollisionChecker {
