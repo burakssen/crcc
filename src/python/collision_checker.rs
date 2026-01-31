@@ -1,4 +1,5 @@
 use crate::collision_checker::CollisionCheckerError;
+use crate::collision_checker::parallel::ParallelCollisionChecker;
 use crate::collision_checker::{
     CollisionChecker as RustCollisionChecker,
     CollisionCheckerBuilder as RustCollisionCheckerBuilder, CollisionStatus as RustCollisionStatus,
@@ -13,6 +14,7 @@ use glamx::DPose2;
 use itertools::Itertools;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use rayon::prelude::*;
 use replace_with::replace_with;
 use std::fmt::Display;
 use std::ops::RangeInclusive;
@@ -90,6 +92,26 @@ impl CollisionChecker {
         Ok(res.into())
     }
 
+    #[pyo3(signature = (positioned_static_obstacles, min_time=None, max_time=None))]
+    pub fn par_collides_static(
+        &self,
+        positioned_static_obstacles: Vec<(CollisionObject, Pose)>,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<Vec<CollisionStatus>> {
+        let res = self
+            .0
+            .par_collides_static(
+                positioned_static_obstacles
+                    .par_iter()
+                    .map(|(obs, pos)| (obs.as_ref(), pos.0)),
+                min_max_to_range(min_time, max_time),
+            )
+            .into_iter()
+            .map(|result| result.map(CollisionStatus::from))
+            .collect::<Result<_, _>>()?;
+        Ok(res)
+    }
     #[pyo3(signature = (dynamic_obstacle, min_time=None, max_time=None))]
     pub fn collides_dynamic(
         &self,
@@ -102,6 +124,25 @@ impl CollisionChecker {
             min_max_to_range(min_time, max_time),
         )?;
         Ok(res.into())
+    }
+
+    #[pyo3(signature = (dynamic_obstacles, min_time=None, max_time=None))]
+    pub fn par_collides_dynamic(
+        &self,
+        dynamic_obstacles: Vec<DynamicObstacle>,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<Vec<CollisionStatus>> {
+        let res = self
+            .0
+            .par_collides_dynamic(
+                dynamic_obstacles.par_iter().map(AsRef::as_ref),
+                min_max_to_range(min_time, max_time),
+            )
+            .into_iter()
+            .map(|result| result.map(CollisionStatus::from))
+            .collect::<Result<_, _>>()?;
+        Ok(res)
     }
 }
 

@@ -14,7 +14,7 @@ pub trait ParallelCollisionChecker: private::Sealed {
     fn par_collides_static<'a, I>(
         &self,
         positioned_static_obstacles: I,
-        time_range: impl RangeBounds<TimeStep> + Copy + Sync,
+        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
     ) -> Vec<CollisionResult>
     where
         Self::ECollisionObject: 'a,
@@ -23,7 +23,7 @@ pub trait ParallelCollisionChecker: private::Sealed {
     fn par_collides_dynamic<'a, I>(
         &self,
         dynamic_obstacles: I,
-        time_range: impl RangeBounds<TimeStep> + Copy + Sync,
+        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
     ) -> Vec<CollisionResult>
     where
         Self::ECollisionObject: 'a,
@@ -36,7 +36,7 @@ impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for Collis
     fn par_collides_static<'a, I>(
         &self,
         positioned_static_obstacles: I,
-        time_range: impl RangeBounds<TimeStep> + Copy + Sync,
+        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
     ) -> Vec<CollisionResult>
     where
         Self::ECollisionObject: 'a,
@@ -44,14 +44,14 @@ impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for Collis
     {
         positioned_static_obstacles
             .into_par_iter()
-            .map(|(obs, pos)| self.collides_static_range(obs, pos, time_range))
+            .map(|(obs, pos)| self.collides_static_range(obs, pos, time_range.clone()))
             .collect()
     }
 
     fn par_collides_dynamic<'a, I>(
         &self,
         dynamic_obstacles: I,
-        time_range: impl RangeBounds<TimeStep> + Copy + Sync,
+        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
     ) -> Vec<CollisionResult>
     where
         Self::ECollisionObject: 'a,
@@ -59,7 +59,7 @@ impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for Collis
     {
         dynamic_obstacles
             .into_par_iter()
-            .map(|obs| self.collides_dynamic_range(obs, time_range))
+            .map(|obs| self.collides_dynamic_range(obs, time_range.clone()))
             .collect()
     }
 }

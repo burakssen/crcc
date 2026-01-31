@@ -6,6 +6,7 @@ use pyo3::prelude::*;
 use std::sync::Arc;
 
 #[pyclass]
+#[derive(Clone)]
 pub struct DynamicObstacle(Arc<RustDynamicObstacle>);
 
 impl AsRef<RustDynamicObstacle> for DynamicObstacle {

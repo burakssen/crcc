@@ -24,12 +24,24 @@ class CollisionChecker:
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> CollisionStatus: ...
+    def par_collides_static(
+        self,
+        positioned_static_obstacle: List[Tuple[CollisionObject, Pose]],
+        min_time: Optional[int] = None,
+        max_time: Optional[int] = None,
+    ) -> List[CollisionStatus]: ...
     def collides_dynamic(
         self,
         dynamic_obstacle: DynamicObstacle,
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> CollisionStatus: ...
+    def par_collides_dynamic(
+        self,
+        dynamic_obstacles: List[DynamicObstacle],
+        min_time: Optional[int] = None,
+        max_time: Optional[int] = None,
+    ) -> List[CollisionStatus]: ...
 
 class CollisionCheckerBuilder:
     def __init__(self) -> None: ...
