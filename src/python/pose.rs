@@ -18,13 +18,23 @@ impl Pose {
     }
 
     #[staticmethod]
-    pub fn translation(translation: (f64, f64)) -> Self {
+    pub fn from_translation(translation: (f64, f64)) -> Self {
         Pose(DPose2::translation(translation.0, translation.1))
     }
 
     #[staticmethod]
-    pub fn rotation(angle: f64) -> Self {
+    pub fn from_rotation(angle: f64) -> Self {
         Pose(DPose2::rotation(angle))
+    }
+
+    #[getter]
+    pub fn translation(&self) -> (f64, f64) {
+        self.0.translation.into()
+    }
+
+    #[getter]
+    pub fn rotation(&self) -> f64 {
+        self.0.rotation.angle()
     }
 
     pub fn and_then(&self, other: &Self) -> Self {

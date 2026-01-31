@@ -29,6 +29,7 @@ pub enum CollisionStatus {
 
 #[pymethods]
 impl CollisionStatus {
+    #[getter]
     pub fn collides(&self) -> bool {
         match self {
             CollisionStatus::NoCollision() => false,
