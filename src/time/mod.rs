@@ -49,3 +49,46 @@ impl From<TimeStepInner> for TimeStep {
         Self(value)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_iter_range() {
+        let range = TimeStep::iter_range(TimeStep(3)..=TimeStep(7));
+        let collected: Vec<TimeStep> = range.collect();
+        assert_eq!(
+            collected,
+            vec![
+                TimeStep(3),
+                TimeStep(4),
+                TimeStep(5),
+                TimeStep(6),
+                TimeStep(7)
+            ]
+        );
+
+        let range = TimeStep::iter_range(..TimeStep(TimeStepInner::MIN + 3));
+        let collected: Vec<TimeStep> = range.collect();
+        assert_eq!(
+            collected,
+            vec![
+                TimeStep(TimeStepInner::MIN),
+                TimeStep(TimeStepInner::MIN + 1),
+                TimeStep(TimeStepInner::MIN + 2)
+            ]
+        );
+
+        let range = TimeStep::iter_range(TimeStep(TimeStepInner::MAX - 2)..);
+        let collected: Vec<TimeStep> = range.collect();
+        assert_eq!(
+            collected,
+            vec![
+                TimeStep(TimeStepInner::MAX - 2),
+                TimeStep(TimeStepInner::MAX - 1),
+                TimeStep(TimeStepInner::MAX)
+            ]
+        );
+    }
+}
