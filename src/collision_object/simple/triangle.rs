@@ -5,7 +5,7 @@ use geo::{HasDimensions, Triangle as GeoTriangle};
 use glamx::DPose2;
 use std::ops::Deref;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Triangle(pub(super) GeoTriangle);
 
 impl Triangle {

@@ -3,7 +3,7 @@ use geo::{Buffer, LineString, coord};
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Circle {
     pub(super) center: (f64, f64),
     pub(super) radius: f64,

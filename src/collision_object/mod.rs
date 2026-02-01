@@ -183,3 +183,146 @@ impl IntoIterator for CollisionObject {
         self.collision_objects.into_iter()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use geo::{Polygon, Rect};
+    use glamx::{DPose2, DVec2};
+    use rstest::{fixture, rstest};
+    use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
+
+    #[fixture]
+    fn circle() -> SimpleCollisionObject {
+        SimpleCollisionObject::circle((0.0, 0.0), 1.0)
+    }
+
+    #[fixture]
+    fn rectangle() -> SimpleCollisionObject {
+        SimpleCollisionObject::rectangle(Rect::new((-1.0, -1.0), (1.0, 1.0)), 0.0)
+    }
+
+    #[fixture]
+    fn empty() -> SimpleCollisionObject {
+        SimpleCollisionObject::empty()
+    }
+
+    #[fixture]
+    fn full_space() -> SimpleCollisionObject {
+        SimpleCollisionObject::full_space()
+    }
+
+    #[rstest]
+    fn test_from_simple(
+        circle: SimpleCollisionObject,
+        empty: SimpleCollisionObject,
+        full_space: SimpleCollisionObject,
+    ) {
+        let co = CollisionObject::from(circle.clone());
+        assert_eq!(co.collision_objects(), &[circle]);
+
+        let co_empty = CollisionObject::from(empty);
+        assert!(co_empty.is_empty());
+
+        let co_full = CollisionObject::from(full_space);
+        assert!(co_full.is_full_space());
+    }
+
+    #[rstest]
+    fn test_from_vec(
+        circle: SimpleCollisionObject,
+        rectangle: SimpleCollisionObject,
+        empty: SimpleCollisionObject,
+        full_space: SimpleCollisionObject,
+    ) {
+        // Normal case
+        let co = CollisionObject::from(vec![circle.clone(), rectangle.clone()]);
+        assert_eq!(co.collision_objects(), &[circle.clone(), rectangle.clone()]);
+
+        // Filter out empty objects
+        let co = CollisionObject::from(vec![circle.clone(), empty]);
+        assert_eq!(co.collision_objects(), std::slice::from_ref(&circle));
+
+        // Full space takes precedence
+        let co = CollisionObject::from(vec![circle, full_space, rectangle]);
+        assert!(co.is_full_space());
+    }
+
+    #[rstest]
+    fn test_from_iter(
+        circle: SimpleCollisionObject,
+        rectangle: SimpleCollisionObject,
+        empty: SimpleCollisionObject,
+        full_space: SimpleCollisionObject,
+    ) {
+        // Normal case
+        let co: CollisionObject = vec![circle.clone(), rectangle.clone()]
+            .into_iter()
+            .collect();
+        assert_eq!(co.collision_objects(), &[circle.clone(), rectangle.clone()]);
+
+        // Filter out empty objects
+        let co: CollisionObject = vec![circle.clone(), empty].into_iter().collect();
+        assert_eq!(co.collision_objects(), std::slice::from_ref(&circle));
+
+        // Full space takes precedence
+        let co: CollisionObject = vec![circle, full_space, rectangle].into_iter().collect();
+        assert!(co.is_full_space());
+    }
+
+    #[cfg(feature = "default-engine")]
+    #[rstest]
+    fn test_swept_areas(
+        #[values(
+            CollisionObject::from(vec![
+                SimpleCollisionObject::circle((5.0, 0.0), 1.0),
+                SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0),
+            ]),
+            CollisionObject::from(vec![
+                SimpleCollisionObject::polygon(Polygon::new(
+                    vec![(0.0, 0.0), (2.0, 0.0), (1.0, 1.0)].into(),
+                    vec![],
+                )),
+                SimpleCollisionObject::polygon(Polygon::new(
+                    vec![
+                        (0.0, 0.0),
+                        (2.0, 0.0),
+                        (2.0, 2.0),
+                        (1.0, 1.0),
+                        (0.0, 2.0),
+                    ]
+                    .into(),
+                    vec![],
+                )),
+            ]),
+        )]
+        shape: CollisionObject,
+        #[values(&[
+            DPose2::IDENTITY,
+            DPose2::new(DVec2::new(10.0, 20.0), FRAC_PI_4),
+            DPose2::new(DVec2::new(20.0, 40.0), FRAC_PI_2),
+        ])]
+        positions: &[DPose2],
+    ) {
+        let swept_areas = shape.swept_areas(positions);
+        assert_eq!(swept_areas.len(), positions.len().saturating_sub(1));
+        for ((start_pos, end_pos), swept_area) in
+            positions.iter().tuple_windows().zip(swept_areas.iter())
+        {
+            // Interpolate 5 points between start_pos and end_pos
+            for i in 0..=5 {
+                let t = i as f64 / 5.0;
+                let interp_pos = DPose2::from_parts(
+                    start_pos.translation.lerp(end_pos.translation, t),
+                    start_pos.rotation.slerp(&end_pos.rotation, t),
+                );
+                // Check that the swept area collides with the shape at the interpolated position7
+                assert!(
+                    swept_area
+                        .collides_at(DPose2::IDENTITY, &shape, interp_pos)
+                        .unwrap()
+                );
+            }
+        }
+    }
+}

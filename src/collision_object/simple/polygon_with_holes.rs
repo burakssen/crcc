@@ -5,7 +5,7 @@ use geo::Polygon;
 use glamx::DPose2;
 use std::ops::Deref;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PolygonWithHoles(pub(super) Polygon);
 
 impl PolygonWithHoles {

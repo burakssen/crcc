@@ -4,7 +4,7 @@ use crate::collision_object::simple::{
 use geo::{HasDimensions, Polygon, Rect, Rotate};
 use glamx::DPose2;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Rectangle {
     pub(super) rect: Rect,
     pub(super) orientation: f64,

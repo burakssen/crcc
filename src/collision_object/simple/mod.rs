@@ -26,7 +26,7 @@ mod polygon_with_holes;
 mod rectangle;
 mod triangle;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[enum_dispatch(SimpleCollisionObjectOps)]
 pub enum SimpleCollisionObject {
     Empty(Empty),

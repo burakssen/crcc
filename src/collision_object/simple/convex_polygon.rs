@@ -5,7 +5,7 @@ use geo::{IsConvex, Polygon};
 use glamx::DPose2;
 use std::ops::Deref;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConvexPolygon(pub(super) Polygon);
 
 impl ConvexPolygon {

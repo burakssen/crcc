@@ -1,7 +1,7 @@
 use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObjectOps};
 use glamx::DPose2;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Empty;
 
 impl SimpleCollisionObjectOps for Empty {

@@ -2,7 +2,7 @@ use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObje
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct HalfSpace {
     pub outward_normal: DVec2,
     pub offset: f64,
