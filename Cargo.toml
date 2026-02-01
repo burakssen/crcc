@@ -10,10 +10,10 @@ crate-type = ["cdylib", "rlib"]
 [[bin]]
 name = "commonroad-collision-checker"
 path = "src/main.rs"
-required-features = ["parry-default-engine", "rayon"]
+required-features = ["rayon"]
 
 [features]
-default = ["parry"]
+default = ["parry", "parry-default-engine"]
 parry = ["dep:parry2d-f64"]
 default-engine = []
 parry-default-engine = ["parry", "default-engine"]

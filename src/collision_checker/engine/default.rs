@@ -6,6 +6,9 @@ use delegate::delegate;
 use glamx::DPose2;
 
 cfg_if!(
+    // Add new default engines here above the one enabled in the default features of this crate.
+    // This ensures that the engine a crate user selected is picked even if they do not deactivate
+    // the default features of this crate explicitly.
     if #[cfg(feature = "parry-default-engine")] {
         use crate::collision_checker::engine::parry::ParryCollisionObject;
         type DefaultCollisionObjectInner = ParryCollisionObject;
