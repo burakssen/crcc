@@ -32,3 +32,6 @@ parry2d-f64 = { version = "0.26.0", optional = true }
 pyo3 = { version = "0.27.1", features = ["abi3-py310"], optional = true }
 rayon = { version = "1.11.0", optional = true }
 replace_with = "0.1.8"
+
+[dev-dependencies]
+rstest = "0.26.1"

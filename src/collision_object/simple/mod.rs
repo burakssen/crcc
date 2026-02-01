@@ -151,3 +151,109 @@ fn pose_to_affine(pose: DPose2) -> AffineTransform {
     AffineTransform::rotate(pose.rotation.angle().to_degrees(), (0.0, 0.0))
         .translated(pose.translation.x, pose.translation.y)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::collision_checker::engine::EngineCollisionObject;
+    use crate::collision_object::CollisionObject;
+    use glamx::approx::assert_relative_eq;
+    use rstest::rstest;
+    use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
+
+    #[test]
+    fn test_pose_to_affine() {
+        let pose = DPose2::new(DVec2::new(1.0, 2.0), FRAC_PI_2);
+        let affine = pose_to_affine(pose);
+        let point = (1.0, 2.0);
+        let pose_point = pose * DVec2::from(point);
+        let affine_point = affine.apply(point.into());
+        assert_relative_eq!(pose_point.x, affine_point.x);
+        assert_relative_eq!(pose_point.y, affine_point.y);
+    }
+
+    #[cfg(feature = "default-engine")]
+    #[rstest]
+    fn test_swept_areas(
+        #[values(
+            SimpleCollisionObject::circle((0.0, 0.0), 1.0),
+            SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0),
+            SimpleCollisionObject::triangle(GeoTriangle::new(
+                (0.0, 0.0).into(),
+                (1.0, 0.0).into(),
+                (0.0, 1.0).into(),
+            )),
+            SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0),
+            // Convex polygon
+            SimpleCollisionObject::polygon(Polygon::new(
+                vec![(0.0, 0.0), (2.0, 0.0), (1.0, 1.0)].into(),
+                vec![],
+            )),
+            // Non-convex polygon
+            SimpleCollisionObject::polygon(Polygon::new(
+                vec![
+                    (0.0, 0.0),
+                    (2.0, 0.0),
+                    (2.0, 2.0),
+                    (1.0, 1.0),
+                    (0.0, 2.0),
+                ]
+                .into(),
+                vec![],
+            )),
+            // Polygon with holes
+            SimpleCollisionObject::polygon(Polygon::new(
+                vec![(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)].into(),
+                vec![vec![(1.0, 1.0), (3.0, 1.0), (2.0, 3.0)].into()],
+            )),
+            SimpleCollisionObject::full_space(),
+        )]
+        shape: SimpleCollisionObject,
+        #[values(&[
+            DPose2::IDENTITY,
+            DPose2::new(DVec2::new(10.0, 20.0), FRAC_PI_4),
+            DPose2::new(DVec2::new(20.0, 40.0), FRAC_PI_2),
+        ])]
+        positions: &[DPose2],
+    ) {
+        let swept_areas = shape
+            .swept_areas(positions)
+            .into_iter()
+            .map(CollisionObject::from)
+            .collect_vec();
+        let shape = CollisionObject::from(shape);
+        assert_eq!(swept_areas.len(), positions.len().saturating_sub(1));
+        for ((start_pos, end_pos), swept_area) in
+            positions.iter().tuple_windows().zip(swept_areas.iter())
+        {
+            // Interpolate 5 points between start_pos and end_pos
+            for i in 0..=5 {
+                let t = i as f64 / 5.0;
+                let interp_pos = DPose2::from_parts(
+                    start_pos.translation.lerp(end_pos.translation, t),
+                    start_pos.rotation.slerp(&end_pos.rotation, t),
+                );
+                // Check that the swept area collides with the shape at the interpolated position7
+                assert!(
+                    swept_area
+                        .collides_at(DPose2::IDENTITY, &shape, interp_pos)
+                        .unwrap()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_swept_area_half_space_translation() {
+        let hs = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0); // x <= 0.0
+        let swept_area = hs.swept_area(DPose2::IDENTITY, DPose2::translation(-1.0, 0.0));
+        // The swept area should be x <= -1.0
+        let expected_hs = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, -1.0);
+        match (swept_area, expected_hs) {
+            (SimpleCollisionObject::HalfSpace(sa), SimpleCollisionObject::HalfSpace(ea)) => {
+                assert!(sa.almost_equal(&ea), "Expected {:?}, got {:?}", ea, sa);
+            }
+            _ => panic!("Swept area is not a half space"),
+        }
+    }
+}

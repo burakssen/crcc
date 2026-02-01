@@ -90,7 +90,12 @@ mod tests {
         let expected = HalfSpace::from_coeffs(0.0, 1.0, 4.0); // y <= 4.0
         match swept_area {
             SimpleCollisionObject::HalfSpace(swept_hs) => {
-                assert!(swept_hs.almost_equal(&expected));
+                assert!(
+                    swept_hs.almost_equal(&expected),
+                    "Expected {:?}, got {:?}",
+                    expected,
+                    swept_hs
+                );
             }
             _ => panic!("Expected HalfSpace"),
         }
