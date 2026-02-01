@@ -4,6 +4,7 @@ import commonroad.geometry.shape as cr_shape
 import commonroad.scenario.obstacle as cr_obstacle
 from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.scenario.lanelet import LaneletNetwork
+from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import TraceState
 
 import commonroad_collision_checker._core.collision_checker as core
@@ -35,6 +36,14 @@ class CollisionCheckerBuilder:
         dynamic_obstacle: DynamicObstacle,
     ) -> CollisionCheckerBuilder:
         self._rust_builder.with_dynamic_obstacle(dynamic_obstacle)
+        return self
+
+    def with_commonroad_scenario(self, scenario: Scenario) -> CollisionCheckerBuilder:
+        self.with_road_boundary_obstacle(scenario.lanelet_network)
+        for static_obstacle in scenario.static_obstacles:
+            self.with_commonroad_static_obstacle(static_obstacle)
+        for dynamic_obstacle in scenario.dynamic_obstacles:
+            self.with_commonroad_dynamic_obstacle(dynamic_obstacle)
         return self
 
     def with_commonroad_static_obstacle(self, static_obstacle: cr_obstacle.StaticObstacle) -> CollisionCheckerBuilder:

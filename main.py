@@ -22,14 +22,7 @@ def main():
 
     scenario, planning_problems = CommonRoadFileReader(scenario_path).open()
 
-    lanelet_network = scenario.lanelet_network
-
-    builder = CollisionCheckerBuilder().with_road_boundary_obstacle(lanelet_network)
-    for obstacle in scenario.static_obstacles:
-        builder.with_commonroad_static_obstacle(obstacle)
-    for obstacle in scenario.dynamic_obstacles:
-        builder.with_commonroad_dynamic_obstacle(obstacle)
-    cc = builder.build()
+    cc = CollisionCheckerBuilder().with_commonroad_scenario(scenario).build()
 
     car = Rectangle(4.5, 2.0)
     print("Collides with road boundary", cc.collides_static(car, Pose((55.29, -1.99), 1.326)))
@@ -60,12 +53,7 @@ def main():
 def demo_parallel():
     scenario, _ = CommonRoadFileReader("scenarios/ZAM_Merge-1_1_T-1.xml").open()
 
-    builder = CollisionCheckerBuilder().with_road_boundary_obstacle(scenario.lanelet_network)
-    for obstacle in scenario.static_obstacles:
-        builder.with_commonroad_static_obstacle(obstacle)
-    for obstacle in scenario.dynamic_obstacles:
-        builder.with_commonroad_dynamic_obstacle(obstacle)
-    cc = builder.build()
+    cc = CollisionCheckerBuilder().with_commonroad_scenario(scenario).build()
 
     car = Rectangle(4.5, 2.0)
     poses = [Pose((p[0], p[1]), p[2]) for p in np.random.uniform([-7, -15, -np.pi], [87, 10, np.pi], (100000, 3))]
