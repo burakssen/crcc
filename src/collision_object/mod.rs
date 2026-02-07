@@ -1,7 +1,9 @@
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::collision_object::simple::SimpleCollisionObjectOps;
 use cfg_if::cfg_if;
-use glamx::DPose2;
+use delegate::delegate;
+use geo::{Polygon, Rect, Triangle};
+use glamx::{DPose2, DVec2};
 use itertools::Itertools;
 
 cfg_if!(
@@ -37,6 +39,19 @@ impl CollisionObject {
 
     pub fn full_space() -> Self {
         Self::new(vec![SimpleCollisionObject::full_space()])
+    }
+
+    delegate! {
+        #[into]
+        to SimpleCollisionObject {
+            pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> Self;
+            pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> Self;
+            pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> Self;
+            pub fn circle(center: (f64, f64), radius: f64) -> Self;
+            pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> Self;
+            pub fn triangle(triangle: impl Into<Triangle>) -> Self;
+            pub fn polygon(polygon: impl Into<Polygon>) -> Self;
+        }
     }
 
     pub fn collision_objects(&self) -> &[SimpleCollisionObject] {
@@ -316,7 +331,7 @@ mod tests {
                     start_pos.translation.lerp(end_pos.translation, t),
                     start_pos.rotation.slerp(&end_pos.rotation, t),
                 );
-                // Check that the swept area collides with the shape at the interpolated position7
+                // Check that the swept area collides with the shape at the interpolated position
                 assert!(
                     swept_area
                         .collides_at(DPose2::IDENTITY, &shape, interp_pos)

@@ -41,75 +41,78 @@ pub enum SimpleCollisionObject {
 }
 
 impl SimpleCollisionObject {
-    pub fn empty() -> SimpleCollisionObject {
-        SimpleCollisionObject::Empty(Empty)
+    pub fn empty() -> Self {
+        Self::Empty(Empty)
     }
 
-    pub fn full_space() -> SimpleCollisionObject {
-        SimpleCollisionObject::FullSpace(FullSpace)
+    pub fn full_space() -> Self {
+        Self::FullSpace(FullSpace)
     }
 
-    pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> SimpleCollisionObject {
-        SimpleCollisionObject::HalfSpace(HalfSpace {
+    pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> Self {
+        Self::HalfSpace(HalfSpace {
             outward_normal: outward_normal.into().normalize(),
             offset,
         })
     }
 
-    pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> SimpleCollisionObject {
+    pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> Self {
         // Create a half space defined by the line through p1 and p2,
         // with the outward normal pointing to the left of the line
-        SimpleCollisionObject::HalfSpace(HalfSpace::from_points(p1, p2))
+        Self::HalfSpace(HalfSpace::from_points(p1, p2))
     }
 
-    pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> SimpleCollisionObject {
+    pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> Self {
         // Represents the half space ax + by <= c
-        SimpleCollisionObject::HalfSpace(HalfSpace::from_coeffs(a, b, c))
+        Self::HalfSpace(HalfSpace::from_coeffs(a, b, c))
     }
 
-    pub fn circle(center: (f64, f64), radius: f64) -> SimpleCollisionObject {
+    pub fn circle(center: (f64, f64), radius: f64) -> Self {
         if radius <= 0.0 {
-            SimpleCollisionObject::empty()
+            Self::empty()
         } else {
-            SimpleCollisionObject::Circle(Circle { center, radius })
+            Self::Circle(Circle { center, radius })
         }
     }
 
-    pub fn rectangle(rect: Rect, orientation: f64) -> SimpleCollisionObject {
+    pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> Self {
+        let rect = rect.into();
         if rect.is_empty() {
-            SimpleCollisionObject::empty()
+            Self::empty()
         } else {
-            SimpleCollisionObject::Rectangle(Rectangle { rect, orientation })
+            Self::Rectangle(Rectangle { rect, orientation })
         }
     }
 
-    pub fn triangle(triangle: GeoTriangle) -> SimpleCollisionObject {
+    pub fn triangle(triangle: impl Into<GeoTriangle>) -> Self {
+        let triangle = triangle.into();
         if triangle.is_empty() {
-            SimpleCollisionObject::empty()
+            Self::empty()
         } else {
-            SimpleCollisionObject::Triangle(Triangle(triangle))
+            Self::Triangle(Triangle(triangle))
         }
     }
 
-    pub fn polygon(polygon: Polygon) -> SimpleCollisionObject {
+    pub fn polygon(polygon: impl Into<Polygon>) -> Self {
+        let polygon = polygon.into();
         if polygon.is_empty() {
-            return SimpleCollisionObject::empty();
+            return Self::empty();
         }
         match (
             polygon.exterior().is_convex(),
             polygon.interiors().is_empty(),
         ) {
-            (true, true) => SimpleCollisionObject::ConvexPolygon(ConvexPolygon(polygon)),
-            (false, true) => SimpleCollisionObject::NonConvexPolygon(NonConvexPolygon(polygon)),
-            _ => SimpleCollisionObject::PolygonWithHoles(PolygonWithHoles(polygon)),
+            (true, true) => Self::ConvexPolygon(ConvexPolygon(polygon)),
+            (false, true) => Self::NonConvexPolygon(NonConvexPolygon(polygon)),
+            _ => Self::PolygonWithHoles(PolygonWithHoles(polygon)),
         }
     }
     pub fn is_empty(&self) -> bool {
-        matches!(self, SimpleCollisionObject::Empty(_))
+        matches!(self, Self::Empty(_))
     }
 
     pub fn is_full_space(&self) -> bool {
-        matches!(self, SimpleCollisionObject::FullSpace(_))
+        matches!(self, Self::FullSpace(_))
     }
 }
 
@@ -233,7 +236,7 @@ mod tests {
                     start_pos.translation.lerp(end_pos.translation, t),
                     start_pos.rotation.slerp(&end_pos.rotation, t),
                 );
-                // Check that the swept area collides with the shape at the interpolated position7
+                // Check that the swept area collides with the shape at the interpolated position
                 assert!(
                     swept_area
                         .collides_at(DPose2::IDENTITY, &shape, interp_pos)
