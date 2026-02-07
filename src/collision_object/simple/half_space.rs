@@ -1,4 +1,4 @@
-use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObjectOps};
+use crate::collision_object::simple::{SimpleCollisionObject, SweptArea};
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
 
@@ -43,7 +43,7 @@ impl HalfSpace {
     }
 }
 
-impl SimpleCollisionObjectOps for HalfSpace {
+impl SweptArea for HalfSpace {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         // This could still be optimized if we allow to return a regular CollisionObject,
         // which would allow us to return a union of half spaces.

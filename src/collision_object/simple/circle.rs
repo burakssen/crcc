@@ -1,4 +1,4 @@
-use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObjectOps};
+use crate::collision_object::simple::{SimpleCollisionObject, SweptArea};
 use geo::{Buffer, LineString, coord};
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
@@ -26,7 +26,7 @@ impl Circle {
     }
 }
 
-impl SimpleCollisionObjectOps for Circle {
+impl SweptArea for Circle {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         let mut swept_areas = Vec::with_capacity(positions.len().saturating_sub(1));
         for (start_pos, end_pos) in positions.iter().tuple_windows() {

@@ -1,5 +1,5 @@
 use crate::collision_object::simple::SimpleCollisionObject;
-use crate::collision_object::simple::SimpleCollisionObjectOps;
+use crate::collision_object::simple::SweptArea;
 use cfg_if::cfg_if;
 use delegate::delegate;
 use geo::{Polygon, Rect, Triangle};

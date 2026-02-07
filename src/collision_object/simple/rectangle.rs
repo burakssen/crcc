@@ -1,6 +1,4 @@
-use crate::collision_object::simple::{
-    SimpleCollisionObject, SimpleCollisionObjectOps, swept_areas,
-};
+use crate::collision_object::simple::{SimpleCollisionObject, SweptArea, swept_areas};
 use geo::{HasDimensions, Polygon, Rect, Rotate};
 use glamx::DPose2;
 
@@ -39,7 +37,7 @@ impl Rectangle {
     }
 }
 
-impl SimpleCollisionObjectOps for Rectangle {
+impl SweptArea for Rectangle {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         let mut poly = Polygon::from(self.rect);
         poly.rotate_around_center_mut(self.orientation.to_degrees());

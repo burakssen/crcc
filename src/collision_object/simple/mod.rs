@@ -27,7 +27,7 @@ mod rectangle;
 mod triangle;
 
 #[derive(Debug, Clone, PartialEq)]
-#[enum_dispatch(SimpleCollisionObjectOps)]
+#[enum_dispatch(SweptArea)]
 pub enum SimpleCollisionObject {
     Empty(Empty),
     FullSpace(FullSpace),
@@ -117,7 +117,7 @@ impl SimpleCollisionObject {
 }
 
 #[enum_dispatch]
-pub trait SimpleCollisionObjectOps {
+pub trait SweptArea {
     /// Overapproximates the area the object covers while moving through the given positions.
     /// The returned vector has length `positions.len() - 1`, with each entry corresponding to
     /// the swept area between two consecutive positions.

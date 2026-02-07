@@ -1,10 +1,10 @@
-use crate::collision_object::simple::{SimpleCollisionObject, SimpleCollisionObjectOps};
+use crate::collision_object::simple::{SimpleCollisionObject, SweptArea};
 use glamx::DPose2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Empty;
 
-impl SimpleCollisionObjectOps for Empty {
+impl SweptArea for Empty {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         vec![SimpleCollisionObject::empty(); positions.len().saturating_sub(1)]
     }

@@ -1,6 +1,4 @@
-use crate::collision_object::simple::{
-    SimpleCollisionObject, SimpleCollisionObjectOps, swept_areas,
-};
+use crate::collision_object::simple::{SimpleCollisionObject, SweptArea, swept_areas};
 use geo::{IsConvex, Polygon};
 use glamx::DPose2;
 use std::ops::Deref;
@@ -29,7 +27,7 @@ impl Deref for ConvexPolygon {
     }
 }
 
-impl SimpleCollisionObjectOps for ConvexPolygon {
+impl SweptArea for ConvexPolygon {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         swept_areas(&self.0, positions)
     }

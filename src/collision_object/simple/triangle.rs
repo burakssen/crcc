@@ -1,6 +1,4 @@
-use crate::collision_object::simple::{
-    SimpleCollisionObject, SimpleCollisionObjectOps, swept_areas,
-};
+use crate::collision_object::simple::{SimpleCollisionObject, SweptArea, swept_areas};
 use geo::{HasDimensions, Triangle as GeoTriangle};
 use glamx::DPose2;
 use std::ops::Deref;
@@ -25,7 +23,7 @@ impl Deref for Triangle {
     }
 }
 
-impl SimpleCollisionObjectOps for Triangle {
+impl SweptArea for Triangle {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         swept_areas(&self.0, positions)
     }
