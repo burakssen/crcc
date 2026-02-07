@@ -3,7 +3,7 @@ use itertools::{Itertools, chain};
 use std::collections::{BTreeMap, Bound};
 use std::ops::{RangeBounds, RangeInclusive};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeStepSet {
     included: BTreeMap<TimeStep, bool>,
 }
@@ -264,5 +264,22 @@ mod tests {
         set1.intersect(&set3);
         let included_ranges = set1.included_ranges().collect_vec();
         assert!(included_ranges.is_empty());
+    }
+
+    #[test]
+    fn test_eq() {
+        let set1 = TimeStepSet::from(TimeStep(5)..TimeStep(15));
+
+        let mut set2 = TimeStepSet::new();
+        assert_ne!(set1, set2);
+
+        set2.add(TimeStep(5)..=TimeStep(10));
+        assert_ne!(set1, set2);
+
+        set2.add(TimeStep(9)..TimeStep(20));
+        assert_ne!(set1, set2);
+
+        set2.remove(TimeStep(15)..TimeStep(20));
+        assert_eq!(set1, set2);
     }
 }
