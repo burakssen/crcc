@@ -41,7 +41,7 @@ pub(super) mod dynamic_obstacle {
         Python::attach(|py| {
             py.import("sys")?
                 .getattr("modules")?
-                .set_item("commonroad_collision_checker._core.dynamic_obstacle", m)
+                .set_item("crcc._core.dynamic_obstacle", m)
         })
     }
 }

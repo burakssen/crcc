@@ -61,7 +61,7 @@ pub(super) mod pose {
         Python::attach(|py| {
             py.import("sys")?
                 .getattr("modules")?
-                .set_item("commonroad_collision_checker._core.pose", m)
+                .set_item("crcc._core.pose", m)
         })
     }
 }

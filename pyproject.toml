@@ -1,5 +1,5 @@
 [project]
-name = "commonroad-collision-checker"
+name = "crcc"
 version = "0.1.0"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
@@ -30,8 +30,8 @@ build-backend = "maturin"
 
 [tool.maturin]
 features = ["python_bindings", "parry-default-engine"]
-module-name = "commonroad_collision_checker._core"
-python-packages = ["commonroad_collision_checker"]
+module-name = "crcc._core"
+python-packages = ["crcc"]
 python-source = "python"
 
 [tool.uv]

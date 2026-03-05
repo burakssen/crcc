@@ -1,10 +1,10 @@
-use commonroad_collision_checker::collision_checker::engine::parry::ParryCollisionObject;
-use commonroad_collision_checker::collision_checker::parallel::ParallelCollisionChecker;
-use commonroad_collision_checker::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
-use commonroad_collision_checker::collision_object::CollisionObject;
-use commonroad_collision_checker::collision_object::simple::SimpleCollisionObject;
-use commonroad_collision_checker::dynamic_obstacle::DynamicObstacle;
-use commonroad_collision_checker::time::TimeStep;
+use crcc::collision_checker::engine::parry::ParryCollisionObject;
+use crcc::collision_checker::parallel::ParallelCollisionChecker;
+use crcc::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
+use crcc::collision_object::CollisionObject;
+use crcc::collision_object::simple::SimpleCollisionObject;
+use crcc::dynamic_obstacle::DynamicObstacle;
+use crcc::time::TimeStep;
 use geo::Rect;
 use glamx::DPose2;
 use itertools::Itertools;

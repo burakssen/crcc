@@ -7,10 +7,10 @@ from commonroad.scenario.lanelet import LaneletNetwork
 from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import TraceState
 
-import commonroad_collision_checker._core.collision_checker as core
-from commonroad_collision_checker.collision_object import Circle, CollisionObject, Compound, Polygon, Rectangle
-from commonroad_collision_checker.dynamic_obstacle import DynamicObstacle
-from commonroad_collision_checker.pose import Pose
+import crcc._core.collision_checker as core
+from crcc.collision_object import Circle, CollisionObject, Compound, Polygon, Rectangle
+from crcc.dynamic_obstacle import DynamicObstacle
+from crcc.pose import Pose
 
 # explicitly re-export classes to define the public API of this module
 # this enables us to add wrappers for the Rust objects later as a non-breaking change

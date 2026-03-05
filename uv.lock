@@ -32,7 +32,7 @@ wheels = [
 ]
 
 [[package]]
-name = "commonroad-collision-checker"
+name = "crcc"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

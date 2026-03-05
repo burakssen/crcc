@@ -252,7 +252,7 @@ pub(super) mod collision_object {
         Python::attach(|py| {
             py.import("sys")?
                 .getattr("modules")?
-                .set_item("commonroad_collision_checker._core.collision_object", m)
+                .set_item("crcc._core.collision_object", m)
         })
     }
 }

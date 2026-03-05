@@ -6,9 +6,9 @@ import numpy as np
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad.visualization.draw_params import ShapeParams
 from commonroad.visualization.mp_renderer import MPRenderer
-from commonroad_collision_checker.collision_checker import CollisionCheckerBuilder
-from commonroad_collision_checker.collision_object import Circle, Polygon, Rectangle
-from commonroad_collision_checker.pose import Pose
+from crcc.collision_checker import CollisionCheckerBuilder
+from crcc.collision_object import Circle, Polygon, Rectangle
+from crcc.pose import Pose
 from matplotlib import pyplot as plt
 
 

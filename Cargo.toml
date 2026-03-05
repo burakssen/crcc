@@ -1,14 +1,14 @@
 [package]
-name = "commonroad-collision-checker"
+name = "crcc"
 version = "0.1.0"
 edition = "2024"
 
 [lib]
-name = "commonroad_collision_checker"
+name = "crcc"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "commonroad-collision-checker"
+name = "crcc"
 path = "src/main.rs"
 required-features = ["rayon"]
 
