@@ -6,6 +6,10 @@ from .collision_object import CollisionObject
 from .dynamic_obstacle import DynamicObstacle
 from .pose import Pose
 
+class CollisionEngine:
+    Parry: CollisionEngine
+    Rhusics: CollisionEngine
+
 class CollisionStatus:
     @staticmethod
     def NoCollision() -> CollisionStatus: ...
@@ -49,6 +53,6 @@ class CollisionCheckerBuilder:
     def with_static_obstacle(self, collision_object: CollisionObject) -> CollisionCheckerBuilder: ...
     def with_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
     def with_road_boundary_obstacle(self, lanelets: List[List[Tuple[float, float]]]) -> CollisionCheckerBuilder: ...
-    def build(self) -> CollisionChecker: ...
+    def build(self, engine: Optional[CollisionEngine] = None) -> CollisionChecker: ...
 
-__all__ = ["CollisionStatus", "CollisionChecker", "CollisionCheckerBuilder"]
+__all__ = ["CollisionEngine", "CollisionStatus", "CollisionChecker", "CollisionCheckerBuilder"]

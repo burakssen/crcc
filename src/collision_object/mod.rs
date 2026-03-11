@@ -107,6 +107,90 @@ impl CollisionObject {
             .pop()
             .expect("Should return exactly one area, as two positions were given.")
     }
+
+    pub fn collides_at_with_engine(
+        &self,
+        pos_self: DPose2,
+        other: &Self,
+        pos_other: DPose2,
+        engine: crate::collision_checker::engine::CollisionEngine,
+    ) -> Result<bool, crate::collision_checker::CollisionCheckerError> {
+        match engine {
+            #[cfg(feature = "parry")]
+            crate::collision_checker::engine::CollisionEngine::Parry => {
+                use crate::collision_checker::engine::EngineCollisionObject;
+                let slf: crate::collision_checker::engine::parry::ParryCollisionObject =
+                    self.clone().into();
+                let other = other.clone().into();
+                slf.collides_at(pos_self, &other, pos_other)
+            }
+            #[cfg(not(feature = "parry"))]
+            crate::collision_checker::engine::CollisionEngine::Parry => {
+                Err(crate::collision_checker::CollisionCheckerError::Unsupported)
+            }
+            #[cfg(feature = "rhusics")]
+            crate::collision_checker::engine::CollisionEngine::Rhusics => {
+                use crate::collision_checker::engine::EngineCollisionObject;
+                let slf: crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject =
+                    self.clone().into();
+                let other = other.clone().into();
+                slf.collides_at(pos_self, &other, pos_other)
+            }
+            #[cfg(not(feature = "rhusics"))]
+            crate::collision_checker::engine::CollisionEngine::Rhusics => {
+                Err(crate::collision_checker::CollisionCheckerError::Unsupported)
+            }
+        }
+    }
+
+    pub fn collides_continuous_with_engine(
+        &self,
+        start_pos_self: DPose2,
+        end_pos_self: DPose2,
+        other: &Self,
+        start_pos_other: DPose2,
+        end_pos_other: DPose2,
+        engine: crate::collision_checker::engine::CollisionEngine,
+    ) -> Result<bool, crate::collision_checker::CollisionCheckerError> {
+        match engine {
+            #[cfg(feature = "parry")]
+            crate::collision_checker::engine::CollisionEngine::Parry => {
+                use crate::collision_checker::engine::EngineCollisionObject;
+                let slf: crate::collision_checker::engine::parry::ParryCollisionObject =
+                    self.clone().into();
+                let other = other.clone().into();
+                slf.collides_continuous(
+                    start_pos_self,
+                    end_pos_self,
+                    &other,
+                    start_pos_other,
+                    end_pos_other,
+                )
+            }
+            #[cfg(not(feature = "parry"))]
+            crate::collision_checker::engine::CollisionEngine::Parry => {
+                Err(crate::collision_checker::CollisionCheckerError::Unsupported)
+            }
+            #[cfg(feature = "rhusics")]
+            crate::collision_checker::engine::CollisionEngine::Rhusics => {
+                use crate::collision_checker::engine::EngineCollisionObject;
+                let slf: crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject =
+                    self.clone().into();
+                let other = other.clone().into();
+                slf.collides_continuous(
+                    start_pos_self,
+                    end_pos_self,
+                    &other,
+                    start_pos_other,
+                    end_pos_other,
+                )
+            }
+            #[cfg(not(feature = "rhusics"))]
+            crate::collision_checker::engine::CollisionEngine::Rhusics => {
+                Err(crate::collision_checker::CollisionCheckerError::Unsupported)
+            }
+        }
+    }
 }
 
 #[cfg(feature = "default-engine")]

@@ -1,5 +1,8 @@
 use crate::collision_checker::CollisionChecker;
+use crate::collision_checker::CollisionCheckerError;
+use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::engine::EngineCollisionObject;
+use crate::collision_checker::selected::SelectedCollisionChecker;
 use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::dynamic_obstacle::DynamicObstacle;
@@ -43,6 +46,22 @@ impl CollisionCheckerBuilder {
                 .map(DynamicObstacle::convert_repr)
                 .collect(),
             active_times,
+        }
+    }
+
+    pub fn build_with_engine(
+        self,
+        engine: CollisionEngine,
+    ) -> Result<SelectedCollisionChecker, CollisionCheckerError> {
+        match engine {
+            #[cfg(feature = "parry")]
+            CollisionEngine::Parry => Ok(SelectedCollisionChecker::Parry(self.build())),
+            #[cfg(not(feature = "parry"))]
+            CollisionEngine::Parry => Err(CollisionCheckerError::Unsupported),
+            #[cfg(feature = "rhusics")]
+            CollisionEngine::Rhusics => Ok(SelectedCollisionChecker::Rhusics(self.build())),
+            #[cfg(not(feature = "rhusics"))]
+            CollisionEngine::Rhusics => Err(CollisionCheckerError::Unsupported),
         }
     }
 

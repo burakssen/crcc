@@ -1,4 +1,4 @@
-use crate::collision_checker::engine::EngineCollisionObject;
+use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_object::CollisionObject as RustCollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::python::pose::Pose;
@@ -14,18 +14,23 @@ pub struct CollisionObject(Arc<RustCollisionObject>);
 
 #[pymethods]
 impl CollisionObject {
-    #[pyo3(signature = (other, pos_self = Pose::identity(), pos_other = Pose::identity()))]
+    #[pyo3(signature = (other, pos_self = Pose::identity(), pos_other = Pose::identity(), engine = CollisionEngine::Parry))]
     pub fn collides(
         &self,
         other: &CollisionObject,
         pos_self: Pose,
         pos_other: Pose,
+        engine: CollisionEngine,
     ) -> PyResult<bool> {
-        Ok(self
-            .as_ref()
-            .collides_at(pos_self.0, other.as_ref(), pos_other.0)?)
+        Ok(self.as_ref().collides_at_with_engine(
+            pos_self.0,
+            other.as_ref(),
+            pos_other.0,
+            engine,
+        )?)
     }
 
+    #[pyo3(signature = (start_pos_self, end_pos_self, other, start_pos_other, end_pos_other, engine = CollisionEngine::Parry))]
     pub fn collides_continuous(
         &self,
         start_pos_self: Pose,
@@ -33,13 +38,15 @@ impl CollisionObject {
         other: &CollisionObject,
         start_pos_other: Pose,
         end_pos_other: Pose,
+        engine: CollisionEngine,
     ) -> PyResult<bool> {
-        Ok(self.as_ref().collides_continuous(
+        Ok(self.as_ref().collides_continuous_with_engine(
             start_pos_self.0,
             end_pos_self.0,
             other.as_ref(),
             start_pos_other.0,
             end_pos_other.0,
+            engine,
         )?)
     }
 

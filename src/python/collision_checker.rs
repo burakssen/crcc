@@ -1,10 +1,9 @@
 use crate::collision_checker::CollisionCheckerError;
-use crate::collision_checker::parallel::ParallelCollisionChecker;
+use crate::collision_checker::SelectedCollisionChecker;
+pub use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::{
-    CollisionChecker as RustCollisionChecker,
     CollisionCheckerBuilder as RustCollisionCheckerBuilder, CollisionStatus as RustCollisionStatus,
 };
-use crate::collision_object::CollisionObject as RustCollisionObject;
 use crate::python::collision_object::CollisionObject;
 use crate::python::dynamic_obstacle::DynamicObstacle;
 use crate::python::pose::Pose;
@@ -14,7 +13,6 @@ use glamx::DPose2;
 use itertools::Itertools;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use rayon::prelude::*;
 use replace_with::replace_with;
 use std::fmt::Display;
 use std::ops::RangeInclusive;
@@ -63,10 +61,10 @@ impl From<RustCollisionStatus> for CollisionStatus {
 }
 
 #[pyclass]
-pub struct CollisionChecker(RustCollisionChecker<RustCollisionObject>);
+pub struct CollisionChecker(SelectedCollisionChecker);
 
-impl AsRef<RustCollisionChecker<RustCollisionObject>> for CollisionChecker {
-    fn as_ref(&self) -> &RustCollisionChecker<RustCollisionObject> {
+impl AsRef<SelectedCollisionChecker> for CollisionChecker {
+    fn as_ref(&self) -> &SelectedCollisionChecker {
         &self.0
     }
 }
@@ -100,12 +98,14 @@ impl CollisionChecker {
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Vec<CollisionStatus>> {
+        let positioned_static_obstacles = positioned_static_obstacles
+            .into_iter()
+            .map(|(obs, pos)| (obs.as_ref().clone(), pos.0))
+            .collect::<Vec<_>>();
         let res = self
             .0
             .par_collides_static(
-                positioned_static_obstacles
-                    .par_iter()
-                    .map(|(obs, pos)| (obs.as_ref(), pos.0)),
+                &positioned_static_obstacles,
                 min_max_to_range(min_time, max_time),
             )
             .into_iter()
@@ -134,12 +134,13 @@ impl CollisionChecker {
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Vec<CollisionStatus>> {
+        let dynamic_obstacles = dynamic_obstacles
+            .into_iter()
+            .map(|obs| obs.as_ref().clone())
+            .collect::<Vec<_>>();
         let res = self
             .0
-            .par_collides_dynamic(
-                dynamic_obstacles.par_iter().map(AsRef::as_ref),
-                min_max_to_range(min_time, max_time),
-            )
+            .par_collides_dynamic(&dynamic_obstacles, min_max_to_range(min_time, max_time))
             .into_iter()
             .map(|result| result.map(CollisionStatus::from))
             .collect::<Result<_, _>>()?;
@@ -212,8 +213,13 @@ impl CollisionCheckerBuilder {
         slf
     }
 
-    pub fn build(&self) -> CollisionChecker {
-        CollisionChecker(self.0.clone().build())
+    #[pyo3(signature = (engine = None))]
+    pub fn build(&self, engine: Option<CollisionEngine>) -> PyResult<CollisionChecker> {
+        Ok(CollisionChecker(
+            self.0
+                .clone()
+                .build_with_engine(engine.unwrap_or_default())?,
+        ))
     }
 }
 
@@ -228,7 +234,7 @@ pub(super) mod collision_checker {
     use pyo3::prelude::*;
 
     #[pymodule_export]
-    use super::{CollisionChecker, CollisionCheckerBuilder, CollisionStatus};
+    use super::{CollisionChecker, CollisionCheckerBuilder, CollisionEngine, CollisionStatus};
 
     /// Hack: workaround for https://github.com/PyO3/pyo3/issues/759
     #[pymodule_init]

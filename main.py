@@ -6,7 +6,7 @@ import numpy as np
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad.visualization.draw_params import ShapeParams
 from commonroad.visualization.mp_renderer import MPRenderer
-from crcc.collision_checker import CollisionCheckerBuilder
+from crcc.collision_checker import CollisionCheckerBuilder, CollisionEngine
 from crcc.collision_object import Circle, Polygon, Rectangle
 from crcc.pose import Pose
 from matplotlib import pyplot as plt
@@ -22,7 +22,7 @@ def main():
 
     scenario, planning_problems = CommonRoadFileReader(scenario_path).open()
 
-    cc = CollisionCheckerBuilder().with_commonroad_scenario(scenario).build()
+    cc = CollisionCheckerBuilder(engine=CollisionEngine.Parry).with_commonroad_scenario(scenario).build()
 
     car = Rectangle(4.5, 2.0)
     print("Collides with road boundary", cc.collides_static(car, Pose((55.29, -1.99), 1.326)))
@@ -53,7 +53,7 @@ def main():
 def demo_parallel():
     scenario, _ = CommonRoadFileReader("scenarios/ZAM_Merge-1_1_T-1.xml").open()
 
-    cc = CollisionCheckerBuilder().with_commonroad_scenario(scenario).build()
+    cc = CollisionCheckerBuilder(engine=CollisionEngine.Parry).with_commonroad_scenario(scenario).build()
 
     car = Rectangle(4.5, 2.0)
     poses = [Pose((p[0], p[1]), p[2]) for p in np.random.uniform([-7, -15, -np.pi], [87, 10, np.pi], (100000, 3))]

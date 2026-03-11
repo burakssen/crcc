@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
+from .collision_checker import CollisionEngine
 from .pose import Pose
 
 class CollisionObject:
@@ -10,6 +11,7 @@ class CollisionObject:
         other: CollisionObject,
         pos_self: Pose = Pose.identity(),
         pos_other: Pose = Pose.identity(),
+        engine: CollisionEngine = CollisionEngine.Parry,
     ) -> bool: ...
     def collides_continuous(
         self,
@@ -18,6 +20,7 @@ class CollisionObject:
         other: CollisionObject,
         start_pos_other: Pose,
         end_pos_other: Pose,
+        engine: CollisionEngine = CollisionEngine.Parry,
     ) -> bool: ...
     def merge(self, other: CollisionObject) -> CollisionObject: ...
     @staticmethod

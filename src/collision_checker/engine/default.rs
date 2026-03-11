@@ -12,6 +12,9 @@ cfg_if!(
     if #[cfg(feature = "parry-default-engine")] {
         use crate::collision_checker::engine::parry::ParryCollisionObject;
         type DefaultCollisionObjectInner = ParryCollisionObject;
+    } else if #[cfg(feature = "rhusics-default-engine")] {
+        use crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject;
+        type DefaultCollisionObjectInner = RhusicsCoreCollisionObject;
     } else {
         compile_error!("do not enable the `default-engine` feature manually. Instead choose a specific engine as the default by enabling the corresponding feature, e.g., `parry-default-engine`");
     }

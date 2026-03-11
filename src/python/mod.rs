@@ -5,9 +5,9 @@ mod collision_object;
 mod dynamic_obstacle;
 mod pose;
 
-#[cfg(not(feature = "default-engine"))]
+#[cfg(not(any(feature = "parry", feature = "rhusics")))]
 compile_error!(
-    "you must choose a default collision engine when building Python bindings, e.g., `parry-default-engine`"
+    "you must enable at least one collision engine when building Python bindings, e.g., `parry`"
 );
 
 #[pymodule]

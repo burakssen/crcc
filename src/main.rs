@@ -1,5 +1,5 @@
+use crcc::collision_checker::engine::CollisionEngine;
 use crcc::collision_checker::engine::parry::ParryCollisionObject;
-use crcc::collision_checker::parallel::ParallelCollisionChecker;
 use crcc::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
 use crcc::collision_object::CollisionObject;
 use crcc::collision_object::simple::SimpleCollisionObject;
@@ -88,7 +88,8 @@ fn main() {
 fn demo_parallel_collision_checks() {
     let cc = CollisionCheckerBuilder::new()
         .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 2.0))
-        .build::<CollisionObject>();
+        .build_with_engine(CollisionEngine::Parry)
+        .unwrap();
 
     let now = Instant::now();
     let test_objects: Vec<_> = (0..50000)
@@ -105,7 +106,7 @@ fn demo_parallel_collision_checks() {
     let test_objects_seq = test_objects.clone();
 
     let now = Instant::now();
-    let results = cc.par_collides_static(test_objects.par_iter().map(|(co, pos)| (co, *pos)), ..);
+    let results = cc.par_collides_static(&test_objects, ..);
     println!("Parallel collision checks took {:?}", Instant::now() - now);
     for (i, result) in results.iter().enumerate() {
         let collides = result.as_ref().unwrap().collides();
@@ -116,7 +117,7 @@ fn demo_parallel_collision_checks() {
         }
     }
     let now = Instant::now();
-    let results = cc.par_collides_static(test_objects.par_iter().map(|(co, pos)| (co, *pos)), ..);
+    let results = cc.par_collides_static(&test_objects, ..);
     println!(
         "Parallel collision checks (second run) took {:?}",
         Instant::now() - now

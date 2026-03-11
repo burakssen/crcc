@@ -13,8 +13,10 @@ mod ccd_collider;
 pub mod engine;
 #[cfg(feature = "rayon")]
 pub mod parallel;
+mod selected;
 
 pub use builder::CollisionCheckerBuilder;
+pub use selected::SelectedCollisionChecker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CollisionStatus {
