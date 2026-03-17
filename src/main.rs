@@ -14,7 +14,7 @@ use std::time::Instant;
 
 fn main() {
     let dyn_obs = DynamicObstacle::new(
-        SimpleCollisionObject::circle((0.0, 0.0), 1.0).into(),
+        SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap().into(),
         vec![
             DPose2::translation(10.0, 10.0),
             DPose2::translation(9.0, 9.0),
@@ -24,13 +24,13 @@ fn main() {
         TimeStep(0),
     );
     let cc = CollisionCheckerBuilder::new()
-        .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0))
+        .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
         .with_dynamic_obstacle(dyn_obs)
         .build::<ParryCollisionObject>();
 
-    let obj = CollisionObject::from(SimpleCollisionObject::circle((8.0, 8.0), 1.0)).into();
+    let obj = CollisionObject::from(SimpleCollisionObject::circle((8.0, 8.0), 1.0).unwrap()).into();
     let dyn_obs2 = DynamicObstacle::new(
-        SimpleCollisionObject::circle((0.0, 0.0), 1.0).into(),
+        SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap().into(),
         vec![
             DPose2::translation(5.0, 5.0),
             DPose2::translation(15.0, -5.0),
@@ -66,8 +66,9 @@ fn main() {
     );
 
     // Test orientation for rectangles
-    let rect1 = SimpleCollisionObject::rectangle(Rect::new((0.0, 0.0), (2.0, 1.0)), 0.0);
-    let rect2 = SimpleCollisionObject::rectangle(Rect::new((0.0, 1.1), (2.0, 2.1)), FRAC_PI_2);
+    let rect1 = SimpleCollisionObject::rectangle(Rect::new((0.0, 0.0), (2.0, 1.0)), 0.0).unwrap();
+    let rect2 =
+        SimpleCollisionObject::rectangle(Rect::new((0.0, 1.1), (2.0, 2.1)), FRAC_PI_2).unwrap();
     let cc = CollisionCheckerBuilder::new()
         .with_static_obstacle(rect1)
         .build::<ParryCollisionObject>();
@@ -87,14 +88,14 @@ fn main() {
 
 fn demo_parallel_collision_checks() {
     let cc = CollisionCheckerBuilder::new()
-        .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 2.0))
+        .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 2.0).unwrap())
         .build_with_engine(CollisionEngine::Parry)
         .unwrap();
 
     let now = Instant::now();
     let test_objects: Vec<_> = (0..50000)
         .into_par_iter()
-        .map(|i| CollisionObject::from(SimpleCollisionObject::circle((i as f64, 0.0), 1.0)))
+        .map(|i| CollisionObject::from(SimpleCollisionObject::circle((i as f64, 0.0), 1.0).unwrap()))
         .map(|co| (co, DPose2::IDENTITY))
         .collect();
     println!(

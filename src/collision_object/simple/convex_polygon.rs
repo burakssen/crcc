@@ -1,4 +1,5 @@
 use crate::collision_object::simple::{SimpleCollisionObject, SweptArea, swept_areas};
+use crate::error::{CrccError, CrccResult};
 use geo::{IsConvex, Polygon};
 use glamx::DPose2;
 use std::ops::Deref;
@@ -7,11 +8,14 @@ use std::ops::Deref;
 pub struct ConvexPolygon(pub(super) Polygon);
 
 impl ConvexPolygon {
-    pub fn new(polygon: Polygon) -> ConvexPolygon {
-        if !polygon.exterior().is_convex() || !polygon.interiors().is_empty() {
-            panic!("ConvexPolygon must be convex and may not have holes.")
+    pub fn new(polygon: Polygon) -> CrccResult<ConvexPolygon> {
+        if !polygon.interiors().is_empty() {
+            return Err(CrccError::HasHoles);
         }
-        ConvexPolygon(polygon)
+        if !polygon.exterior().is_convex() {
+            return Err(CrccError::NotConvex);
+        }
+        Ok(ConvexPolygon(polygon))
     }
 
     pub fn polygon(&self) -> &Polygon {

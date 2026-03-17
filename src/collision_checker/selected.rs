@@ -8,10 +8,10 @@ use std::ops::RangeBounds;
 
 pub enum SelectedCollisionChecker {
     #[cfg(feature = "parry")]
-    Parry(CollisionChecker<crate::collision_checker::engine::parry::ParryCollisionObject>),
+    Parry(Box<CollisionChecker<crate::collision_checker::engine::parry::ParryCollisionObject>>),
     #[cfg(feature = "rhusics")]
     Rhusics(
-        CollisionChecker<crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject>,
+        Box<CollisionChecker<crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject>>,
     ),
 }
 

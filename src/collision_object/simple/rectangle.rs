@@ -1,4 +1,5 @@
 use crate::collision_object::simple::{SimpleCollisionObject, SweptArea, swept_areas};
+use crate::error::{CrccError, CrccResult};
 use geo::{HasDimensions, Polygon, Rect, Rotate};
 use glamx::DPose2;
 
@@ -9,11 +10,11 @@ pub struct Rectangle {
 }
 
 impl Rectangle {
-    pub fn new(rect: Rect, orientation: f64) -> Rectangle {
+    pub fn new(rect: Rect, orientation: f64) -> CrccResult<Rectangle> {
         if rect.is_empty() {
-            panic!("Rectangle must not be empty.");
+            return Err(CrccError::EmptyShape);
         }
-        Rectangle { rect, orientation }
+        Ok(Rectangle { rect, orientation })
     }
 
     pub fn rect(&self) -> &Rect {

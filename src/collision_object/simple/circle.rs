@@ -1,4 +1,5 @@
 use crate::collision_object::simple::{SimpleCollisionObject, SweptArea};
+use crate::error::{CrccError, CrccResult};
 use geo::{Buffer, LineString, coord};
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
@@ -10,11 +11,11 @@ pub struct Circle {
 }
 
 impl Circle {
-    pub fn new(center: (f64, f64), radius: f64) -> Circle {
+    pub fn new(center: (f64, f64), radius: f64) -> CrccResult<Circle> {
         if radius <= 0.0 {
-            panic!("Circle radius must be positive.");
+            return Err(CrccError::InvalidRadius(radius));
         }
-        Circle { center, radius }
+        Ok(Circle { center, radius })
     }
 
     pub fn center(&self) -> (f64, f64) {
@@ -43,7 +44,10 @@ impl SweptArea for Circle {
                 1,
                 "Buffering should produce exactly one polygon."
             );
-            swept_areas.push(SimpleCollisionObject::polygon(buffered.0.pop().unwrap()));
+            swept_areas.push(
+                SimpleCollisionObject::polygon(buffered.0.pop().unwrap())
+                    .expect("Buffered circle swept area should be a valid polygon"),
+            );
         }
         swept_areas
     }

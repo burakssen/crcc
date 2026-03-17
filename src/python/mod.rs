@@ -1,9 +1,25 @@
 use pyo3::prelude::*;
+use pyo3::exceptions::PyValueError;
+use crate::error::CrccError;
 
 mod collision_checker;
 mod collision_object;
 mod dynamic_obstacle;
 mod pose;
+
+impl From<CrccError> for PyErr {
+    fn from(value: CrccError) -> Self {
+        match value {
+            CrccError::Unsupported => PyValueError::new_err("Unsupported shape combination"),
+            CrccError::InvalidRadius(r) => {
+                PyValueError::new_err(format!("Circle radius must be positive, got {}.", r))
+            }
+            CrccError::NotConvex => PyValueError::new_err("Shape must be convex."),
+            CrccError::HasHoles => PyValueError::new_err("Shape may not have holes."),
+            CrccError::EmptyShape => PyValueError::new_err("Shape must not be empty."),
+        }
+    }
+}
 
 #[cfg(not(any(feature = "parry", feature = "rhusics")))]
 compile_error!(

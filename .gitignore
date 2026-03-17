@@ -16,3 +16,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Native debug bundles
+.dSYM/
+*.dSYM/

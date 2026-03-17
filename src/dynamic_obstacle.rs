@@ -1,50 +1,16 @@
 use crate::collision_object::CollisionObject;
-use crate::time::{TimeStep, TimeStepInner};
+use crate::time::{TimeStep, TimeStepSet};
 use glamx::DPose2;
-use itertools::Itertools;
-use std::ops::Range;
+
+#[derive(Debug, Clone)]
+pub struct GenericDynamicObstacle<E> {
+    pub(crate) shape: E,
+    pub(crate) positions: Vec<DPose2>,
+    pub(crate) time_offset: TimeStep,
+    pub(crate) convex_hulls: Vec<E>,
+}
 
 pub type DynamicObstacle = GenericDynamicObstacle<CollisionObject>;
-
-#[derive(Clone, Debug)]
-pub struct GenericDynamicObstacle<C> {
-    shape: C,
-    positions: Vec<DPose2>,
-    time_offset: TimeStep,
-    convex_hulls: Vec<C>,
-}
-
-impl<C> GenericDynamicObstacle<C> {
-    pub fn shape(&self) -> &C {
-        &self.shape
-    }
-
-    pub fn position_at(&self, time_step: TimeStep) -> Option<DPose2> {
-        let with_offset = time_step - self.time_offset;
-        self.positions.get(with_offset.0 as usize).copied()
-    }
-
-    pub fn convex_hull_after(&self, time_step: TimeStep) -> Option<&C> {
-        let with_offset = time_step - self.time_offset;
-        self.convex_hulls.get(with_offset.0 as usize)
-    }
-
-    pub fn active_times(&self) -> Range<TimeStep> {
-        self.time_offset..(self.time_offset + TimeStep(self.positions.len() as TimeStepInner))
-    }
-
-    pub fn convert_repr<D>(self) -> GenericDynamicObstacle<D>
-    where
-        C: Into<D>,
-    {
-        GenericDynamicObstacle {
-            shape: self.shape.into(),
-            positions: self.positions,
-            time_offset: self.time_offset,
-            convex_hulls: self.convex_hulls.into_iter().map_into().collect(),
-        }
-    }
-}
 
 impl DynamicObstacle {
     pub fn new(shape: CollisionObject, positions: Vec<DPose2>, time_offset: TimeStep) -> Self {
@@ -56,19 +22,47 @@ impl DynamicObstacle {
             convex_hulls,
         }
     }
+
+    pub fn convert_repr<E: From<CollisionObject>>(self) -> GenericDynamicObstacle<E> {
+        GenericDynamicObstacle {
+            shape: self.shape.into(),
+            positions: self.positions,
+            time_offset: self.time_offset,
+            convex_hulls: self.convex_hulls.into_iter().map(E::from).collect(),
+        }
+    }
+}
+
+impl<E> GenericDynamicObstacle<E> {
+    pub fn shape(&self) -> &E {
+        &self.shape
+    }
+
+    pub fn position_at(&self, time_step: TimeStep) -> Option<DPose2> {
+        let index = time_step.0.checked_sub(self.time_offset.0)?;
+        self.positions.get(index as usize).copied()
+    }
+
+    pub fn active_times(&self) -> TimeStepSet {
+        TimeStepSet::from(self.time_offset..self.time_offset.add_steps(self.positions.len()))
+    }
+
+    pub fn convex_hull_after(&self, time_step: TimeStep) -> Option<&E> {
+        let index = time_step.0.checked_sub(self.time_offset.0)?;
+        self.convex_hulls.get(index as usize)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collision_checker::engine::EngineCollisionObject;
     use crate::time::TimeStepSet;
     use geo::Rect;
     use rstest::{fixture, rstest};
 
     #[fixture]
     fn dynamic_obstacle() -> DynamicObstacle {
-        let shape = CollisionObject::rectangle(Rect::new((-2.0, -0.5), (2.0, 0.5)), 0.0);
+        let shape = CollisionObject::rectangle(Rect::new((-2.0, -0.5), (2.0, 0.5)), 0.0).unwrap();
         let positions = vec![
             DPose2::new((0.0, 0.0).into(), 0.0),
             DPose2::new((1.0, 1.0).into(), std::f64::consts::FRAC_PI_4),
@@ -100,7 +94,6 @@ mod tests {
         assert_eq!(active_times, TimeStepSet::from(TimeStep(5)..=TimeStep(7)));
     }
 
-    #[cfg(feature = "default-engine")]
     #[rstest]
     fn test_convex_hull_after(dynamic_obstacle: DynamicObstacle) {
         let convex_hull = dynamic_obstacle.convex_hull_after(TimeStep(5)).unwrap();
@@ -114,9 +107,14 @@ mod tests {
                 start_pos.rotation.slerp(&end_pos.rotation, t),
             );
             assert!(
-                convex_hull
-                    .collides_at(DPose2::IDENTITY, dynamic_obstacle.shape(), interp_pos)
-                    .unwrap()
+                crate::collision_checker::engine::collides(
+                    convex_hull,
+                    DPose2::IDENTITY,
+                    dynamic_obstacle.shape(),
+                    interp_pos,
+                    crate::collision_checker::engine::CollisionEngine::default()
+                )
+                .unwrap()
             );
         }
     }

@@ -1,5 +1,4 @@
 use crate::collision_checker::CollisionChecker;
-use crate::collision_checker::CollisionCheckerError;
 use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_checker::selected::SelectedCollisionChecker;
@@ -7,6 +6,7 @@ use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::dynamic_obstacle::DynamicObstacle;
 use crate::time::TimeStepSet;
+use crate::error::CrccError;
 use geo::{Area, BooleanOps, ConvexHull, HasDimensions, Polygon, Simplify, Winding, unary_union};
 use itertools::{Itertools, chain};
 
@@ -52,23 +52,23 @@ impl CollisionCheckerBuilder {
     pub fn build_with_engine(
         self,
         engine: CollisionEngine,
-    ) -> Result<SelectedCollisionChecker, CollisionCheckerError> {
+    ) -> Result<SelectedCollisionChecker, CrccError> {
         match engine {
             #[cfg(feature = "parry")]
-            CollisionEngine::Parry => Ok(SelectedCollisionChecker::Parry(self.build())),
+            CollisionEngine::Parry => Ok(SelectedCollisionChecker::Parry(Box::new(self.build()))),
             #[cfg(not(feature = "parry"))]
-            CollisionEngine::Parry => Err(CollisionCheckerError::Unsupported),
+            CollisionEngine::Parry => Err(CrccError::UnsupportedEngine),
             #[cfg(feature = "rhusics")]
-            CollisionEngine::Rhusics => Ok(SelectedCollisionChecker::Rhusics(self.build())),
+            CollisionEngine::Rhusics => Ok(SelectedCollisionChecker::Rhusics(Box::new(self.build()))),
             #[cfg(not(feature = "rhusics"))]
-            CollisionEngine::Rhusics => Err(CollisionCheckerError::Unsupported),
+            CollisionEngine::Rhusics => Err(CrccError::UnsupportedEngine),
         }
     }
 
     fn active_times(&self) -> TimeStepSet {
         let mut active_times = TimeStepSet::new();
         for obs in &self.dynamic_obstacles {
-            active_times.add(obs.active_times());
+            active_times.union(&obs.active_times());
         }
         active_times
     }
@@ -94,7 +94,7 @@ fn create_road_boundary_obstacle(lanelets: &[Polygon]) -> CollisionObject {
         .into_iter()
         // Ignore holes smaller than 10 cm² as these are most likely artifacts
         .filter(|hole| hole.unsigned_area() > 0.001)
-        .map(SimpleCollisionObject::polygon);
+        .filter_map(|hole| SimpleCollisionObject::polygon(hole).ok());
 
     chain!(outer_halfspaces, holes).collect()
 }

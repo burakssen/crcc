@@ -22,7 +22,8 @@ impl CollisionObject {
         pos_other: Pose,
         engine: CollisionEngine,
     ) -> PyResult<bool> {
-        Ok(self.as_ref().collides_at_with_engine(
+        Ok(crate::collision_checker::engine::collides(
+            self.as_ref(),
             pos_self.0,
             other.as_ref(),
             pos_other.0,
@@ -40,7 +41,8 @@ impl CollisionObject {
         end_pos_other: Pose,
         engine: CollisionEngine,
     ) -> PyResult<bool> {
-        Ok(self.as_ref().collides_continuous_with_engine(
+        Ok(crate::collision_checker::engine::collides_continuous(
+            self.as_ref(),
             start_pos_self.0,
             end_pos_self.0,
             other.as_ref(),
@@ -118,7 +120,7 @@ impl Circle {
         if radius <= 0.0 {
             return Err(PyValueError::new_err("Radius must be positive"));
         }
-        Ok((Self, SimpleCollisionObject::circle(center, radius).into()))
+        Ok((Self, SimpleCollisionObject::circle(center, radius)?.into()))
     }
 }
 
@@ -193,10 +195,7 @@ impl Polygon {
         let collision_object = SimpleCollisionObject::polygon(GeoPolygon::new(
             exterior.into(),
             interiors.into_iter().map_into().collect(),
-        ));
-        if matches!(collision_object, SimpleCollisionObject::Empty(_)) {
-            return Err(PyValueError::new_err("Polygon must not be empty"));
-        }
+        ))?;
         Ok((Self, collision_object.into()))
     }
 }
@@ -221,7 +220,7 @@ impl Rectangle {
         let upper_right = coord! {x: center.0 + length / 2.0, y: center.1 + width / 2.0};
         Ok((
             Self,
-            SimpleCollisionObject::rectangle(Rect::new(lower_left, upper_right), orientation)
+            SimpleCollisionObject::rectangle(Rect::new(lower_left, upper_right), orientation)?
                 .into(),
         ))
     }
@@ -235,10 +234,7 @@ impl Triangle {
     #[new]
     pub fn new(a: (f64, f64), b: (f64, f64), c: (f64, f64)) -> PyResult<(Self, CollisionObject)> {
         let collision_object =
-            SimpleCollisionObject::triangle(GeoTriangle::new(a.into(), b.into(), c.into()));
-        if matches!(collision_object, SimpleCollisionObject::Empty(..)) {
-            return Err(PyValueError::new_err("Triangle must not be empty"));
-        }
+            SimpleCollisionObject::triangle(GeoTriangle::new(a.into(), b.into(), c.into()))?;
         Ok((Self, collision_object.into()))
     }
 }

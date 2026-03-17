@@ -1,4 +1,3 @@
-use crate::collision_checker::CollisionCheckerError;
 use crate::collision_checker::SelectedCollisionChecker;
 pub use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::{
@@ -8,6 +7,7 @@ use crate::python::collision_object::CollisionObject;
 use crate::python::dynamic_obstacle::DynamicObstacle;
 use crate::python::pose::Pose;
 use crate::time::{TimeStep, TimeStepInner};
+use crate::error::CrccError;
 use geo::Polygon;
 use glamx::DPose2;
 use itertools::Itertools;
@@ -156,16 +156,6 @@ fn min_max_to_range(
         (Some(min_t), Some(max_t)) => TimeStep::from(min_t)..=TimeStep::from(max_t),
         (Some(t), None) | (None, Some(t)) => TimeStep::from(t)..=TimeStep::from(t),
         (None, None) => TimeStep::MIN..=TimeStep::MAX,
-    }
-}
-
-impl From<CollisionCheckerError> for PyErr {
-    fn from(value: CollisionCheckerError) -> Self {
-        match value {
-            CollisionCheckerError::Unsupported => {
-                PyValueError::new_err("Unsupported shape combination")
-            }
-        }
     }
 }
 

@@ -166,6 +166,15 @@ fn components_collide(
     }
 }
 
+/// Per-component continuous collision detection.
+///
+/// This implementation splits into two paths:
+/// 1. **Exact (Finite vs Finite)**: Uses Rhusics' GJK-based Time of Impact (TOI)
+///    solver for continuous collision of finite shapes.
+/// 2. **Conservative (Half-Space involved)**: Checks only the start and end
+///    positions for collisions involving infinite half-spaces. This is
+///    conservative for linear translations but may miss rotational tunneling
+///    if the half-space is moving fast.
 fn components_collide_continuous(
     gjk: &GJK2<f64>,
     left: &RhusicsCoreCollisionComponent,
@@ -189,6 +198,7 @@ fn components_collide_continuous(
             right_end_pose,
         ),
         _ => {
+            // Conservative path for infinite components: check endpoints only.
             components_collide(gjk, left, left_start_pose, right, right_start_pose)
                 || components_collide(gjk, left, left_end_pose, right, right_end_pose)
         }

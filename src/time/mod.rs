@@ -23,6 +23,10 @@ impl TimeStep {
         Self(self.0.saturating_add(1))
     }
 
+    pub fn add_steps(&self, steps: usize) -> Self {
+        Self(self.0.saturating_add(steps as i32))
+    }
+
     pub fn iter_range(range: impl RangeBounds<Self>) -> impl Iterator<Item = Self> {
         let start = match range.start_bound() {
             std::ops::Bound::Included(t) => *t,

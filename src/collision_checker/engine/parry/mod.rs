@@ -1,7 +1,7 @@
-use crate::collision_checker::CollisionCheckerError;
 use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_checker::engine::parry::inner::ParryCollisionObjectInner;
 use crate::collision_object::CollisionObject;
+use crate::error::CrccError;
 use glamx::DPose2;
 use parry2d_f64::query::Unsupported;
 
@@ -17,7 +17,7 @@ impl EngineCollisionObject for ParryCollisionObject {
         pos_self: DPose2,
         other: &Self,
         pos_other: DPose2,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> Result<bool, CrccError> {
         Ok(self
             .as_ref()
             .collides(pos_self, other.as_ref(), pos_other)?)
@@ -30,7 +30,7 @@ impl EngineCollisionObject for ParryCollisionObject {
         other: &Self,
         start_pos_other: DPose2,
         end_pos_other: DPose2,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> Result<bool, CrccError> {
         Ok(self.as_ref().collides_continuous(
             start_pos_self,
             end_pos_self,
@@ -53,11 +53,11 @@ impl AsRef<ParryCollisionObjectInner> for ParryCollisionObject {
     }
 }
 
-impl From<Unsupported> for CollisionCheckerError {
+impl From<Unsupported> for CrccError {
     fn from(error: Unsupported) -> Self {
         match error {
             // Deliberate match with one arm to future-proof against new error variants in parry
-            Unsupported => CollisionCheckerError::Unsupported,
+            Unsupported => CrccError::Unsupported,
         }
     }
 }

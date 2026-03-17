@@ -13,12 +13,9 @@ path = "src/main.rs"
 required-features = ["rayon"]
 
 [features]
-default = ["parry", "parry-default-engine", "rhusics", "rhusics-default-engine"]
+default = ["parry", "rhusics"]
 parry = ["dep:parry2d-f64"]
 rhusics = ["dep:rhusics-core"]
-default-engine = []
-parry-default-engine = ["parry", "default-engine"]
-rhusics-default-engine = ["rhusics", "default-engine"]
 python_bindings = ["dep:pyo3", "rayon"]
 rayon = ["dep:rayon"]
 

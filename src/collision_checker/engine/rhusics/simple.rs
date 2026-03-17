@@ -15,12 +15,16 @@ pub enum RhusicsCoreSimpleCollisionObject {
     Compound(Vec<RhusicsCoreCollisionComponent>),
 }
 
+/// Represents a single collision component in the Rhusics engine.
 #[derive(Clone)]
 pub enum RhusicsCoreCollisionComponent {
+    /// A finite shape that can be handled by GJK/EPA.
     Finite(FiniteShape),
+    /// An infinite half-space, handled analytically.
     HalfSpace(HalfSpaceComponent),
 }
 
+/// A finite shape with a primitive, a relative position, and support point logic.
 #[derive(Clone)]
 pub struct FiniteShape {
     pub primitive: Primitive2<f64>,
@@ -28,17 +32,21 @@ pub struct FiniteShape {
     pub support: FiniteShapeSupport,
 }
 
+/// Support point implementation data for finite shapes.
 #[derive(Clone)]
 pub enum FiniteShapeSupport {
     Circle { radius: f64 },
     Vertices(Vec<DVec2>),
 }
 
+/// Analytic representation of a half-space: outward_normal * p <= offset.
 #[derive(Debug, Clone, Copy)]
 pub struct HalfSpaceComponent {
     pub outward_normal: DVec2,
     pub offset: f64,
 }
+
+// --- Conversion Logic ---
 
 impl RhusicsCoreSimpleCollisionObject {
     pub fn into_components(self) -> Vec<RhusicsCoreCollisionComponent> {
@@ -73,6 +81,7 @@ impl From<SimpleCollisionObject> for RhusicsCoreSimpleCollisionObject {
     }
 }
 
+/// Converts a domain HalfSpace into an analytic Rhusics component.
 fn convert_half_space(half_space: HalfSpace) -> RhusicsCoreSimpleCollisionObject {
     RhusicsCoreSimpleCollisionObject::Component(RhusicsCoreCollisionComponent::HalfSpace(
         HalfSpaceComponent {
@@ -82,6 +91,7 @@ fn convert_half_space(half_space: HalfSpace) -> RhusicsCoreSimpleCollisionObject
     ))
 }
 
+/// Converts a domain Circle into a Rhusics finite primitive.
 fn convert_circle(circle: Circle) -> RhusicsCoreSimpleCollisionObject {
     RhusicsCoreSimpleCollisionObject::Component(RhusicsCoreCollisionComponent::Finite(
         FiniteShape {
@@ -94,6 +104,7 @@ fn convert_circle(circle: Circle) -> RhusicsCoreSimpleCollisionObject {
     ))
 }
 
+/// Converts a domain Rectangle into a Rhusics finite primitive.
 fn convert_rectangle(rectangle: Rectangle) -> RhusicsCoreSimpleCollisionObject {
     let half_width = rectangle.width() / 2.0;
     let half_height = rectangle.height() / 2.0;

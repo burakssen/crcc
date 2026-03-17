@@ -1,4 +1,5 @@
 use crate::collision_object::simple::{SimpleCollisionObject, SweptArea, swept_areas};
+use crate::error::{CrccError, CrccResult};
 use geo::{HasDimensions, Triangle as GeoTriangle};
 use glamx::DPose2;
 use std::ops::Deref;
@@ -7,11 +8,11 @@ use std::ops::Deref;
 pub struct Triangle(pub(super) GeoTriangle);
 
 impl Triangle {
-    pub fn new(triangle: GeoTriangle) -> Triangle {
+    pub fn new(triangle: GeoTriangle) -> CrccResult<Triangle> {
         if triangle.is_empty() {
-            panic!("Triangle must not be empty.");
+            return Err(CrccError::EmptyShape);
         }
-        Triangle(triangle)
+        Ok(Triangle(triangle))
     }
 }
 

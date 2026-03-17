@@ -1,3 +1,4 @@
+use crate::error::{CrccError, CrccResult};
 use enum_dispatch::enum_dispatch;
 use geo::{
     AffineOps, AffineTransform, BooleanOps, ConvexHull, HasDimensions, IsConvex, Polygon, Rect,
@@ -67,44 +68,30 @@ impl SimpleCollisionObject {
         Self::HalfSpace(HalfSpace::from_coeffs(a, b, c))
     }
 
-    pub fn circle(center: (f64, f64), radius: f64) -> Self {
-        if radius <= 0.0 {
-            Self::empty()
-        } else {
-            Self::Circle(Circle { center, radius })
-        }
+    pub fn circle(center: (f64, f64), radius: f64) -> CrccResult<Self> {
+        Ok(Self::Circle(Circle::new(center, radius)?))
     }
 
-    pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> Self {
-        let rect = rect.into();
-        if rect.is_empty() {
-            Self::empty()
-        } else {
-            Self::Rectangle(Rectangle { rect, orientation })
-        }
+    pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> CrccResult<Self> {
+        Ok(Self::Rectangle(Rectangle::new(rect.into(), orientation)?))
     }
 
-    pub fn triangle(triangle: impl Into<GeoTriangle>) -> Self {
-        let triangle = triangle.into();
-        if triangle.is_empty() {
-            Self::empty()
-        } else {
-            Self::Triangle(Triangle(triangle))
-        }
+    pub fn triangle(triangle: impl Into<GeoTriangle>) -> CrccResult<Self> {
+        Ok(Self::Triangle(Triangle::new(triangle.into())?))
     }
 
-    pub fn polygon(polygon: impl Into<Polygon>) -> Self {
+    pub fn polygon(polygon: impl Into<Polygon>) -> CrccResult<Self> {
         let polygon = polygon.into();
         if polygon.is_empty() {
-            return Self::empty();
+            return Err(CrccError::EmptyShape);
         }
         match (
             polygon.exterior().is_convex(),
             polygon.interiors().is_empty(),
         ) {
-            (true, true) => Self::ConvexPolygon(ConvexPolygon(polygon)),
-            (false, true) => Self::NonConvexPolygon(NonConvexPolygon(polygon)),
-            _ => Self::PolygonWithHoles(PolygonWithHoles(polygon)),
+            (true, true) => Ok(Self::ConvexPolygon(ConvexPolygon::new(polygon)?)),
+            (false, true) => Ok(Self::NonConvexPolygon(NonConvexPolygon::new(polygon)?)),
+            _ => Ok(Self::PolygonWithHoles(PolygonWithHoles(polygon))),
         }
     }
     pub fn is_empty(&self) -> bool {
@@ -146,7 +133,9 @@ fn swept_areas(
         .iter()
         .tuple_windows()
         .map(|(start, end)| start.union(end).convex_hull())
-        .map(SimpleCollisionObject::polygon)
+        .map(|poly| {
+            SimpleCollisionObject::polygon(poly).expect("Swept area polygon should be valid")
+        })
         .collect()
 }
 
@@ -158,7 +147,6 @@ fn pose_to_affine(pose: DPose2) -> AffineTransform {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::collision_checker::engine::EngineCollisionObject;
     use crate::collision_object::CollisionObject;
     use glamx::approx::assert_relative_eq;
     use rstest::rstest;
@@ -175,23 +163,23 @@ mod tests {
         assert_relative_eq!(pose_point.y, affine_point.y);
     }
 
-    #[cfg(feature = "default-engine")]
+    #[cfg(feature = "parry")]
     #[rstest]
     fn test_swept_areas(
         #[values(
-            SimpleCollisionObject::circle((0.0, 0.0), 1.0),
-            SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0),
+            SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap(),
+            SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0).unwrap(),
             SimpleCollisionObject::triangle(GeoTriangle::new(
                 (0.0, 0.0).into(),
                 (1.0, 0.0).into(),
                 (0.0, 1.0).into(),
-            )),
+            )).unwrap(),
             SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0),
             // Convex polygon
             SimpleCollisionObject::polygon(Polygon::new(
                 vec![(0.0, 0.0), (2.0, 0.0), (1.0, 1.0)].into(),
                 vec![],
-            )),
+            )).unwrap(),
             // Non-convex polygon
             SimpleCollisionObject::polygon(Polygon::new(
                 vec![
@@ -203,12 +191,12 @@ mod tests {
                 ]
                 .into(),
                 vec![],
-            )),
+            )).unwrap(),
             // Polygon with holes
             SimpleCollisionObject::polygon(Polygon::new(
                 vec![(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)].into(),
                 vec![vec![(1.0, 1.0), (3.0, 1.0), (2.0, 3.0)].into()],
-            )),
+            )).unwrap(),
             SimpleCollisionObject::full_space(),
         )]
         shape: SimpleCollisionObject,
@@ -224,7 +212,7 @@ mod tests {
             .into_iter()
             .map(CollisionObject::from)
             .collect_vec();
-        let shape = CollisionObject::from(shape);
+        let shape_co = CollisionObject::from(shape.clone());
         assert_eq!(swept_areas.len(), positions.len().saturating_sub(1));
         for ((start_pos, end_pos), swept_area) in
             positions.iter().tuple_windows().zip(swept_areas.iter())
@@ -238,9 +226,14 @@ mod tests {
                 );
                 // Check that the swept area collides with the shape at the interpolated position
                 assert!(
-                    swept_area
-                        .collides_at(DPose2::IDENTITY, &shape, interp_pos)
-                        .unwrap()
+                    crate::collision_checker::engine::collides(
+                        &swept_area,
+                        DPose2::IDENTITY,
+                        &shape_co,
+                        interp_pos,
+                        crate::collision_checker::engine::CollisionEngine::default()
+                    )
+                    .unwrap()
                 );
             }
         }

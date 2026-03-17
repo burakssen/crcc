@@ -1,9 +1,9 @@
-use crate::collision_checker::CollisionCheckerError;
 use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_checker::engine::rhusics::inner::{
     RhusicsCoreCollisionObjectInner, Unsupported,
 };
 use crate::collision_object::CollisionObject;
+use crate::error::CrccError;
 use glamx::DPose2;
 //use parry2d_f64::query::Unsupported;
 
@@ -19,7 +19,7 @@ impl EngineCollisionObject for RhusicsCoreCollisionObject {
         pos_self: DPose2,
         other: &Self,
         pos_other: DPose2,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> Result<bool, CrccError> {
         Ok(self
             .as_ref()
             .collides(pos_self, other.as_ref(), pos_other)?)
@@ -32,7 +32,7 @@ impl EngineCollisionObject for RhusicsCoreCollisionObject {
         other: &Self,
         start_pos_other: DPose2,
         end_pos_other: DPose2,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> Result<bool, CrccError> {
         Ok(self.as_ref().collides_continuous(
             start_pos_self,
             end_pos_self,
@@ -55,12 +55,12 @@ impl AsRef<RhusicsCoreCollisionObjectInner> for RhusicsCoreCollisionObject {
     }
 }
 
-impl From<crate::collision_checker::engine::rhusics::inner::Unsupported> for CollisionCheckerError {
+impl From<crate::collision_checker::engine::rhusics::inner::Unsupported> for CrccError {
     fn from(err: crate::collision_checker::engine::rhusics::inner::Unsupported) -> Self {
         // Map this to whichever variant in CollisionCheckerError handles unsupported features.
         // For example, if you have an `Unsupported` variant:
         match err {
-            Unsupported(_) => CollisionCheckerError::Unsupported,
+            Unsupported(_) => CrccError::Unsupported,
         }
     }
 }

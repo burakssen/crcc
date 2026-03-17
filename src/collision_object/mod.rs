@@ -1,35 +1,22 @@
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::collision_object::simple::SweptArea;
-use cfg_if::cfg_if;
+use crate::error::CrccResult;
 use delegate::delegate;
 use geo::{Polygon, Rect, Triangle};
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
-
-cfg_if!(
-    if #[cfg(feature = "default-engine")] {
-        use crate::collision_checker::engine::default::DefaultEngineCollisionObject;
-        use crate::collision_checker::CollisionCheckerError;
-        use crate::collision_checker::engine::EngineCollisionObject;
-        use std::sync::OnceLock;
-    }
-);
 
 pub mod simple;
 
 #[derive(Debug, Clone)]
 pub struct CollisionObject {
     collision_objects: Vec<SimpleCollisionObject>,
-    #[cfg(feature = "default-engine")]
-    engine_collision_object: OnceLock<DefaultEngineCollisionObject>,
 }
 
 impl CollisionObject {
     fn new(collision_objects: Vec<SimpleCollisionObject>) -> Self {
         Self {
             collision_objects,
-            #[cfg(feature = "default-engine")]
-            engine_collision_object: OnceLock::new(),
         }
     }
 
@@ -47,11 +34,23 @@ impl CollisionObject {
             pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> Self;
             pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> Self;
             pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> Self;
-            pub fn circle(center: (f64, f64), radius: f64) -> Self;
-            pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> Self;
-            pub fn triangle(triangle: impl Into<Triangle>) -> Self;
-            pub fn polygon(polygon: impl Into<Polygon>) -> Self;
         }
+    }
+
+    pub fn circle(center: (f64, f64), radius: f64) -> CrccResult<Self> {
+        Ok(SimpleCollisionObject::circle(center, radius)?.into())
+    }
+
+    pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> CrccResult<Self> {
+        Ok(SimpleCollisionObject::rectangle(rect, orientation)?.into())
+    }
+
+    pub fn triangle(triangle: impl Into<Triangle>) -> CrccResult<Self> {
+        Ok(SimpleCollisionObject::triangle(triangle)?.into())
+    }
+
+    pub fn polygon(polygon: impl Into<Polygon>) -> CrccResult<Self> {
+        Ok(SimpleCollisionObject::polygon(polygon)?.into())
     }
 
     pub fn collision_objects(&self) -> &[SimpleCollisionObject] {
@@ -107,131 +106,6 @@ impl CollisionObject {
             .pop()
             .expect("Should return exactly one area, as two positions were given.")
     }
-
-    pub fn collides_at_with_engine(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-        engine: crate::collision_checker::engine::CollisionEngine,
-    ) -> Result<bool, crate::collision_checker::CollisionCheckerError> {
-        match engine {
-            #[cfg(feature = "parry")]
-            crate::collision_checker::engine::CollisionEngine::Parry => {
-                use crate::collision_checker::engine::EngineCollisionObject;
-                let slf: crate::collision_checker::engine::parry::ParryCollisionObject =
-                    self.clone().into();
-                let other = other.clone().into();
-                slf.collides_at(pos_self, &other, pos_other)
-            }
-            #[cfg(not(feature = "parry"))]
-            crate::collision_checker::engine::CollisionEngine::Parry => {
-                Err(crate::collision_checker::CollisionCheckerError::Unsupported)
-            }
-            #[cfg(feature = "rhusics")]
-            crate::collision_checker::engine::CollisionEngine::Rhusics => {
-                use crate::collision_checker::engine::EngineCollisionObject;
-                let slf: crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject =
-                    self.clone().into();
-                let other = other.clone().into();
-                slf.collides_at(pos_self, &other, pos_other)
-            }
-            #[cfg(not(feature = "rhusics"))]
-            crate::collision_checker::engine::CollisionEngine::Rhusics => {
-                Err(crate::collision_checker::CollisionCheckerError::Unsupported)
-            }
-        }
-    }
-
-    pub fn collides_continuous_with_engine(
-        &self,
-        start_pos_self: DPose2,
-        end_pos_self: DPose2,
-        other: &Self,
-        start_pos_other: DPose2,
-        end_pos_other: DPose2,
-        engine: crate::collision_checker::engine::CollisionEngine,
-    ) -> Result<bool, crate::collision_checker::CollisionCheckerError> {
-        match engine {
-            #[cfg(feature = "parry")]
-            crate::collision_checker::engine::CollisionEngine::Parry => {
-                use crate::collision_checker::engine::EngineCollisionObject;
-                let slf: crate::collision_checker::engine::parry::ParryCollisionObject =
-                    self.clone().into();
-                let other = other.clone().into();
-                slf.collides_continuous(
-                    start_pos_self,
-                    end_pos_self,
-                    &other,
-                    start_pos_other,
-                    end_pos_other,
-                )
-            }
-            #[cfg(not(feature = "parry"))]
-            crate::collision_checker::engine::CollisionEngine::Parry => {
-                Err(crate::collision_checker::CollisionCheckerError::Unsupported)
-            }
-            #[cfg(feature = "rhusics")]
-            crate::collision_checker::engine::CollisionEngine::Rhusics => {
-                use crate::collision_checker::engine::EngineCollisionObject;
-                let slf: crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject =
-                    self.clone().into();
-                let other = other.clone().into();
-                slf.collides_continuous(
-                    start_pos_self,
-                    end_pos_self,
-                    &other,
-                    start_pos_other,
-                    end_pos_other,
-                )
-            }
-            #[cfg(not(feature = "rhusics"))]
-            crate::collision_checker::engine::CollisionEngine::Rhusics => {
-                Err(crate::collision_checker::CollisionCheckerError::Unsupported)
-            }
-        }
-    }
-}
-
-#[cfg(feature = "default-engine")]
-impl CollisionObject {
-    fn engine_collision_object(&self) -> &DefaultEngineCollisionObject {
-        self.engine_collision_object
-            .get_or_init(|| DefaultEngineCollisionObject::from(self.clone()))
-    }
-}
-
-#[cfg(feature = "default-engine")]
-impl EngineCollisionObject for CollisionObject {
-    fn collides_at(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-    ) -> Result<bool, CollisionCheckerError> {
-        self.engine_collision_object().collides_at(
-            pos_self,
-            other.engine_collision_object(),
-            pos_other,
-        )
-    }
-
-    fn collides_continuous(
-        &self,
-        start_pos_self: DPose2,
-        end_pos_self: DPose2,
-        other: &Self,
-        start_pos_other: DPose2,
-        end_pos_other: DPose2,
-    ) -> Result<bool, CollisionCheckerError> {
-        self.engine_collision_object().collides_continuous(
-            start_pos_self,
-            end_pos_self,
-            other.engine_collision_object(),
-            start_pos_other,
-            end_pos_other,
-        )
-    }
 }
 
 impl Default for CollisionObject {
@@ -286,19 +160,19 @@ impl IntoIterator for CollisionObject {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use geo::{Polygon, Rect};
+    use geo::Rect;
     use glamx::{DPose2, DVec2};
     use rstest::{fixture, rstest};
     use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 
     #[fixture]
     fn circle() -> SimpleCollisionObject {
-        SimpleCollisionObject::circle((0.0, 0.0), 1.0)
+        SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap()
     }
 
     #[fixture]
     fn rectangle() -> SimpleCollisionObject {
-        SimpleCollisionObject::rectangle(Rect::new((-1.0, -1.0), (1.0, 1.0)), 0.0)
+        SimpleCollisionObject::rectangle(Rect::new((-1.0, -1.0), (1.0, 1.0)), 0.0).unwrap()
     }
 
     #[fixture]
@@ -369,19 +243,19 @@ mod tests {
         assert!(co.is_full_space());
     }
 
-    #[cfg(feature = "default-engine")]
+    #[cfg(feature = "parry")]
     #[rstest]
     fn test_swept_areas(
         #[values(
             CollisionObject::from(vec![
-                SimpleCollisionObject::circle((5.0, 0.0), 1.0),
-                SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0),
+                SimpleCollisionObject::circle((5.0, 0.0), 1.0).unwrap(),
+                SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0).unwrap(),
             ]),
             CollisionObject::from(vec![
                 SimpleCollisionObject::polygon(Polygon::new(
                     vec![(0.0, 0.0), (2.0, 0.0), (1.0, 1.0)].into(),
                     vec![],
-                )),
+                )).unwrap(),
                 SimpleCollisionObject::polygon(Polygon::new(
                     vec![
                         (0.0, 0.0),
@@ -392,7 +266,7 @@ mod tests {
                     ]
                     .into(),
                     vec![],
-                )),
+                )).unwrap(),
             ]),
         )]
         shape: CollisionObject,
@@ -417,9 +291,14 @@ mod tests {
                 );
                 // Check that the swept area collides with the shape at the interpolated position
                 assert!(
-                    swept_area
-                        .collides_at(DPose2::IDENTITY, &shape, interp_pos)
-                        .unwrap()
+                    crate::collision_checker::engine::collides(
+                        &swept_area,
+                        DPose2::IDENTITY,
+                        &shape,
+                        interp_pos,
+                        crate::collision_checker::engine::CollisionEngine::default()
+                    )
+                    .unwrap()
                 );
             }
         }

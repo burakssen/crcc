@@ -4,9 +4,9 @@ use crate::dynamic_obstacle::GenericDynamicObstacle;
 use crate::time::{TimeStep, TimeStepSet};
 use glamx::DPose2;
 use std::cell::LazyCell;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::ops::RangeBounds;
+
+use crate::error::CrccError;
 
 mod builder;
 mod ccd_collider;
@@ -34,27 +34,7 @@ impl CollisionStatus {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CollisionCheckerError {
-    Unsupported,
-}
-
-impl Display for CollisionCheckerError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CollisionCheckerError::Unsupported => {
-                write!(
-                    f,
-                    "collision checking of shape combination is not supported"
-                )
-            }
-        }
-    }
-}
-
-impl Error for CollisionCheckerError {}
-
-pub type CollisionResult = Result<CollisionStatus, CollisionCheckerError>;
+pub type CollisionResult = Result<CollisionStatus, CrccError>;
 
 pub struct CollisionChecker<E: EngineCollisionObject> {
     static_obstacle: E,
@@ -168,7 +148,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         &self,
         static_obstacle: &E,
         position: DPose2,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> Result<bool, CrccError> {
         E::collides_at(
             &self.static_obstacle,
             DPose2::IDENTITY,
@@ -182,7 +162,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         static_obstacle: &E,
         position: DPose2,
         time_step: TimeStep,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> Result<bool, CrccError> {
         for obs in &self.dynamic_obstacles {
             let Some((obs_shape, obs_pos)) =
                 obs.position_at(time_step).map(|pos| (obs.shape(), pos))
@@ -200,7 +180,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         &self,
         ccd_collider: &CCDCollider<E>,
         time_step: TimeStep,
-    ) -> Result<bool, CollisionCheckerError> {
+    ) -> Result<bool, CrccError> {
         for obs in &self.dynamic_obstacles {
             let Some(obs_ccd_collider) = obs.ccd_collider_at(time_step) else {
                 continue;
