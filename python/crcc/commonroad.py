@@ -6,11 +6,17 @@ from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.scenario.lanelet import LaneletNetwork
 from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import TraceState
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry.polygon import orient
+from shapely.ops import unary_union
 
 from crcc.collision_checker import CollisionCheckerBuilder
-from crcc.collision_object import Circle, CollisionObject, Compound, Polygon, Rectangle
+from crcc.collision_object import Circle, CollisionObject, Compound, HalfSpace, Polygon, Rectangle
 from crcc.dynamic_obstacle import DynamicObstacle
 from crcc.pose import Pose
+
+ROAD_BOUNDARY_SIMPLIFY_TOLERANCE = 0.01
+ROAD_BOUNDARY_MIN_HOLE_AREA = 0.001
 
 
 def create_collision_checker_from_scenario(
@@ -62,10 +68,48 @@ def add_road_boundary_to_builder(
     lanelet_network: LaneletNetwork,
 ) -> CollisionCheckerBuilder:
     """Adds the road boundary from a lanelet network to the builder."""
-    builder.with_road_boundary_obstacle(
-        [[(v[0], v[1]) for v in lanelet.polygon.vertices] for lanelet in lanelet_network.lanelets]
-    )
+    builder.with_static_obstacle(create_road_boundary_obstacle(lanelet_network))
     return builder
+
+
+def create_road_boundary_obstacle(lanelet_network: LaneletNetwork) -> CollisionObject:
+    """Creates an obstacle for all space outside the lanelet network."""
+    road = unary_union([lanelet.polygon.shapely_object for lanelet in lanelet_network.lanelets]).simplify(
+        ROAD_BOUNDARY_SIMPLIFY_TOLERANCE
+    )
+    if road.is_empty:
+        return Compound([])
+
+    road_convex_hull = orient(road.convex_hull, sign=1.0)
+    obstacles = [
+        HalfSpace.from_points(tuple(p1), tuple(p2))
+        for p1, p2 in zip(road_convex_hull.exterior.coords, road_convex_hull.exterior.coords[1:])
+    ]
+
+    holes = road_convex_hull.difference(road)
+    obstacles.extend(
+        commonroad_polygon_to_collision_object(orient(hole, sign=1.0))
+        for hole in iter_shapely_polygons(holes)
+        if hole.area > ROAD_BOUNDARY_MIN_HOLE_AREA
+    )
+    return Compound(obstacles)
+
+
+def iter_shapely_polygons(geometry):
+    if geometry.is_empty:
+        return
+    if isinstance(geometry, ShapelyPolygon):
+        yield geometry
+        return
+    for geom in geometry.geoms:
+        yield from iter_shapely_polygons(geom)
+
+
+def commonroad_polygon_to_collision_object(polygon: ShapelyPolygon) -> CollisionObject:
+    return Polygon(
+        exterior=[tuple(v) for v in polygon.exterior.coords],
+        interiors=[[tuple(v) for v in interior.coords] for interior in polygon.interiors],
+    )
 
 
 def commonroad_shape_to_collision_object(shape: cr_shape.Shape) -> CollisionObject:

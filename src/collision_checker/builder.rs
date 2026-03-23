@@ -5,8 +5,8 @@ use crate::collision_checker::selected::SelectedCollisionChecker;
 use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::dynamic_obstacle::DynamicObstacle;
-use crate::time::TimeStepSet;
 use crate::error::CrccError;
+use crate::time::TimeStepSet;
 use geo::{Area, BooleanOps, ConvexHull, HasDimensions, Polygon, Simplify, Winding, unary_union};
 use itertools::{Itertools, chain};
 
@@ -59,7 +59,9 @@ impl CollisionCheckerBuilder {
             #[cfg(not(feature = "parry"))]
             CollisionEngine::Parry => Err(CrccError::UnsupportedEngine),
             #[cfg(feature = "rhusics")]
-            CollisionEngine::Rhusics => Ok(SelectedCollisionChecker::Rhusics(Box::new(self.build()))),
+            CollisionEngine::Rhusics => {
+                Ok(SelectedCollisionChecker::Rhusics(Box::new(self.build())))
+            }
             #[cfg(not(feature = "rhusics"))]
             CollisionEngine::Rhusics => Err(CrccError::UnsupportedEngine),
         }

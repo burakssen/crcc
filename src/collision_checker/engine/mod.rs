@@ -1,5 +1,5 @@
-use crate::error::CrccError;
 use crate::collision_object::CollisionObject;
+use crate::error::CrccError;
 use glamx::DPose2;
 
 #[cfg(feature = "parry")]
@@ -131,10 +131,8 @@ mod tests {
         pos_right: DPose2,
         expected: bool,
     ) {
-        let parry = collides(left, pos_left, right, pos_right, CollisionEngine::Parry)
-            .unwrap();
-        let rhusics = collides(left, pos_left, right, pos_right, CollisionEngine::Rhusics)
-            .unwrap();
+        let parry = collides(left, pos_left, right, pos_right, CollisionEngine::Parry).unwrap();
+        let rhusics = collides(left, pos_left, right, pos_right, CollisionEngine::Rhusics).unwrap();
         assert_eq!(parry, expected);
         assert_eq!(rhusics, expected);
     }
@@ -146,8 +144,7 @@ mod tests {
         pos_right: DPose2,
         expected: bool,
     ) {
-        let rhusics = collides(left, pos_left, right, pos_right, CollisionEngine::Rhusics)
-            .unwrap();
+        let rhusics = collides(left, pos_left, right, pos_right, CollisionEngine::Rhusics).unwrap();
         assert_eq!(rhusics, expected);
     }
 
@@ -157,7 +154,8 @@ mod tests {
         let full = CollisionObject::full_space();
         let circle = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
         let distant_circle = CollisionObject::circle((5.0, 0.0), 1.0).unwrap();
-        let rectangle = CollisionObject::rectangle(Rect::new((-1.0, -0.5), (1.0, 0.5)), 0.4).unwrap();
+        let rectangle =
+            CollisionObject::rectangle(Rect::new((-1.0, -0.5), (1.0, 0.5)), 0.4).unwrap();
         let triangle = CollisionObject::from(
             SimpleCollisionObject::triangle(Triangle::new(
                 (0.0, 0.0).into(),
@@ -176,7 +174,8 @@ mod tests {
             ]
             .into(),
             vec![],
-        )).unwrap();
+        ))
+        .unwrap();
         let non_convex_polygon = CollisionObject::polygon(Polygon::new(
             vec![
                 (0.0, 0.0),
@@ -188,7 +187,8 @@ mod tests {
             ]
             .into(),
             vec![],
-        )).unwrap();
+        ))
+        .unwrap();
         let polygon_with_hole = CollisionObject::polygon(Polygon::new(
             vec![
                 (-3.0, -3.0),
@@ -208,7 +208,8 @@ mod tests {
                 ]
                 .into(),
             ],
-        )).unwrap();
+        ))
+        .unwrap();
 
         assert_engine_parity(&empty, &full, false);
         assert_engine_parity(&full, &distant_circle, true);
@@ -236,7 +237,8 @@ mod tests {
 
     #[test]
     fn discrete_engines_match_for_reproduced_static_dynamic_rectangle_collision() {
-        let obstacle = CollisionObject::rectangle(Rect::new((-2.15, -0.9), (2.15, 0.9)), 0.0).unwrap();
+        let obstacle =
+            CollisionObject::rectangle(Rect::new((-2.15, -0.9), (2.15, 0.9)), 0.0).unwrap();
         let query = CollisionObject::rectangle(Rect::new((-2.25, -1.0), (2.25, 1.0)), 0.0).unwrap();
 
         assert_engine_parity_at(
@@ -297,7 +299,8 @@ mod tests {
             ]
             .into(),
             vec![],
-        )).unwrap();
+        ))
+        .unwrap();
         let polygon_with_hole = CollisionObject::polygon(Polygon::new(
             vec![
                 (-10.0, -10.0),
@@ -317,7 +320,8 @@ mod tests {
                 ]
                 .into(),
             ],
-        )).unwrap();
+        ))
+        .unwrap();
         let circle = CollisionObject::circle((500_000.0, 500_000.0), 1.0).unwrap();
         let hole_circle = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
 
@@ -334,6 +338,33 @@ mod tests {
             &hole_circle,
             DPose2::IDENTITY,
             false,
+        );
+    }
+
+    #[test]
+    fn rhusics_matches_parry_for_non_convex_polygon_collision() {
+        let non_convex_polygon = CollisionObject::polygon(Polygon::new(
+            vec![
+                (0.0, 0.0),
+                (5.0, 0.0),
+                (5.0, 1.0),
+                (1.0, 1.0),
+                (1.0, 5.0),
+                (0.0, 5.0),
+                (0.0, 0.0),
+            ]
+            .into(),
+            vec![],
+        ))
+        .unwrap();
+        let query = CollisionObject::rectangle(Rect::new((-0.75, -0.4), (0.75, 0.4)), 0.6).unwrap();
+
+        assert_engine_parity_at(
+            &non_convex_polygon,
+            DPose2::IDENTITY,
+            &query,
+            DPose2::translation(4.4, 0.5),
+            true,
         );
     }
 
@@ -383,15 +414,15 @@ mod tests {
         for engine in [CollisionEngine::Parry, CollisionEngine::Rhusics] {
             assert!(
                 collides_continuous(
-                        &moving,
-                        DPose2::translation(-5.0, 0.0),
-                        DPose2::translation(5.0, 0.0),
-                        &fixed,
-                        DPose2::IDENTITY,
-                        DPose2::IDENTITY,
-                        engine,
-                    )
-                    .unwrap()
+                    &moving,
+                    DPose2::translation(-5.0, 0.0),
+                    DPose2::translation(5.0, 0.0),
+                    &fixed,
+                    DPose2::IDENTITY,
+                    DPose2::IDENTITY,
+                    engine,
+                )
+                .unwrap()
             );
         }
     }
@@ -403,15 +434,15 @@ mod tests {
 
         assert!(
             collides_continuous(
-                    &moving,
-                    DPose2::translation(5.0, 0.0),
-                    DPose2::translation(-5.0, 0.0),
-                    &half_space,
-                    DPose2::IDENTITY,
-                    DPose2::IDENTITY,
-                    CollisionEngine::Rhusics,
-                )
-                .unwrap()
+                &moving,
+                DPose2::translation(5.0, 0.0),
+                DPose2::translation(-5.0, 0.0),
+                &half_space,
+                DPose2::IDENTITY,
+                DPose2::IDENTITY,
+                CollisionEngine::Rhusics,
+            )
+            .unwrap()
         );
     }
 

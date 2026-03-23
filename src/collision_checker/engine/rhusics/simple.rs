@@ -4,7 +4,7 @@ use crate::collision_object::simple::{
 };
 use cgmath::Point2;
 use collision::primitive::Primitive2;
-use geo::TriangulateEarcut;
+use geo::{TriangulateEarcut, Winding};
 use glamx::{DPose2, DVec2};
 use rhusics_core::collide2d::ConvexPolygon as RhusicsConvexPolygon;
 
@@ -127,11 +127,12 @@ fn convert_rectangle(rectangle: Rectangle) -> RhusicsCoreSimpleCollisionObject {
 }
 
 fn convert_triangle(triangle: Triangle) -> RhusicsCoreSimpleCollisionObject {
-    let vertices = [
+    let mut vertices = [
         DVec2::new(triangle.0.x, triangle.0.y),
         DVec2::new(triangle.1.x, triangle.1.y),
         DVec2::new(triangle.2.x, triangle.2.y),
     ];
+    normalize_triangle_winding(&mut vertices);
 
     let primitive = RhusicsConvexPolygon::new(vertices.iter().copied().map(point).collect());
 
@@ -145,15 +146,12 @@ fn convert_triangle(triangle: Triangle) -> RhusicsCoreSimpleCollisionObject {
 }
 
 fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> RhusicsCoreSimpleCollisionObject {
-    let mut vertices: Vec<DVec2> = convex_polygon
+    let vertices: Vec<DVec2> = convex_polygon
         .exterior()
-        .coords()
-        .map(|c| DVec2::new(c.x, c.y))
+        .points_ccw()
+        .skip(1)
+        .map(|p| DVec2::new(p.x(), p.y()))
         .collect();
-
-    if vertices.len() > 1 && vertices.first() == vertices.last() {
-        vertices.pop();
-    }
 
     let primitive = RhusicsConvexPolygon::new(vertices.iter().copied().map(point).collect());
 
@@ -169,50 +167,50 @@ fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> RhusicsCoreSimpleCol
 fn convert_non_convex_polygon(
     non_convex_polygon: NonConvexPolygon,
 ) -> RhusicsCoreSimpleCollisionObject {
-    let triangles = non_convex_polygon
-        .exterior()
-        .triangles()
-        .collect::<Vec<_>>();
-
-    let mut shapes = Vec::new();
-    for triangle in triangles {
-        let vertices = [
-            DVec2::new(triangle.0.x, triangle.0.y),
-            DVec2::new(triangle.1.x, triangle.1.y),
-            DVec2::new(triangle.2.x, triangle.2.y),
-        ];
-        let primitive = RhusicsConvexPolygon::new(vertices.iter().copied().map(point).collect());
-        shapes.push(RhusicsCoreCollisionComponent::Finite(FiniteShape {
-            primitive: primitive.into(),
-            position: DPose2::IDENTITY,
-            support: FiniteShapeSupport::Vertices(vertices.into()),
-        }));
-    }
-
-    RhusicsCoreSimpleCollisionObject::Compound(shapes)
+    RhusicsCoreSimpleCollisionObject::Compound(
+        non_convex_polygon
+            .earcut_triangles()
+            .into_iter()
+            .map(triangle_to_component)
+            .collect(),
+    )
 }
 
 fn convert_polygon_with_holes(
     polygon_with_holes: PolygonWithHoles,
 ) -> RhusicsCoreSimpleCollisionObject {
-    let triangles = polygon_with_holes.earcut_triangles();
+    RhusicsCoreSimpleCollisionObject::Compound(
+        polygon_with_holes
+            .earcut_triangles()
+            .into_iter()
+            .map(triangle_to_component)
+            .collect(),
+    )
+}
 
-    let mut shapes = Vec::new();
-    for triangle in triangles {
-        let vertices = [
-            DVec2::new(triangle.0.x, triangle.0.y),
-            DVec2::new(triangle.1.x, triangle.1.y),
-            DVec2::new(triangle.2.x, triangle.2.y),
-        ];
-        let primitive = RhusicsConvexPolygon::new(vertices.iter().copied().map(point).collect());
-        shapes.push(RhusicsCoreCollisionComponent::Finite(FiniteShape {
-            primitive: primitive.into(),
-            position: DPose2::IDENTITY,
-            support: FiniteShapeSupport::Vertices(vertices.into()),
-        }));
+fn triangle_to_component(triangle: geo::Triangle) -> RhusicsCoreCollisionComponent {
+    let mut vertices = [
+        DVec2::new(triangle.0.x, triangle.0.y),
+        DVec2::new(triangle.1.x, triangle.1.y),
+        DVec2::new(triangle.2.x, triangle.2.y),
+    ];
+    normalize_triangle_winding(&mut vertices);
+    let primitive = RhusicsConvexPolygon::new(vertices.iter().copied().map(point).collect());
+    RhusicsCoreCollisionComponent::Finite(FiniteShape {
+        primitive: primitive.into(),
+        position: DPose2::IDENTITY,
+        support: FiniteShapeSupport::Vertices(vertices.into()),
+    })
+}
+
+fn normalize_triangle_winding(vertices: &mut [DVec2; 3]) {
+    if signed_area(vertices) < 0.0 {
+        vertices.swap(1, 2);
     }
+}
 
-    RhusicsCoreSimpleCollisionObject::Compound(shapes)
+fn signed_area(vertices: &[DVec2; 3]) -> f64 {
+    (vertices[1] - vertices[0]).perp_dot(vertices[2] - vertices[0]) / 2.0
 }
 
 fn make_pose(translation: impl Into<DVec2>, rotation: f64) -> DPose2 {

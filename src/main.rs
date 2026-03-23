@@ -14,7 +14,9 @@ use std::time::Instant;
 
 fn main() {
     let dyn_obs = DynamicObstacle::new(
-        SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap().into(),
+        SimpleCollisionObject::circle((0.0, 0.0), 1.0)
+            .unwrap()
+            .into(),
         vec![
             DPose2::translation(10.0, 10.0),
             DPose2::translation(9.0, 9.0),
@@ -30,7 +32,9 @@ fn main() {
 
     let obj = CollisionObject::from(SimpleCollisionObject::circle((8.0, 8.0), 1.0).unwrap()).into();
     let dyn_obs2 = DynamicObstacle::new(
-        SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap().into(),
+        SimpleCollisionObject::circle((0.0, 0.0), 1.0)
+            .unwrap()
+            .into(),
         vec![
             DPose2::translation(5.0, 5.0),
             DPose2::translation(15.0, -5.0),
@@ -95,7 +99,9 @@ fn demo_parallel_collision_checks() {
     let now = Instant::now();
     let test_objects: Vec<_> = (0..50000)
         .into_par_iter()
-        .map(|i| CollisionObject::from(SimpleCollisionObject::circle((i as f64, 0.0), 1.0).unwrap()))
+        .map(|i| {
+            CollisionObject::from(SimpleCollisionObject::circle((i as f64, 0.0), 1.0).unwrap())
+        })
         .map(|co| (co, DPose2::IDENTITY))
         .collect();
     println!(

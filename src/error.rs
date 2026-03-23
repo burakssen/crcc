@@ -1,5 +1,5 @@
-use std::fmt::{Display, Formatter};
 use std::error::Error;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CrccError {
@@ -17,7 +17,10 @@ impl Display for CrccError {
             CrccError::NotConvex => write!(f, "Shape must be convex."),
             CrccError::HasHoles => write!(f, "Shape may not have holes."),
             CrccError::EmptyShape => write!(f, "Shape must not be empty."),
-            CrccError::Unsupported => write!(f, "Collision checking of shape combination is not supported."),
+            CrccError::Unsupported => write!(
+                f,
+                "Collision checking of shape combination is not supported."
+            ),
         }
     }
 }

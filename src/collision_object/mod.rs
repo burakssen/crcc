@@ -15,9 +15,7 @@ pub struct CollisionObject {
 
 impl CollisionObject {
     fn new(collision_objects: Vec<SimpleCollisionObject>) -> Self {
-        Self {
-            collision_objects,
-        }
+        Self { collision_objects }
     }
 
     pub fn empty() -> Self {

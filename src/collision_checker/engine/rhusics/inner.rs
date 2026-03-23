@@ -212,6 +212,17 @@ fn finite_shapes_collide(
     right: &FiniteShape,
     right_pose: DPose2,
 ) -> bool {
+    if let (
+        FiniteShapeSupport::Vertices(left_vertices),
+        FiniteShapeSupport::Vertices(right_vertices),
+    ) = (&left.support, &right.support)
+    {
+        return convex_polygons_collide(
+            &transform_vertices(left_vertices, left_pose * left.position),
+            &transform_vertices(right_vertices, right_pose * right.position),
+        );
+    }
+
     let left_global_pose = left_pose * left.position;
     let right_global_pose = right_pose * right.position;
     let left_cg_pose = glam_to_cgmath_pose(&left_global_pose);
@@ -224,6 +235,38 @@ fn finite_shapes_collide(
         &right_cg_pose,
     )
     .is_some()
+}
+
+fn transform_vertices(vertices: &[DVec2], pose: DPose2) -> Vec<DVec2> {
+    vertices.iter().map(|vertex| pose * *vertex).collect()
+}
+
+fn convex_polygons_collide(left: &[DVec2], right: &[DVec2]) -> bool {
+    !has_separating_axis(left, left, right) && !has_separating_axis(right, left, right)
+}
+
+fn has_separating_axis(axis_source: &[DVec2], left: &[DVec2], right: &[DVec2]) -> bool {
+    axis_source
+        .iter()
+        .zip(axis_source.iter().cycle().skip(1))
+        .take(axis_source.len())
+        .any(|(start, end)| {
+            let edge = *end - *start;
+            let axis = DVec2::new(-edge.y, edge.x).normalize_or_zero();
+            if axis == DVec2::ZERO {
+                return false;
+            }
+            let (left_min, left_max) = project_vertices(left, axis);
+            let (right_min, right_max) = project_vertices(right, axis);
+            left_max < right_min || right_max < left_min
+        })
+}
+
+fn project_vertices(vertices: &[DVec2], axis: DVec2) -> (f64, f64) {
+    vertices.iter().map(|vertex| vertex.dot(axis)).fold(
+        (f64::INFINITY, f64::NEG_INFINITY),
+        |(min, max), projection| (min.min(projection), max.max(projection)),
+    )
 }
 
 fn finite_shapes_collide_continuous(

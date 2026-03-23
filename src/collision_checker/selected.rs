@@ -11,7 +11,9 @@ pub enum SelectedCollisionChecker {
     Parry(Box<CollisionChecker<crate::collision_checker::engine::parry::ParryCollisionObject>>),
     #[cfg(feature = "rhusics")]
     Rhusics(
-        Box<CollisionChecker<crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject>>,
+        Box<
+            CollisionChecker<crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject>,
+        >,
     ),
 }
 

@@ -1,5 +1,6 @@
 import random
 import time
+from pathlib import Path
 
 import commonroad.geometry.shape as cr_shape
 import numpy as np
@@ -12,19 +13,22 @@ from crcc.commonroad import create_collision_checker_from_scenario
 from crcc.pose import Pose
 from matplotlib import pyplot as plt
 
-SCENARIO_PATH = "scenarios/ZAM_Merge-1_1_T-1.xml"
-ENGINE = CollisionEngine.Parry
+SCENARIO_PATH = "scenarios/a9967e87-1876-4e2f-927c-ebced1b361b2.xml"
+ENGINE = CollisionEngine.Rhusics
 CAR_SIZE = (4.5, 2.0)
-POSE_BOUNDS = ([-7.0, -15.0, -np.pi], [87.0, 10.0, np.pi])
+POSE_BOUNDS_PADDING = 5.0
 BENCHMARK_SAMPLE_COUNT = 100_000
-VISUALIZATION_SAMPLE_COUNT = 200
+VISUALIZATION_SAMPLE_COUNT = 2000
+DIAGNOSTIC_SAMPLE_COUNT = 1_000
+MERGE_SCENARIO_NAME = "a9967e87-1876-4e2f-927c-ebced1b361b2.xml"
 
 
 def main():
     scenario, checker = load_collision_checker(SCENARIO_PATH)
-    run_smoke_checks(checker)
+    pose_bounds = scenario_pose_bounds(scenario)
+    run_smoke_checks(scenario, checker, SCENARIO_PATH, pose_bounds)
     run_geometry_examples()
-    demo_parallel(scenario, checker)
+    demo_parallel(scenario, checker, pose_bounds)
 
 
 def load_collision_checker(scenario_path: str):
@@ -34,10 +38,30 @@ def load_collision_checker(scenario_path: str):
     return scenario, checker
 
 
-def run_smoke_checks(checker):
+def run_smoke_checks(scenario, checker, scenario_path: str, pose_bounds):
     car = Rectangle(*CAR_SIZE)
-    print("Collides with road boundary", checker.collides_static(car, Pose((55.29, -1.99), 1.326)))
-    print("Collides between step 26 and 27", checker.collides_static(car, Pose((37.33, 4.07), -2.207)))
+    print(f"Loaded scenario: {Path(scenario_path).name}")
+    print(f"Lanelets: {len(scenario.lanelet_network.lanelets)}")
+    print(f"Static obstacles: {len(scenario.static_obstacles)}")
+    print(f"Dynamic obstacles: {len(scenario.dynamic_obstacles)}")
+    print(f"Pose sample bounds: {format_pose_bounds(pose_bounds)}")
+
+    if Path(scenario_path).name == MERGE_SCENARIO_NAME:
+        print(
+            "Merge smoke check, road boundary:",
+            checker.collides_static(car, Pose((55.29, -1.99), 1.326)),
+        )
+        print(
+            "Merge smoke check, any-time dynamic collision:",
+            checker.collides_static(car, Pose((37.33, 4.07), -2.207)),
+        )
+        return
+
+    poses = sample_poses(DIAGNOSTIC_SAMPLE_COUNT, pose_bounds)
+    results = [checker.collides_static(car, pose) for pose in poses]
+    print(
+        f"Scenario diagnostic: {count_collisions(results)} / {len(results)} sampled poses collide at some scenario time"
+    )
 
 
 def run_geometry_examples():
@@ -62,32 +86,49 @@ def run_geometry_examples():
     print("Should collide", outer_polygon.collides(overlapping_polygon))
 
 
-def demo_parallel(scenario, checker):
+def demo_parallel(scenario, checker, pose_bounds):
     car = Rectangle(*CAR_SIZE)
-    poses = sample_poses(BENCHMARK_SAMPLE_COUNT)
+    poses = sample_poses(BENCHMARK_SAMPLE_COUNT, pose_bounds)
     positioned_cars = [(car, pose) for pose in poses]
 
     parallel_results, parallel_elapsed = timed(
         lambda: checker.par_collides_static(positioned_cars),
     )
-    print(
-        f"Parallel: {parallel_elapsed:.4f} seconds, "
-        f"{count_collisions(parallel_results)} collisions"
-    )
+    print(f"Parallel any-time checks: {parallel_elapsed:.4f} seconds, {count_collisions(parallel_results)} collisions")
 
     sequential_results, sequential_elapsed = timed(
         lambda: [checker.collides_static(car, pose) for car, pose in positioned_cars],
     )
     print(
-        f"Sequential: {sequential_elapsed:.4f} seconds, "
+        f"Sequential any-time checks: {sequential_elapsed:.4f} seconds, "
         f"{count_collisions(sequential_results)} collisions"
     )
 
     visualize_sampled_results(scenario, poses, sequential_results)
 
 
-def sample_poses(count):
-    lower_bounds, upper_bounds = POSE_BOUNDS
+def scenario_pose_bounds(scenario):
+    vertices = np.concatenate(
+        [lanelet.polygon.vertices for lanelet in scenario.lanelet_network.lanelets],
+    )
+    min_xy = vertices.min(axis=0) - POSE_BOUNDS_PADDING
+    max_xy = vertices.max(axis=0) + POSE_BOUNDS_PADDING
+    lower_bounds = [min_xy[0], min_xy[1], -np.pi]
+    upper_bounds = [max_xy[0], max_xy[1], np.pi]
+    return lower_bounds, upper_bounds
+
+
+def format_pose_bounds(pose_bounds):
+    lower_bounds, upper_bounds = pose_bounds
+    return (
+        f"x=[{lower_bounds[0]:.2f}, {upper_bounds[0]:.2f}], "
+        f"y=[{lower_bounds[1]:.2f}, {upper_bounds[1]:.2f}], "
+        f"theta=[{-np.pi:.2f}, {np.pi:.2f}]"
+    )
+
+
+def sample_poses(count, pose_bounds):
+    lower_bounds, upper_bounds = pose_bounds
     return [Pose((x, y), rotation) for x, y, rotation in np.random.uniform(lower_bounds, upper_bounds, (count, 3))]
 
 
@@ -102,7 +143,10 @@ def count_collisions(results):
 
 
 def visualize_sampled_results(scenario, poses, results):
-    samples = random.sample(list(zip(poses, results, strict=True)), min(len(poses), VISUALIZATION_SAMPLE_COUNT))
+    samples = random.sample(
+        list(zip(poses, results, strict=True)),
+        min(len(poses), VISUALIZATION_SAMPLE_COUNT),
+    )
     renderer = MPRenderer()
     scenario.draw(renderer)
     for pose, collision_status in samples:

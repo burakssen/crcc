@@ -1,6 +1,6 @@
-use pyo3::prelude::*;
-use pyo3::exceptions::PyValueError;
 use crate::error::CrccError;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
 
 mod collision_checker;
 mod collision_object;
