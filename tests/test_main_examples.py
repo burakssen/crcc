@@ -9,6 +9,11 @@ from crcc.pose import Pose
 import main
 
 
+class CollisionResultStub:
+    def __init__(self, collides):
+        self.collides = collides
+
+
 class MainExampleTests(unittest.TestCase):
     def test_bundled_scenarios_build_with_valid_pose_bounds(self):
         for scenario_path in sorted(Path("scenarios").glob("*.xml")):
@@ -42,6 +47,24 @@ class MainExampleTests(unittest.TestCase):
                     scenario.lanelet_network,
                 ).build()
                 self.assertTrue(checker.collides_static(car, pose).collides)
+
+    def test_scenario_time_steps_are_ordered_and_non_empty(self):
+        scenario, _ = main.CommonRoadFileReader("scenarios/ZAM_Yield-1_1_T-1.xml").open()
+
+        time_steps = main.scenario_time_steps(scenario)
+
+        self.assertGreater(len(time_steps), 0)
+        self.assertEqual(time_steps, sorted(set(time_steps)))
+
+    def test_collision_flags_persist_after_first_collision(self):
+        collided_flags = [False, True, False]
+
+        main.update_collision_flags(
+            collided_flags,
+            [CollisionResultStub(False), CollisionResultStub(False), CollisionResultStub(True)],
+        )
+
+        self.assertEqual(collided_flags, [False, True, True])
 
 
 if __name__ == "__main__":

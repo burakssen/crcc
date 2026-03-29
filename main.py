@@ -5,22 +5,27 @@ from pathlib import Path
 import commonroad.geometry.shape as cr_shape
 import numpy as np
 from commonroad.common.file_reader import CommonRoadFileReader
-from commonroad.visualization.draw_params import ShapeParams
+from commonroad.prediction.prediction import TrajectoryPrediction
+from commonroad.visualization.draw_params import MPDrawParams, ShapeParams
 from commonroad.visualization.mp_renderer import MPRenderer
 from crcc.collision_checker import CollisionCheckerBuilder, CollisionEngine
 from crcc.collision_object import Circle, Polygon, Rectangle
 from crcc.commonroad import create_collision_checker_from_scenario
 from crcc.pose import Pose
 from matplotlib import pyplot as plt
+from matplotlib.animation import FuncAnimation
 
-SCENARIO_PATH = "scenarios/a9967e87-1876-4e2f-927c-ebced1b361b2.xml"
+SCENARIO_PATH = "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
 ENGINE = CollisionEngine.Rhusics
 CAR_SIZE = (4.5, 2.0)
 POSE_BOUNDS_PADDING = 5.0
 BENCHMARK_SAMPLE_COUNT = 100_000
-VISUALIZATION_SAMPLE_COUNT = 2000
+VISUALIZATION_SAMPLE_COUNT = 5000
 DIAGNOSTIC_SAMPLE_COUNT = 1_000
-MERGE_SCENARIO_NAME = "a9967e87-1876-4e2f-927c-ebced1b361b2.xml"
+MERGE_SCENARIO_NAME = "DEU_MerzenichRather-2_870_T-149.xml"
+ANIMATION_INTERVAL_MS = 100
+COLOR_COLLIDED = "red"
+COLOR_CLEAR = "green"
 
 
 def main():
@@ -104,7 +109,7 @@ def demo_parallel(scenario, checker, pose_bounds):
         f"{count_collisions(sequential_results)} collisions"
     )
 
-    visualize_sampled_results(scenario, poses, sequential_results)
+    visualize_animated_results(scenario, checker, poses, pose_bounds)
 
 
 def scenario_pose_bounds(scenario):
@@ -142,19 +147,74 @@ def count_collisions(results):
     return sum(result.collides for result in results)
 
 
-def visualize_sampled_results(scenario, poses, results):
-    samples = random.sample(
-        list(zip(poses, results, strict=True)),
-        min(len(poses), VISUALIZATION_SAMPLE_COUNT),
+def scenario_time_steps(scenario):
+    time_steps = []
+    for dynamic_obstacle in scenario.dynamic_obstacles:
+        initial_time = dynamic_obstacle.initial_state.time_step
+        if isinstance(dynamic_obstacle.prediction, TrajectoryPrediction):
+            state_count = len(dynamic_obstacle.prediction.trajectory.state_list)
+            time_steps.extend(range(initial_time, initial_time + state_count + 1))
+        else:
+            time_steps.append(initial_time)
+    return sorted(set(time_steps)) or [0]
+
+
+def update_collision_flags(collided_flags, collision_results):
+    for index, collision_status in enumerate(collision_results):
+        collided_flags[index] = collided_flags[index] or collision_status.collides
+    return collided_flags
+
+
+def visualize_animated_results(scenario, checker, poses, pose_bounds):
+    samples = random.sample(poses, min(len(poses), VISUALIZATION_SAMPLE_COUNT))
+    car = Rectangle(*CAR_SIZE)
+    positioned_cars = [(car, pose) for pose in samples]
+    collided_flags = [False] * len(samples)
+    time_steps = scenario_time_steps(scenario)
+
+    fig, ax = plt.subplots()
+    plot_limits = pose_bounds_to_plot_limits(pose_bounds)
+
+    def draw_frame(time_step):
+        ax.clear()
+        draw_params = MPDrawParams(time_begin=time_step, time_end=time_step)
+        renderer = MPRenderer(draw_params=draw_params, plot_limits=plot_limits, ax=ax)
+        scenario.draw(renderer, draw_params)
+        for pose, collided in zip(samples, collided_flags, strict=True):
+            rectangle = cr_shape.Rectangle(*CAR_SIZE, np.array(pose.translation), pose.rotation)
+            color = COLOR_COLLIDED if collided else COLOR_CLEAR
+            rectangle.draw(renderer, ShapeParams(facecolor=color, edgecolor=color, opacity=0.5))
+        renderer.render()
+        ax.set_title(f"Collision state at time step {time_step}")
+        return ax.artists
+
+    def initialize_frame():
+        return draw_frame(time_steps[0])
+
+    def update_frame(time_step):
+        collision_results = checker.par_collides_static(
+            positioned_cars,
+            min_time=time_step,
+            max_time=time_step,
+        )
+        update_collision_flags(collided_flags, collision_results)
+        return draw_frame(time_step)
+
+    animation = FuncAnimation(
+        fig,
+        update_frame,
+        frames=time_steps,
+        init_func=initialize_frame,
+        interval=ANIMATION_INTERVAL_MS,
+        repeat=False,
     )
-    renderer = MPRenderer()
-    scenario.draw(renderer)
-    for pose, collision_status in samples:
-        rectangle = cr_shape.Rectangle(*CAR_SIZE, np.array(pose.translation), pose.rotation)
-        params = ShapeParams(facecolor="red" if collision_status.collides else "green", opacity=0.5)
-        rectangle.draw(renderer, params)
-    renderer.render()
+    fig._crcc_animation = animation
     plt.show()
+
+
+def pose_bounds_to_plot_limits(pose_bounds):
+    lower_bounds, upper_bounds = pose_bounds
+    return [lower_bounds[0], upper_bounds[0], lower_bounds[1], upper_bounds[1]]
 
 
 if __name__ == "__main__":
