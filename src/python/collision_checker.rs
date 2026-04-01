@@ -3,7 +3,6 @@ pub use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::{
     CollisionCheckerBuilder as RustCollisionCheckerBuilder, CollisionStatus as RustCollisionStatus,
 };
-use crate::error::CrccError;
 use crate::python::collision_object::CollisionObject;
 use crate::python::dynamic_obstacle::DynamicObstacle;
 use crate::python::pose::Pose;
@@ -11,7 +10,6 @@ use crate::time::{TimeStep, TimeStepInner};
 use geo::Polygon;
 use glamx::DPose2;
 use itertools::Itertools;
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use replace_with::replace_with;
 use std::fmt::Display;

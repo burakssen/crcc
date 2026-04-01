@@ -1,5 +1,5 @@
+use crate::collision_checker::CollisionResult;
 use crate::collision_checker::engine::CollisionEngine;
-use crate::collision_checker::{CollisionChecker, CollisionResult};
 use crate::collision_object::CollisionObject;
 use crate::dynamic_obstacle::DynamicObstacle;
 use crate::time::TimeStep;
@@ -8,11 +8,19 @@ use std::ops::RangeBounds;
 
 pub enum SelectedCollisionChecker {
     #[cfg(feature = "parry")]
-    Parry(Box<CollisionChecker<crate::collision_checker::engine::parry::ParryCollisionObject>>),
+    Parry(
+        Box<
+            crate::collision_checker::CollisionChecker<
+                crate::collision_checker::engine::parry::ParryCollisionObject,
+            >,
+        >,
+    ),
     #[cfg(feature = "rhusics")]
     Rhusics(
         Box<
-            CollisionChecker<crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject>,
+            crate::collision_checker::CollisionChecker<
+                crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject,
+            >,
         >,
     ),
 }
@@ -65,6 +73,9 @@ impl SelectedCollisionChecker {
         position: DPose2,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
+        #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+        let _ = (static_obstacle, position, &time_range);
+
         match self {
             #[cfg(feature = "parry")]
             SelectedCollisionChecker::Parry(checker) => {
@@ -76,6 +87,8 @@ impl SelectedCollisionChecker {
                 let static_obstacle = static_obstacle.clone().into();
                 checker.collides_static_range(&static_obstacle, position, time_range)
             }
+            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            _ => Err(crate::error::CrccError::Unsupported),
         }
     }
 
@@ -84,6 +97,9 @@ impl SelectedCollisionChecker {
         dynamic_obstacle: &DynamicObstacle,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
+        #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+        let _ = (dynamic_obstacle, &time_range);
+
         match self {
             #[cfg(feature = "parry")]
             SelectedCollisionChecker::Parry(checker) => {
@@ -95,6 +111,8 @@ impl SelectedCollisionChecker {
                 let dynamic_obstacle = dynamic_obstacle.clone().convert_repr();
                 checker.collides_dynamic_range(&dynamic_obstacle, time_range)
             }
+            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            _ => Err(crate::error::CrccError::Unsupported),
         }
     }
 
@@ -104,6 +122,8 @@ impl SelectedCollisionChecker {
             SelectedCollisionChecker::Parry(_) => CollisionEngine::Parry,
             #[cfg(feature = "rhusics")]
             SelectedCollisionChecker::Rhusics(_) => CollisionEngine::Rhusics,
+            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            _ => CollisionEngine::default(),
         }
     }
 
@@ -139,6 +159,11 @@ impl SelectedCollisionChecker {
                     time_range,
                 )
             }
+            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            _ => positioned_static_obstacles
+                .iter()
+                .map(|_| Err(crate::error::CrccError::Unsupported))
+                .collect(),
         }
     }
 
@@ -170,6 +195,11 @@ impl SelectedCollisionChecker {
                     .collect::<Vec<_>>();
                 checker.par_collides_dynamic(converted.par_iter(), time_range)
             }
+            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            _ => dynamic_obstacles
+                .iter()
+                .map(|_| Err(crate::error::CrccError::Unsupported))
+                .collect(),
         }
     }
 }

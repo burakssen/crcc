@@ -57,13 +57,13 @@ impl CollisionCheckerBuilder {
             #[cfg(feature = "parry")]
             CollisionEngine::Parry => Ok(SelectedCollisionChecker::Parry(Box::new(self.build()))),
             #[cfg(not(feature = "parry"))]
-            CollisionEngine::Parry => Err(CrccError::UnsupportedEngine),
+            CollisionEngine::Parry => Err(CrccError::Unsupported),
             #[cfg(feature = "rhusics")]
             CollisionEngine::Rhusics => {
                 Ok(SelectedCollisionChecker::Rhusics(Box::new(self.build())))
             }
             #[cfg(not(feature = "rhusics"))]
-            CollisionEngine::Rhusics => Err(CrccError::UnsupportedEngine),
+            CollisionEngine::Rhusics => Err(CrccError::Unsupported),
         }
     }
 

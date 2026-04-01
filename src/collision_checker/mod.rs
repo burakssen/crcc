@@ -118,7 +118,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     ) -> CollisionResult {
         let shape = dynamic_obstacle.shape();
         let mut active_times = TimeStepSet::from(time_range);
-        active_times.intersect(&dynamic_obstacle.active_times().into());
+        active_times.intersect(&dynamic_obstacle.active_times());
         active_times.intersect(&self.active_times);
         for time_step in active_times.iter() {
             if active_times.contains(time_step.succ()) {

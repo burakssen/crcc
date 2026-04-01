@@ -227,7 +227,7 @@ mod tests {
                 // Check that the swept area collides with the shape at the interpolated position
                 assert!(
                     crate::collision_checker::engine::collides(
-                        &swept_area,
+                        swept_area,
                         DPose2::IDENTITY,
                         &shape_co,
                         interp_pos,

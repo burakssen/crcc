@@ -36,6 +36,9 @@ pub fn collides(
     pos_other: DPose2,
     engine: CollisionEngine,
 ) -> Result<bool, CrccError> {
+    #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+    let _ = (slf, pos_self, other, pos_other);
+
     match engine {
         #[cfg(feature = "parry")]
         CollisionEngine::Parry => {
@@ -67,6 +70,16 @@ pub fn collides_continuous(
     end_pos_other: DPose2,
     engine: CollisionEngine,
 ) -> Result<bool, CrccError> {
+    #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+    let _ = (
+        slf,
+        start_pos_self,
+        end_pos_self,
+        other,
+        start_pos_other,
+        end_pos_other,
+    );
+
     match engine {
         #[cfg(feature = "parry")]
         CollisionEngine::Parry => {

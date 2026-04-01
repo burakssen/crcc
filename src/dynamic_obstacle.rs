@@ -90,7 +90,7 @@ mod tests {
 
     #[rstest]
     fn test_active_times(dynamic_obstacle: DynamicObstacle) {
-        let active_times: TimeStepSet = dynamic_obstacle.active_times().into();
+        let active_times = dynamic_obstacle.active_times();
         assert_eq!(active_times, TimeStepSet::from(TimeStep(5)..=TimeStep(7)));
     }
 
