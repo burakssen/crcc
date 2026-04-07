@@ -32,31 +32,8 @@ wheels = [
 ]
 
 [[package]]
-name = "crcc"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "commonroad-io" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pre-commit" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "commonroad-io", specifier = ">=2023.1" }]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pre-commit", specifier = ">=2.21.0" },
-    { name = "ruff", specifier = "==0.14.8" },
-]
-
-[[package]]
 name = "commonroad-io"
-version = "2024.3"
+version = "2026.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "commonroad-vehicle-models" },
@@ -76,9 +53,9 @@ dependencies = [
     { name = "shapely" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3b/cf/5b36ccfc79fe874c34876525d8b0dfd3b72c643f1769b9098faba908c0cf/commonroad_io-2024.3.tar.gz", hash = "sha256:9561464469e83e518675cfc8e1a782eaff535aeda93803cc7facf62237b11ff3", size = 2175074, upload-time = "2024-12-20T11:01:33.38Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/89/baf49b0acbfae2225840995af0588cec266d670f6a2268c405ac7e6fa921/commonroad_io-2026.1.tar.gz", hash = "sha256:fe0297cb5eea04c003fc44ea5acebfe00cae7e7f3913b4939f185303d324e651", size = 2188856, upload-time = "2026-04-27T15:47:00.781Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/eb/b0/46670cd60a6e4435a1e7cabd6a309fc48e7f92765b70521c0c7968c4693f/commonroad_io-2024.3-py3-none-any.whl", hash = "sha256:2994cda71550903ca93834c472ab14bd7f5f8aadbded8576a02055f0e01b1530", size = 2376054, upload-time = "2024-12-20T11:01:31.172Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/23/b6158c0aff647f12b938a5afb2a11a93c7c0ae06d5883249c6e4ee378e7b/commonroad_io-2026.1-py3-none-any.whl", hash = "sha256:6f138197081c83884dcca4a0627444552e4e0be66ee9158a88cf69f1bcbe40f5", size = 2426284, upload-time = "2026-04-27T15:47:03.474Z" },
 ]
 
 [[package]]
@@ -247,6 +224,29 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/59/ebfb8c677c75605cc27f7122c90313fd2f375ff3c8d19a1694bda74aaa63/contourpy-1.3.3-pp311-pypy311_pp73-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:70f9aad7de812d6541d29d2bbf8feb22ff7e1c299523db288004e3157ff4674e", size = 302202, upload-time = "2025-07-26T12:02:55.947Z" },
     { url = "https://files.pythonhosted.org/packages/3c/37/21972a15834d90bfbfb009b9d004779bd5a07a0ec0234e5ba8f64d5736f4/contourpy-1.3.3-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:5ed3657edf08512fc3fe81b510e35c2012fbd3081d2e26160f27ca28affec989", size = 329207, upload-time = "2025-07-26T12:02:57.468Z" },
     { url = "https://files.pythonhosted.org/packages/0c/58/bd257695f39d05594ca4ad60df5bcb7e32247f9951fd09a9b8edb82d1daa/contourpy-1.3.3-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:3d1a3799d62d45c18bafd41c5fa05120b96a28079f2393af559b843d1a966a77", size = 225315, upload-time = "2025-07-26T12:02:58.801Z" },
+]
+
+[[package]]
+name = "crcc"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "commonroad-io" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pre-commit" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "commonroad-io", specifier = ">=2026.1" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pre-commit", specifier = ">=2.21.0" },
+    { name = "ruff", specifier = "==0.14.8" },
 ]
 
 [[package]]

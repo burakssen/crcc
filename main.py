@@ -1,11 +1,13 @@
-import random
+import argparse
 import time
+from enum import Enum
 from pathlib import Path
 
-import commonroad.geometry.shape as cr_shape
 import numpy as np
 from commonroad.common.file_reader import CommonRoadFileReader
+from commonroad.geometry.obstacle_shapes.rect_obstacle_shape import RectObstacleShape
 from commonroad.prediction.prediction import TrajectoryPrediction
+from commonroad.scenario.state import InitialState
 from commonroad.visualization.draw_params import MPDrawParams, ShapeParams
 from commonroad.visualization.mp_renderer import MPRenderer
 from crcc.collision_checker import CollisionCheckerBuilder, CollisionEngine
@@ -14,31 +16,128 @@ from crcc.commonroad import create_collision_checker_from_scenario
 from crcc.pose import Pose
 from matplotlib import pyplot as plt
 from matplotlib.animation import FuncAnimation
+from matplotlib.lines import Line2D
 
 SCENARIO_PATH = "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
 ENGINE = CollisionEngine.Rhusics
 CAR_SIZE = (4.5, 2.0)
 POSE_BOUNDS_PADDING = 5.0
 BENCHMARK_SAMPLE_COUNT = 100_000
-VISUALIZATION_SAMPLE_COUNT = 5000
+VISUALIZATION_SAMPLE_COUNT = 1_000
+VISUALIZATION_RANDOM_SEED = 2026
 DIAGNOSTIC_SAMPLE_COUNT = 1_000
 MERGE_SCENARIO_NAME = "DEU_MerzenichRather-2_870_T-149.xml"
 ANIMATION_INTERVAL_MS = 100
 COLOR_COLLIDED = "red"
 COLOR_CLEAR = "green"
+CAR_OBSTACLE_SHAPE = RectObstacleShape(width=CAR_SIZE[1], length=CAR_SIZE[0])
+VISUALIZATION_PRESET_POSES = {
+    MERGE_SCENARIO_NAME: [
+        ((55.29, -1.99), 1.326),
+        ((37.33, 4.07), -2.207),
+    ],
+}
 
 
-def main():
-    scenario, checker = load_collision_checker(SCENARIO_PATH)
+class ExampleAction(Enum):
+    GEOMETRY = "geometry"
+    SMOKE = "smoke"
+    BENCHMARK = "benchmark"
+    VISUALIZE = "visualize"
+    ALL = "all"
+
+
+ENGINE_CHOICES = {
+    "parry": CollisionEngine.Parry,
+    "rhusics": CollisionEngine.Rhusics,
+}
+ACTION_CHOICES = {action.value: action for action in ExampleAction}
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    action = args.action or prompt_for_action()
+    run_action(action, args.scenario, args.engine)
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Run structured CommonRoad collision checker examples.")
+    parser.add_argument(
+        "action",
+        nargs="?",
+        choices=sorted(ACTION_CHOICES),
+        help="example to run; omit to choose from an interactive menu",
+    )
+    parser.add_argument(
+        "--scenario",
+        default=SCENARIO_PATH,
+        help=f"CommonRoad scenario XML path (default: {SCENARIO_PATH})",
+    )
+    parser.add_argument(
+        "--engine",
+        choices=sorted(ENGINE_CHOICES),
+        default=engine_name(ENGINE),
+        type=str.lower,
+        help="collision engine to use for scenario-based examples",
+    )
+    args = parser.parse_args(argv)
+    if args.action is not None:
+        args.action = ACTION_CHOICES[args.action]
+    args.engine = ENGINE_CHOICES[args.engine]
+    return args
+
+
+def prompt_for_action(prompt=input):
+    actions = list(ExampleAction)
+    print("Select an example:")
+    for index, action in enumerate(actions, start=1):
+        print(f"{index}. {action.value}")
+
+    while True:
+        selection = prompt("Choice: ").strip().lower()
+        if selection.isdigit():
+            index = int(selection)
+            if 1 <= index <= len(actions):
+                return actions[index - 1]
+        for action in actions:
+            if selection == action.value:
+                return action
+        print(f"Enter a number from 1 to {len(actions)} or one of: {', '.join(action.value for action in actions)}")
+
+
+def engine_name(engine):
+    for name, engine_choice in ENGINE_CHOICES.items():
+        if engine_choice == engine:
+            return name
+    raise ValueError(f"Unsupported collision engine: {engine}")
+
+
+def run_action(action, scenario_path: str, engine):
+    if action == ExampleAction.GEOMETRY:
+        run_geometry_examples()
+        return
+
+    scenario, checker = load_collision_checker(scenario_path, engine)
     pose_bounds = scenario_pose_bounds(scenario)
-    run_smoke_checks(scenario, checker, SCENARIO_PATH, pose_bounds)
-    run_geometry_examples()
-    demo_parallel(scenario, checker, pose_bounds)
+
+    if action == ExampleAction.SMOKE:
+        run_smoke_checks(scenario, checker, scenario_path, pose_bounds)
+    elif action == ExampleAction.BENCHMARK:
+        run_parallel_benchmark(checker, pose_bounds)
+    elif action == ExampleAction.VISUALIZE:
+        run_visualization(scenario, checker, scenario_path, pose_bounds)
+    elif action == ExampleAction.ALL:
+        run_smoke_checks(scenario, checker, scenario_path, pose_bounds)
+        run_geometry_examples()
+        run_parallel_benchmark(checker, pose_bounds)
+        run_visualization(scenario, checker, scenario_path, pose_bounds)
+    else:
+        raise ValueError(f"Unsupported example action: {action}")
 
 
-def load_collision_checker(scenario_path: str):
+def load_collision_checker(scenario_path: str, engine=ENGINE):
     scenario, _ = CommonRoadFileReader(scenario_path).open()
-    builder = CollisionCheckerBuilder(engine=ENGINE)
+    builder = CollisionCheckerBuilder(engine=engine)
     checker = create_collision_checker_from_scenario(scenario, builder=builder).build()
     return scenario, checker
 
@@ -91,7 +190,7 @@ def run_geometry_examples():
     print("Should collide", outer_polygon.collides(overlapping_polygon))
 
 
-def demo_parallel(scenario, checker, pose_bounds):
+def run_parallel_benchmark(checker, pose_bounds):
     car = Rectangle(*CAR_SIZE)
     poses = sample_poses(BENCHMARK_SAMPLE_COUNT, pose_bounds)
     positioned_cars = [(car, pose) for pose in poses]
@@ -109,7 +208,10 @@ def demo_parallel(scenario, checker, pose_bounds):
         f"{count_collisions(sequential_results)} collisions"
     )
 
-    visualize_animated_results(scenario, checker, poses, pose_bounds)
+
+def run_visualization(scenario, checker, scenario_path, pose_bounds):
+    poses = visualization_poses(scenario_path, pose_bounds)
+    return visualize_animated_results(scenario, checker, poses, pose_bounds)
 
 
 def scenario_pose_bounds(scenario):
@@ -132,9 +234,22 @@ def format_pose_bounds(pose_bounds):
     )
 
 
-def sample_poses(count, pose_bounds):
+def sample_poses(count, pose_bounds, rng=np.random):
     lower_bounds, upper_bounds = pose_bounds
-    return [Pose((x, y), rotation) for x, y, rotation in np.random.uniform(lower_bounds, upper_bounds, (count, 3))]
+    return [Pose((x, y), rotation) for x, y, rotation in rng.uniform(lower_bounds, upper_bounds, (count, 3))]
+
+
+def visualization_poses(scenario_path, pose_bounds, count=VISUALIZATION_SAMPLE_COUNT, seed=VISUALIZATION_RANDOM_SEED):
+    preset_poses = [
+        Pose(translation, rotation)
+        for translation, rotation in VISUALIZATION_PRESET_POSES.get(Path(scenario_path).name, [])
+    ]
+    if count <= len(preset_poses):
+        return preset_poses[:count]
+
+    rng = np.random.default_rng(seed)
+    random_poses = sample_poses(count - len(preset_poses), pose_bounds, rng)
+    return preset_poses + random_poses
 
 
 def timed(operation):
@@ -150,12 +265,9 @@ def count_collisions(results):
 def scenario_time_steps(scenario):
     time_steps = []
     for dynamic_obstacle in scenario.dynamic_obstacles:
-        initial_time = dynamic_obstacle.initial_state.time_step
+        time_steps.append(dynamic_obstacle.initial_state.time_step)
         if isinstance(dynamic_obstacle.prediction, TrajectoryPrediction):
-            state_count = len(dynamic_obstacle.prediction.trajectory.state_list)
-            time_steps.extend(range(initial_time, initial_time + state_count + 1))
-        else:
-            time_steps.append(initial_time)
+            time_steps.extend(state.time_step for state in dynamic_obstacle.prediction.trajectory.state_list)
     return sorted(set(time_steps)) or [0]
 
 
@@ -166,7 +278,7 @@ def update_collision_flags(collided_flags, collision_results):
 
 
 def visualize_animated_results(scenario, checker, poses, pose_bounds):
-    samples = random.sample(poses, min(len(poses), VISUALIZATION_SAMPLE_COUNT))
+    samples = poses[:VISUALIZATION_SAMPLE_COUNT]
     car = Rectangle(*CAR_SIZE)
     positioned_cars = [(car, pose) for pose in samples]
     collided_flags = [False] * len(samples)
@@ -174,6 +286,10 @@ def visualize_animated_results(scenario, checker, poses, pose_bounds):
 
     fig, ax = plt.subplots()
     plot_limits = pose_bounds_to_plot_limits(pose_bounds)
+    legend_handles = [
+        Line2D([0], [0], color=COLOR_CLEAR, lw=4, label="No collision so far"),
+        Line2D([0], [0], color=COLOR_COLLIDED, lw=4, label="Collided earlier or now"),
+    ]
 
     def draw_frame(time_step):
         ax.clear()
@@ -181,11 +297,12 @@ def visualize_animated_results(scenario, checker, poses, pose_bounds):
         renderer = MPRenderer(draw_params=draw_params, plot_limits=plot_limits, ax=ax)
         scenario.draw(renderer, draw_params)
         for pose, collided in zip(samples, collided_flags, strict=True):
-            rectangle = cr_shape.Rectangle(*CAR_SIZE, np.array(pose.translation), pose.rotation)
+            rectangle = car_occupancy_for_pose(pose)
             color = COLOR_COLLIDED if collided else COLOR_CLEAR
             rectangle.draw(renderer, ShapeParams(facecolor=color, edgecolor=color, opacity=0.5))
         renderer.render()
-        ax.set_title(f"Collision state at time step {time_step}")
+        ax.legend(handles=legend_handles, loc="upper right")
+        ax.set_title(f"Cumulative collision status through time step {time_step}")
         return ax.artists
 
     def initialize_frame():
@@ -210,11 +327,18 @@ def visualize_animated_results(scenario, checker, poses, pose_bounds):
     )
     fig._crcc_animation = animation
     plt.show()
+    return animation
 
 
 def pose_bounds_to_plot_limits(pose_bounds):
     lower_bounds, upper_bounds = pose_bounds
     return [lower_bounds[0], upper_bounds[0], lower_bounds[1], upper_bounds[1]]
+
+
+def car_occupancy_for_pose(pose):
+    return CAR_OBSTACLE_SHAPE.compute_occupancy_for_state(
+        InitialState(position=np.array(pose.translation), orientation=pose.rotation)
+    )
 
 
 if __name__ == "__main__":
