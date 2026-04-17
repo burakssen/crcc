@@ -2,10 +2,23 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence, Tuple
 
-from .collision_checker import CollisionEngine
-from .pose import Pose
+from crcc._core.collision_checker import CollisionEngine
+from crcc._core.collision_object import CollisionObject as _CollisionObject
+from crcc.pose import Pose
 
-class CollisionObject:
+__all__ = [
+    "CollisionObject",
+    "Compound",
+    "Circle",
+    "Empty",
+    "HalfSpace",
+    "FullSpace",
+    "Polygon",
+    "Rectangle",
+    "Triangle",
+]
+
+class CollisionObject(_CollisionObject):
     def collides(
         self,
         other: CollisionObject,
@@ -57,15 +70,3 @@ class Rectangle(CollisionObject):
 
 class Triangle(CollisionObject):
     def __init__(self, a: Tuple[float, float], b: Tuple[float, float], c: Tuple[float, float]) -> None: ...
-
-__all__ = [
-    "CollisionObject",
-    "Compound",
-    "Circle",
-    "Empty",
-    "HalfSpace",
-    "FullSpace",
-    "Polygon",
-    "Rectangle",
-    "Triangle",
-]

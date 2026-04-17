@@ -33,6 +33,14 @@ impl CollisionStatus {
         }
     }
 
+    #[getter]
+    pub fn time_step(&self) -> Option<TimeStepInner> {
+        match self {
+            CollisionStatus::CollidesDynamic(t) => Some(*t),
+            CollisionStatus::NoCollision() | CollisionStatus::CollidesStatic() => None,
+        }
+    }
+
     pub fn __str__(&self) -> String {
         format!("{}", self)
     }
@@ -98,7 +106,7 @@ impl CollisionChecker {
     ) -> PyResult<Vec<CollisionStatus>> {
         let positioned_static_obstacles = positioned_static_obstacles
             .into_iter()
-            .map(|(obs, pos)| (obs.as_ref().clone(), pos.0))
+            .map(|(obstacle, position)| (obstacle.as_ref().clone(), position.0))
             .collect::<Vec<_>>();
         let res = self
             .0
@@ -134,7 +142,7 @@ impl CollisionChecker {
     ) -> PyResult<Vec<CollisionStatus>> {
         let dynamic_obstacles = dynamic_obstacles
             .into_iter()
-            .map(|obs| obs.as_ref().clone())
+            .map(|obstacle| obstacle.as_ref().clone())
             .collect::<Vec<_>>();
         let res = self
             .0

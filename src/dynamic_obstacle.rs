@@ -4,10 +4,21 @@ use glamx::DPose2;
 
 #[derive(Debug, Clone)]
 pub struct GenericDynamicObstacle<E> {
-    pub(crate) shape: E,
-    pub(crate) positions: Vec<DPose2>,
+    pub(crate) trajectory: DynamicObstacleTrajectory<E>,
     pub(crate) time_offset: TimeStep,
-    pub(crate) convex_hulls: Vec<E>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum DynamicObstacleTrajectory<E> {
+    FixedShape {
+        shape: E,
+        positions: Vec<DPose2>,
+        convex_hulls: Vec<E>,
+    },
+    VaryingShape {
+        obstacles: Vec<E>,
+        positions: Vec<DPose2>,
+    },
 }
 
 pub type DynamicObstacle = GenericDynamicObstacle<CollisionObject>;
@@ -16,40 +27,105 @@ impl DynamicObstacle {
     pub fn new(shape: CollisionObject, positions: Vec<DPose2>, time_offset: TimeStep) -> Self {
         let convex_hulls = shape.swept_areas(&positions);
         Self {
-            shape,
-            positions,
+            trajectory: DynamicObstacleTrajectory::FixedShape {
+                shape,
+                positions,
+                convex_hulls,
+            },
             time_offset,
-            convex_hulls,
+        }
+    }
+
+    pub fn time_variant(
+        obstacles: Vec<CollisionObject>,
+        positions: Vec<DPose2>,
+        time_offset: TimeStep,
+    ) -> Self {
+        assert_eq!(
+            obstacles.len(),
+            positions.len(),
+            "time-variant obstacle shape and pose counts must match"
+        );
+        Self {
+            trajectory: DynamicObstacleTrajectory::VaryingShape {
+                obstacles,
+                positions,
+            },
+            time_offset,
         }
     }
 
     pub fn convert_repr<E: From<CollisionObject>>(self) -> GenericDynamicObstacle<E> {
         GenericDynamicObstacle {
-            shape: self.shape.into(),
-            positions: self.positions,
+            trajectory: self.trajectory.convert_repr(),
             time_offset: self.time_offset,
-            convex_hulls: self.convex_hulls.into_iter().map(E::from).collect(),
         }
     }
 }
 
+impl DynamicObstacleTrajectory<CollisionObject> {
+    fn convert_repr<E: From<CollisionObject>>(self) -> DynamicObstacleTrajectory<E> {
+        match self {
+            DynamicObstacleTrajectory::FixedShape {
+                shape,
+                positions,
+                convex_hulls,
+            } => DynamicObstacleTrajectory::FixedShape {
+                shape: shape.into(),
+                positions,
+                convex_hulls: convex_hulls.into_iter().map(E::from).collect(),
+            },
+            DynamicObstacleTrajectory::VaryingShape {
+                obstacles,
+                positions,
+            } => DynamicObstacleTrajectory::VaryingShape {
+                obstacles: obstacles.into_iter().map(E::from).collect(),
+                positions,
+            },
+        }
+    }
+}
+
+impl<E> DynamicObstacleTrajectory<E> {
+    fn obstacle_at(&self, index: usize) -> Option<(&E, DPose2)> {
+        match self {
+            DynamicObstacleTrajectory::FixedShape {
+                shape, positions, ..
+            } => positions.get(index).map(|position| (shape, *position)),
+            DynamicObstacleTrajectory::VaryingShape {
+                obstacles,
+                positions,
+            } => obstacles
+                .get(index)
+                .zip(positions.get(index))
+                .map(|(obstacle, position)| (obstacle, *position)),
+        }
+    }
+
+    fn positions(&self) -> &[DPose2] {
+        match self {
+            DynamicObstacleTrajectory::FixedShape { positions, .. } => positions,
+            DynamicObstacleTrajectory::VaryingShape { positions, .. } => positions,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.positions().len()
+    }
+}
+
 impl<E> GenericDynamicObstacle<E> {
-    pub fn shape(&self) -> &E {
-        &self.shape
+    pub(crate) fn obstacle_at(&self, time_step: TimeStep) -> Option<(&E, DPose2)> {
+        let index = time_step.0.checked_sub(self.time_offset.0)? as usize;
+        self.trajectory.obstacle_at(index)
     }
 
-    pub fn position_at(&self, time_step: TimeStep) -> Option<DPose2> {
-        let index = time_step.0.checked_sub(self.time_offset.0)?;
-        self.positions.get(index as usize).copied()
+    pub(crate) fn active_times(&self) -> TimeStepSet {
+        TimeStepSet::from(self.time_offset..self.time_offset.add_steps(self.len()))
     }
 
-    pub fn active_times(&self) -> TimeStepSet {
-        TimeStepSet::from(self.time_offset..self.time_offset.add_steps(self.positions.len()))
-    }
-
-    pub fn convex_hull_after(&self, time_step: TimeStep) -> Option<&E> {
-        let index = time_step.0.checked_sub(self.time_offset.0)?;
-        self.convex_hulls.get(index as usize)
+    fn len(&self) -> usize {
+        self.trajectory.len()
     }
 }
 
@@ -72,37 +148,51 @@ mod tests {
     }
 
     #[rstest]
-    fn test_position_at(dynamic_obstacle: DynamicObstacle) {
+    fn obstacle_at_returns_pose_for_active_time(dynamic_obstacle: DynamicObstacle) {
         assert_eq!(
-            dynamic_obstacle.position_at(TimeStep(5)),
-            Some(DPose2::new((0.0, 0.0).into(), 0.0))
+            dynamic_obstacle
+                .obstacle_at(TimeStep(5))
+                .map(|(_, position)| position),
+            Some(DPose2::new((0.0, 0.0).into(), 0.0)),
         );
         assert_eq!(
-            dynamic_obstacle.position_at(TimeStep(6)),
-            Some(DPose2::new((1.0, 1.0).into(), std::f64::consts::FRAC_PI_4))
+            dynamic_obstacle
+                .obstacle_at(TimeStep(6))
+                .map(|(_, position)| position),
+            Some(DPose2::new((1.0, 1.0).into(), std::f64::consts::FRAC_PI_4)),
         );
         assert_eq!(
-            dynamic_obstacle.position_at(TimeStep(7)),
-            Some(DPose2::new((2.0, 2.0).into(), std::f64::consts::FRAC_PI_2))
+            dynamic_obstacle
+                .obstacle_at(TimeStep(7))
+                .map(|(_, position)| position),
+            Some(DPose2::new((2.0, 2.0).into(), std::f64::consts::FRAC_PI_2)),
         );
-        assert_eq!(dynamic_obstacle.position_at(TimeStep(8)), None);
+        assert!(dynamic_obstacle.obstacle_at(TimeStep(8)).is_none());
     }
 
     #[rstest]
-    fn test_active_times(dynamic_obstacle: DynamicObstacle) {
+    fn active_times_cover_trajectory_range(dynamic_obstacle: DynamicObstacle) {
         let active_times = dynamic_obstacle.active_times();
         assert_eq!(active_times, TimeStepSet::from(TimeStep(5)..=TimeStep(7)));
     }
 
     #[rstest]
-    fn test_convex_hull_after(dynamic_obstacle: DynamicObstacle) {
-        let convex_hull = dynamic_obstacle.convex_hull_after(TimeStep(5)).unwrap();
-        let start_pos = dynamic_obstacle.position_at(TimeStep(5)).unwrap();
-        let end_pos = dynamic_obstacle.position_at(TimeStep(6)).unwrap();
+    fn convex_hull_covers_interpolated_motion(dynamic_obstacle: DynamicObstacle) {
+        let DynamicObstacleTrajectory::FixedShape {
+            shape,
+            positions,
+            convex_hulls,
+        } = &dynamic_obstacle.trajectory
+        else {
+            panic!("fixture should be a fixed-shape dynamic obstacle");
+        };
+        let convex_hull = &convex_hulls[0];
+        let start_pos = positions[0];
+        let end_pos = positions[1];
         // Interpolate 5 points between start_pos and end_pos
         for i in 0..=5 {
             let t = i as f64 / 5.0;
-            let interp_pos = DPose2::from_parts(
+            let interpolated_position = DPose2::from_parts(
                 start_pos.translation.lerp(end_pos.translation, t),
                 start_pos.rotation.slerp(&end_pos.rotation, t),
             );
@@ -110,8 +200,8 @@ mod tests {
                 crate::collision_checker::engine::collides(
                     convex_hull,
                     DPose2::IDENTITY,
-                    dynamic_obstacle.shape(),
-                    interp_pos,
+                    shape,
+                    interpolated_position,
                     crate::collision_checker::engine::CollisionEngine::default()
                 )
                 .unwrap()
@@ -120,23 +210,40 @@ mod tests {
     }
 
     #[rstest]
-    fn test_no_convex_hull_at_end(dynamic_obstacle: DynamicObstacle) {
-        assert!(dynamic_obstacle.convex_hull_after(TimeStep(7)).is_none());
+    fn convex_hulls_exist_between_positions_only(dynamic_obstacle: DynamicObstacle) {
+        let DynamicObstacleTrajectory::FixedShape { convex_hulls, .. } =
+            &dynamic_obstacle.trajectory
+        else {
+            panic!("fixture should be a fixed-shape dynamic obstacle");
+        };
+        assert_eq!(convex_hulls.len(), 2);
     }
 
     #[cfg(feature = "parry")]
     #[rstest]
-    fn test_convert_repr(dynamic_obstacle: DynamicObstacle) {
+    fn convert_repr_preserves_trajectory_metadata(dynamic_obstacle: DynamicObstacle) {
         use crate::collision_checker::engine::parry::ParryCollisionObject;
 
         let converted = dynamic_obstacle
             .clone()
             .convert_repr::<ParryCollisionObject>();
-        assert_eq!(converted.positions, dynamic_obstacle.positions);
-        assert_eq!(converted.time_offset, dynamic_obstacle.time_offset);
         assert_eq!(
-            converted.convex_hulls.len(),
-            dynamic_obstacle.convex_hulls.len()
+            converted.trajectory.positions(),
+            dynamic_obstacle.trajectory.positions()
         );
+        assert_eq!(converted.time_offset, dynamic_obstacle.time_offset);
+        match (&converted.trajectory, &dynamic_obstacle.trajectory) {
+            (
+                DynamicObstacleTrajectory::FixedShape {
+                    convex_hulls: converted_hulls,
+                    ..
+                },
+                DynamicObstacleTrajectory::FixedShape {
+                    convex_hulls: original_hulls,
+                    ..
+                },
+            ) => assert_eq!(converted_hulls.len(), original_hulls.len()),
+            _ => panic!("fixture should be fixed-shape"),
+        }
     }
 }

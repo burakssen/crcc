@@ -69,7 +69,7 @@ mod tests {
     use std::f64::consts::FRAC_PI_2;
 
     #[test]
-    fn test_constructors() {
+    fn constructors_create_expected_half_spaces() {
         let hs = HalfSpace {
             outward_normal: DVec2::new(4.0, 3.0).normalize(),
             offset: 5.0,
@@ -81,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn test_swept_area() {
+    fn swept_area_covers_translated_half_space() {
         let hs = HalfSpace::from_coeffs(1.0, 0.0, 5.0); // x <= 5.0
         let swept_area = hs.swept_area(
             DPose2::new(DVec2::new(0.0, 1.0), FRAC_PI_2),

@@ -47,10 +47,10 @@ def add_commonroad_static_obstacle_to_builder(
     static_obstacle: cr_obstacle.StaticObstacle,
 ) -> CollisionCheckerBuilder:
     """Adds a CommonRoad static obstacle to the builder."""
-    co = commonroad_occupancy_to_collision_object(
+    collision_object = commonroad_occupancy_to_collision_object(
         static_obstacle.occupancy_at_time(static_obstacle.initial_state.time_step)
     )
-    builder.with_static_obstacle(co)
+    builder.with_static_obstacle(collision_object)
     return builder
 
 
@@ -65,8 +65,8 @@ def add_commonroad_dynamic_obstacle_to_builder(
         states = [dynamic_obstacle.initial_state] + trajectory.state_list
         poses = [commonroad_state_to_pose(state) for state in states]
         shape = commonroad_shape_to_collision_object(dynamic_obstacle.obstacle_shape)
-        rust_dynamic_obstacle = DynamicObstacle(shape, poses, initial_time)
-        builder.with_dynamic_obstacle(rust_dynamic_obstacle)
+        collision_obstacle = DynamicObstacle(shape, poses, initial_time)
+        builder.with_dynamic_obstacle(collision_obstacle)
     else:
         raise NotImplementedError("Only TrajectoryPrediction is supported for dynamic obstacles.")
     return builder
@@ -91,8 +91,8 @@ def create_road_boundary_obstacle(lanelet_network: LaneletNetwork) -> CollisionO
 
     road_convex_hull = orient(road.convex_hull, sign=1.0)
     obstacles = [
-        HalfSpace.from_points(tuple(p1), tuple(p2))
-        for p1, p2 in zip(road_convex_hull.exterior.coords, road_convex_hull.exterior.coords[1:])
+        HalfSpace.from_points(tuple(start_point), tuple(end_point))
+        for start_point, end_point in zip(road_convex_hull.exterior.coords, road_convex_hull.exterior.coords[1:])
     ]
 
     holes = road_convex_hull.difference(road)
@@ -110,8 +110,8 @@ def iter_shapely_polygons(geometry):
     if isinstance(geometry, ShapelyPolygon):
         yield geometry
         return
-    for geom in geometry.geoms:
-        yield from iter_shapely_polygons(geom)
+    for sub_geometry in geometry.geoms:
+        yield from iter_shapely_polygons(sub_geometry)
 
 
 def commonroad_polygon_to_collision_object(polygon: ShapelyPolygon) -> CollisionObject:

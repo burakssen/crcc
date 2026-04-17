@@ -69,8 +69,8 @@ impl CollisionCheckerBuilder {
 
     fn active_times(&self) -> TimeStepSet {
         let mut active_times = TimeStepSet::new();
-        for obs in &self.dynamic_obstacles {
-            active_times.union(&obs.active_times());
+        for dynamic_obstacle in &self.dynamic_obstacles {
+            active_times.union(&dynamic_obstacle.active_times());
         }
         active_times
     }
@@ -88,7 +88,9 @@ fn create_road_boundary_obstacle(lanelets: &[Polygon]) -> CollisionObject {
         .exterior()
         .points_ccw()
         .tuple_windows()
-        .map(|(p1, p2)| SimpleCollisionObject::half_space_from_points(p1.into(), p2.into()));
+        .map(|(start_point, end_point)| {
+            SimpleCollisionObject::half_space_from_points(start_point.into(), end_point.into())
+        });
 
     // Determine holes in the convex hull of the road
     let holes = road_convex_hull

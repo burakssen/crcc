@@ -2,6 +2,8 @@ use crate::dynamic_obstacle::DynamicObstacle as RustDynamicObstacle;
 use crate::python::collision_object::CollisionObject;
 use crate::python::pose::Pose;
 use crate::time::TimeStepInner;
+use glamx::DPose2;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::sync::Arc;
 
@@ -21,10 +23,36 @@ impl DynamicObstacle {
     pub fn new(shape: &CollisionObject, positions: Vec<Pose>, time_offset: TimeStepInner) -> Self {
         let dyn_obs = RustDynamicObstacle::new(
             shape.as_ref().clone(),
-            positions.into_iter().map(|pos| pos.0).collect(),
+            positions.into_iter().map(|position| position.0).collect(),
             time_offset.into(),
         );
         Self(Arc::new(dyn_obs))
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (obstacles, time_offset = 0, positions = None))]
+    pub fn from_time_variant(
+        obstacles: Vec<CollisionObject>,
+        time_offset: TimeStepInner,
+        positions: Option<Vec<Pose>>,
+    ) -> PyResult<Self> {
+        let positions = positions
+            .map(|positions| positions.into_iter().map(|position| position.0).collect())
+            .unwrap_or_else(|| vec![DPose2::IDENTITY; obstacles.len()]);
+        if obstacles.len() != positions.len() {
+            return Err(PyValueError::new_err(
+                "obstacles and positions must have the same length",
+            ));
+        }
+        let dyn_obs = RustDynamicObstacle::time_variant(
+            obstacles
+                .into_iter()
+                .map(|obstacle| obstacle.as_ref().clone())
+                .collect(),
+            positions,
+            time_offset.into(),
+        );
+        Ok(Self(Arc::new(dyn_obs)))
     }
 }
 

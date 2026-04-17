@@ -168,7 +168,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_time_step_set() {
+    fn time_step_set_tracks_added_and_removed_ranges() {
         let mut set = TimeStepSet::new();
         assert!(!set.contains(TimeStep(0)));
         assert!(!set.contains(TimeStep(10)));
@@ -209,7 +209,7 @@ mod tests {
     }
 
     #[test]
-    fn test_time_step_set_unbounded() {
+    fn time_step_set_supports_unbounded_ranges() {
         let mut set = TimeStepSet::new();
         assert!(!set.contains(TimeStep(0)));
         assert!(!set.contains(TimeStep(10)));
@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn test_time_step_set_union() {
+    fn union_merges_included_ranges() {
         let mut set1 = TimeStepSet::from(TimeStep(5)..TimeStep(15));
         let set2 = TimeStepSet::from(TimeStep(10)..=TimeStep(20));
         let set3 = TimeStepSet::from(TimeStep(0)..=TimeStep(4));
@@ -252,7 +252,7 @@ mod tests {
     }
 
     #[test]
-    fn test_time_step_set_intersect() {
+    fn intersect_keeps_shared_ranges() {
         let mut set1 = TimeStepSet::from(TimeStep(5)..TimeStep(15));
         let set2 = TimeStepSet::from(TimeStep(10)..=TimeStep(20));
         let set3 = TimeStepSet::from(TimeStep(0)..=TimeStep(4));
@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn test_eq() {
+    fn equality_ignores_range_fragmentation() {
         let set1 = TimeStepSet::from(TimeStep(5)..TimeStep(15));
 
         let mut set2 = TimeStepSet::new();

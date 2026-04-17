@@ -208,10 +208,12 @@ fn par_collides_static<E: EngineCollisionObject + Send + Sync>(
 
     let converted = positioned_static_obstacles
         .iter()
-        .map(|(obs, pos)| (E::from(obs.clone()), *pos))
+        .map(|(obstacle, position)| (E::from(obstacle.clone()), *position))
         .collect::<Vec<_>>();
     checker.par_collides_static(
-        converted.par_iter().map(|(obs, pos)| (obs, *pos)),
+        converted
+            .par_iter()
+            .map(|(obstacle, position)| (obstacle, *position)),
         time_range,
     )
 }

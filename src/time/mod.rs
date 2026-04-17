@@ -59,7 +59,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_iter_range() {
+    fn iter_range_expands_supported_bounds() {
         let range = TimeStep::iter_range(TimeStep(3)..=TimeStep(7));
         let collected: Vec<TimeStep> = range.collect();
         assert_eq!(

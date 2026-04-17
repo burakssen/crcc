@@ -64,7 +64,7 @@ impl CollisionObject {
         CollisionObject::from(RustCollisionObject::merge_all(
             collision_objects
                 .into_iter()
-                .map(|obj| obj.as_ref().clone()),
+                .map(|object| object.as_ref().clone()),
         ))
     }
 }
@@ -102,7 +102,7 @@ impl Compound {
             RustCollisionObject::merge_all(
                 collision_objects
                     .into_iter()
-                    .map(|obj| obj.as_ref().clone()),
+                    .map(|object| object.as_ref().clone()),
             )
             .into(),
         )

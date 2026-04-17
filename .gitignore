@@ -20,3 +20,6 @@ wheels/
 # Native debug bundles
 .dSYM/
 *.dSYM/
+
+.pytest_cache/
+.ruff_cache/

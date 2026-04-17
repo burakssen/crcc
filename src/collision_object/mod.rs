@@ -1,7 +1,6 @@
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::collision_object::simple::SweptArea;
 use crate::error::CrccResult;
-use delegate::delegate;
 use geo::{Polygon, Rect, Triangle};
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
@@ -26,13 +25,16 @@ impl CollisionObject {
         Self::new(vec![SimpleCollisionObject::full_space()])
     }
 
-    delegate! {
-        #[into]
-        to SimpleCollisionObject {
-            pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> Self;
-            pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> Self;
-            pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> Self;
-        }
+    pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> Self {
+        SimpleCollisionObject::half_space(outward_normal, offset).into()
+    }
+
+    pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> Self {
+        SimpleCollisionObject::half_space_from_points(p1, p2).into()
+    }
+
+    pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> Self {
+        SimpleCollisionObject::half_space_from_coeffs(a, b, c).into()
     }
 
     pub fn circle(center: (f64, f64), radius: f64) -> CrccResult<Self> {
@@ -76,27 +78,27 @@ impl CollisionObject {
     }
 
     pub fn swept_areas(&self, positions: &[DPose2]) -> Vec<CollisionObject> {
-        let mut swept_areas_simple = self
+        let swept_areas_by_object = self
             .collision_objects
             .iter()
-            .map(|obj| obj.swept_areas(positions))
+            .map(|object| object.swept_areas(positions))
             .collect_vec();
-        let mut result = Vec::with_capacity(positions.len().saturating_sub(1));
-        for _ in 0..positions.len().saturating_sub(1) {
-            let swept_areas_at_i = swept_areas_simple
-                .iter_mut()
-                .map(|areas| {
-                    areas
-                        .pop()
-                        .expect("There should be exactly positions.len() - 1 swept areas.")
-                })
-                .collect_vec();
-            result.push(CollisionObject::from(swept_areas_at_i));
-        }
-        assert!(swept_areas_simple.iter().all(|vec| vec.is_empty()));
-        // Reverse because we popped from the end, i.e., we have the result for the last position first.
-        result.reverse();
-        result
+        let step_count = positions.len().saturating_sub(1);
+        debug_assert!(
+            swept_areas_by_object
+                .iter()
+                .all(|areas| areas.len() == step_count)
+        );
+        (0..step_count)
+            .map(|step| {
+                CollisionObject::from(
+                    swept_areas_by_object
+                        .iter()
+                        .map(|areas| areas[step].clone())
+                        .collect_vec(),
+                )
+            })
+            .collect()
     }
 
     pub fn swept_area(&self, start_pos: DPose2, end_pos: DPose2) -> CollisionObject {
@@ -122,13 +124,8 @@ impl From<SimpleCollisionObject> for CollisionObject {
 }
 
 impl From<Vec<SimpleCollisionObject>> for CollisionObject {
-    fn from(mut value: Vec<SimpleCollisionObject>) -> Self {
-        if value.iter().any(|obj| obj.is_full_space()) {
-            Self::full_space()
-        } else {
-            value.retain(|obj| !obj.is_empty());
-            Self::new(value)
-        }
+    fn from(value: Vec<SimpleCollisionObject>) -> Self {
+        value.into_iter().collect()
     }
 }
 
@@ -136,11 +133,17 @@ impl FromIterator<SimpleCollisionObject> for CollisionObject {
     fn from_iter<T: IntoIterator<Item = SimpleCollisionObject>>(iter: T) -> Self {
         let none_if_full_space = iter
             .into_iter()
-            .filter(|obj| !obj.is_empty())
-            .map(|obj| if obj.is_full_space() { None } else { Some(obj) })
+            .filter(|object| !object.is_empty())
+            .map(|object| {
+                if object.is_full_space() {
+                    None
+                } else {
+                    Some(object)
+                }
+            })
             .collect();
         match none_if_full_space {
-            Some(objs) => Self::new(objs),
+            Some(objects) => Self::new(objects),
             None => Self::full_space(),
         }
     }
@@ -184,66 +187,79 @@ mod tests {
     }
 
     #[rstest]
-    fn test_from_simple(
+    fn from_simple_object_filters_empty_shape(
         circle: SimpleCollisionObject,
         empty: SimpleCollisionObject,
         full_space: SimpleCollisionObject,
     ) {
-        let co = CollisionObject::from(circle.clone());
-        assert_eq!(co.collision_objects(), &[circle]);
+        let collision_object = CollisionObject::from(circle.clone());
+        assert_eq!(collision_object.collision_objects(), &[circle]);
 
-        let co_empty = CollisionObject::from(empty);
-        assert!(co_empty.is_empty());
+        let empty_collision_object = CollisionObject::from(empty);
+        assert!(empty_collision_object.is_empty());
 
-        let co_full = CollisionObject::from(full_space);
-        assert!(co_full.is_full_space());
+        let full_space_collision_object = CollisionObject::from(full_space);
+        assert!(full_space_collision_object.is_full_space());
     }
 
     #[rstest]
-    fn test_from_vec(
+    fn from_vec_filters_empty_and_prefers_full_space(
         circle: SimpleCollisionObject,
         rectangle: SimpleCollisionObject,
         empty: SimpleCollisionObject,
         full_space: SimpleCollisionObject,
     ) {
         // Normal case
-        let co = CollisionObject::from(vec![circle.clone(), rectangle.clone()]);
-        assert_eq!(co.collision_objects(), &[circle.clone(), rectangle.clone()]);
+        let collision_object = CollisionObject::from(vec![circle.clone(), rectangle.clone()]);
+        assert_eq!(
+            collision_object.collision_objects(),
+            &[circle.clone(), rectangle.clone()]
+        );
 
         // Filter out empty objects
-        let co = CollisionObject::from(vec![circle.clone(), empty]);
-        assert_eq!(co.collision_objects(), std::slice::from_ref(&circle));
+        let collision_object = CollisionObject::from(vec![circle.clone(), empty]);
+        assert_eq!(
+            collision_object.collision_objects(),
+            std::slice::from_ref(&circle)
+        );
 
         // Full space takes precedence
-        let co = CollisionObject::from(vec![circle, full_space, rectangle]);
-        assert!(co.is_full_space());
+        let collision_object = CollisionObject::from(vec![circle, full_space, rectangle]);
+        assert!(collision_object.is_full_space());
     }
 
     #[rstest]
-    fn test_from_iter(
+    fn from_iter_filters_empty_and_prefers_full_space(
         circle: SimpleCollisionObject,
         rectangle: SimpleCollisionObject,
         empty: SimpleCollisionObject,
         full_space: SimpleCollisionObject,
     ) {
         // Normal case
-        let co: CollisionObject = vec![circle.clone(), rectangle.clone()]
+        let collision_object: CollisionObject = vec![circle.clone(), rectangle.clone()]
             .into_iter()
             .collect();
-        assert_eq!(co.collision_objects(), &[circle.clone(), rectangle.clone()]);
+        assert_eq!(
+            collision_object.collision_objects(),
+            &[circle.clone(), rectangle.clone()]
+        );
 
         // Filter out empty objects
-        let co: CollisionObject = vec![circle.clone(), empty].into_iter().collect();
-        assert_eq!(co.collision_objects(), std::slice::from_ref(&circle));
+        let collision_object: CollisionObject = vec![circle.clone(), empty].into_iter().collect();
+        assert_eq!(
+            collision_object.collision_objects(),
+            std::slice::from_ref(&circle)
+        );
 
         // Full space takes precedence
-        let co: CollisionObject = vec![circle, full_space, rectangle].into_iter().collect();
-        assert!(co.is_full_space());
+        let collision_object: CollisionObject =
+            vec![circle, full_space, rectangle].into_iter().collect();
+        assert!(collision_object.is_full_space());
     }
 
     #[cfg(feature = "parry")]
     #[rstest]
-    fn test_swept_areas(
+    fn swept_areas_cover_interpolated_shape_positions(
         #[values(
             CollisionObject::from(vec![
                 SimpleCollisionObject::circle((5.0, 0.0), 1.0).unwrap(),

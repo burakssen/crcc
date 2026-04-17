@@ -44,7 +44,9 @@ impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for Collis
     {
         positioned_static_obstacles
             .into_par_iter()
-            .map(|(obs, pos)| self.collides_static_range(obs, pos, time_range.clone()))
+            .map(|(obstacle, position)| {
+                self.collides_static_range(obstacle, position, time_range.clone())
+            })
             .collect()
     }
 
@@ -59,7 +61,7 @@ impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for Collis
     {
         dynamic_obstacles
             .into_par_iter()
-            .map(|obs| self.collides_dynamic_range(obs, time_range.clone()))
+            .map(|obstacle| self.collides_dynamic_range(obstacle, time_range.clone()))
             .collect()
     }
 }

@@ -20,7 +20,7 @@ classifiers = [
 dependencies = ["commonroad-io>=2026.1"]
 
 [dependency-groups]
-dev = ["pre-commit>=2.21.0", "ruff==0.14.8"]
+dev = ["pre-commit>=2.21.0", "pytest>=8.0", "ruff==0.14.8"]
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
@@ -65,3 +65,9 @@ target-version = "py310"
 lint.ignore = ["E203"]
 lint.select = ["E4", "E7", "E9", "F", "I"]
 lint.isort.combine-as-imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+filterwarnings = [
+    "ignore:datetime\\.datetime\\.utcfromtimestamp\\(\\) is deprecated.*:DeprecationWarning:google\\.protobuf\\.internal\\.well_known_types",
+]

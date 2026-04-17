@@ -153,7 +153,7 @@ mod tests {
     use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
 
     #[test]
-    fn test_pose_to_affine() {
+    fn pose_to_affine_matches_pose_transform() {
         let pose = DPose2::new(DVec2::new(1.0, 2.0), FRAC_PI_2);
         let affine = pose_to_affine(pose);
         let point = (1.0, 2.0);
@@ -165,7 +165,7 @@ mod tests {
 
     #[cfg(feature = "parry")]
     #[rstest]
-    fn test_swept_areas(
+    fn swept_areas_cover_interpolated_shape_positions(
         #[values(
             SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap(),
             SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0).unwrap(),
@@ -212,7 +212,7 @@ mod tests {
             .into_iter()
             .map(CollisionObject::from)
             .collect_vec();
-        let shape_co = CollisionObject::from(shape.clone());
+        let shape_collision_object = CollisionObject::from(shape.clone());
         assert_eq!(swept_areas.len(), positions.len().saturating_sub(1));
         for ((start_pos, end_pos), swept_area) in
             positions.iter().tuple_windows().zip(swept_areas.iter())
@@ -220,7 +220,7 @@ mod tests {
             // Interpolate 5 points between start_pos and end_pos
             for i in 0..=5 {
                 let t = i as f64 / 5.0;
-                let interp_pos = DPose2::from_parts(
+                let interpolated_position = DPose2::from_parts(
                     start_pos.translation.lerp(end_pos.translation, t),
                     start_pos.rotation.slerp(&end_pos.rotation, t),
                 );
@@ -229,8 +229,8 @@ mod tests {
                     crate::collision_checker::engine::collides(
                         swept_area,
                         DPose2::IDENTITY,
-                        &shape_co,
-                        interp_pos,
+                        &shape_collision_object,
+                        interpolated_position,
                         crate::collision_checker::engine::CollisionEngine::default()
                     )
                     .unwrap()
@@ -240,7 +240,7 @@ mod tests {
     }
 
     #[test]
-    fn test_swept_area_half_space_translation() {
+    fn swept_area_for_translated_half_space_keeps_expected_boundary() {
         let hs = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0); // x <= 0.0
         let swept_area = hs.swept_area(DPose2::IDENTITY, DPose2::translation(-1.0, 0.0));
         // The swept area should be x <= -1.0

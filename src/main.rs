@@ -12,7 +12,7 @@ fn main() {
 }
 
 fn demo_parallel_collision_checks() {
-    let cc = CollisionCheckerBuilder::new()
+    let collision_checker = CollisionCheckerBuilder::new()
         .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 2.0).unwrap())
         .build_with_engine(CollisionEngine::Parry)
         .unwrap();
@@ -23,7 +23,7 @@ fn demo_parallel_collision_checks() {
         .map(|i| {
             CollisionObject::from(SimpleCollisionObject::circle((i as f64, 0.0), 1.0).unwrap())
         })
-        .map(|co| (co, DPose2::IDENTITY))
+        .map(|collision_object| (collision_object, DPose2::IDENTITY))
         .collect();
     println!(
         "Creating {} test objects took {:?}",
@@ -34,11 +34,11 @@ fn demo_parallel_collision_checks() {
     let test_objects_seq = test_objects.clone();
 
     let now = Instant::now();
-    let results = cc.par_collides_static(&test_objects, ..);
+    let results = collision_checker.par_collides_static(&test_objects, ..);
     println!("Parallel collision checks took {:?}", Instant::now() - now);
     println!("Parallel collisions: {}", count_collisions(&results));
     let now = Instant::now();
-    let results = cc.par_collides_static(&test_objects, ..);
+    let results = collision_checker.par_collides_static(&test_objects, ..);
     println!(
         "Parallel collision checks (second run) took {:?}",
         Instant::now() - now
@@ -47,7 +47,9 @@ fn demo_parallel_collision_checks() {
     let now = Instant::now();
     let seq_results = test_objects_seq
         .iter()
-        .map(|(co, pos)| cc.collides_static_range(co, *pos, ..))
+        .map(|(collision_object, position)| {
+            collision_checker.collides_static_range(collision_object, *position, ..)
+        })
         .collect_vec();
     println!(
         "Sequential collision checks took {:?}",
@@ -57,7 +59,9 @@ fn demo_parallel_collision_checks() {
     let now = Instant::now();
     let seq_results = test_objects_seq
         .iter()
-        .map(|(co, pos)| cc.collides_static_range(co, *pos, ..))
+        .map(|(collision_object, position)| {
+            collision_checker.collides_static_range(collision_object, *position, ..)
+        })
         .collect_vec();
     println!(
         "Sequential collision checks (second run) took {:?}",
