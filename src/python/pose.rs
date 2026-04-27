@@ -8,7 +8,7 @@ pub struct Pose(pub(crate) DPose2);
 #[pymethods]
 impl Pose {
     #[new]
-    pub fn translation_rotation(translation: (f64, f64), angle: f64) -> Self {
+    pub fn new(translation: (f64, f64), angle: f64) -> Self {
         Pose(DPose2::new(DVec2::new(translation.0, translation.1), angle))
     }
 
@@ -37,8 +37,12 @@ impl Pose {
         self.0.rotation.angle()
     }
 
-    pub fn and_then(&self, other: &Self) -> Self {
+    pub fn compose(&self, other: &Self) -> Self {
         Pose(self.0 * other.0)
+    }
+
+    pub fn __mul__(&self, other: &Self) -> Self {
+        self.compose(other)
     }
 }
 
