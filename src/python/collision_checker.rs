@@ -225,12 +225,24 @@ impl Default for CollisionCheckerBuilder {
     }
 }
 
+#[pyfunction]
+pub fn create_road_boundary_obstacle(lanelets: Vec<Vec<(f64, f64)>>) -> PyResult<CollisionObject> {
+    let lanelets = lanelets
+        .into_iter()
+        .map(|exterior| geo::Polygon::new(exterior.into(), vec![]))
+        .collect::<Vec<_>>();
+    Ok(CollisionObject::from(crate::collision_checker::create_road_boundary_obstacle(&lanelets)))
+}
+
 #[pymodule]
 pub(super) mod collision_checker {
     use pyo3::prelude::*;
 
     #[pymodule_export]
-    use super::{CollisionChecker, CollisionCheckerBuilder, CollisionEngine, CollisionStatus};
+    use super::{
+        CollisionChecker, CollisionCheckerBuilder, CollisionEngine, CollisionStatus,
+        create_road_boundary_obstacle,
+    };
 
     /// Hack: workaround for https://github.com/PyO3/pyo3/issues/759
     #[pymodule_init]

@@ -15,6 +15,8 @@ pub mod parallel;
 mod selected;
 
 pub use builder::CollisionCheckerBuilder;
+#[cfg(feature = "python_bindings")]
+pub(crate) use builder::create_road_boundary_obstacle;
 pub use selected::SelectedCollisionChecker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -83,35 +83,12 @@ def add_road_boundary_to_builder(
 
 def create_road_boundary_obstacle(lanelet_network: LaneletNetwork) -> CollisionObject:
     """Creates an obstacle for all space outside the lanelet network."""
-    road = unary_union([lanelet.polygon.shapely_object for lanelet in lanelet_network.lanelets]).simplify(
-        ROAD_BOUNDARY_SIMPLIFY_TOLERANCE
-    )
-    if road.is_empty:
-        return Compound([])
-
-    road_convex_hull = orient(road.convex_hull, sign=1.0)
-    obstacles = [
-        HalfSpace.from_points(tuple(start_point), tuple(end_point))
-        for start_point, end_point in zip(road_convex_hull.exterior.coords, road_convex_hull.exterior.coords[1:])
+    import crcc._core.collision_checker as core
+    lanelets = [
+        [tuple(v) for v in lanelet.polygon.vertices]
+        for lanelet in lanelet_network.lanelets
     ]
-
-    holes = road_convex_hull.difference(road)
-    obstacles.extend(
-        commonroad_polygon_to_collision_object(orient(hole, sign=1.0))
-        for hole in iter_shapely_polygons(holes)
-        if hole.area > ROAD_BOUNDARY_MIN_HOLE_AREA
-    )
-    return Compound(obstacles)
-
-
-def iter_shapely_polygons(geometry):
-    if geometry.is_empty:
-        return
-    if isinstance(geometry, ShapelyPolygon):
-        yield geometry
-        return
-    for sub_geometry in geometry.geoms:
-        yield from iter_shapely_polygons(sub_geometry)
+    return core.create_road_boundary_obstacle(lanelets)
 
 
 def commonroad_polygon_to_collision_object(polygon: ShapelyPolygon) -> CollisionObject:

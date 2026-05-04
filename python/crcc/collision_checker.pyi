@@ -21,4 +21,12 @@ class CollisionCheckerBuilder:
     ) -> CollisionCheckerBuilder: ...
     def build(self) -> core.CollisionChecker: ...
 
-__all__ = ["CollisionStatus", "CollisionChecker", "CollisionEngine", "CollisionCheckerBuilder"]
+def create_road_boundary_obstacle(lanelets: List[List[Tuple[float, float]]]) -> CollisionObject: ...
+
+__all__ = [
+    "CollisionStatus",
+    "CollisionChecker",
+    "CollisionEngine",
+    "CollisionCheckerBuilder",
+    "create_road_boundary_obstacle",
+]

@@ -76,7 +76,7 @@ impl CollisionCheckerBuilder {
     }
 }
 
-fn create_road_boundary_obstacle(lanelets: &[Polygon]) -> CollisionObject {
+pub(crate) fn create_road_boundary_obstacle(lanelets: &[Polygon]) -> CollisionObject {
     let road = unary_union(lanelets).simplify(0.01); // Simplify with 1 cm tolerance to reduce artifacts
     if road.is_empty() {
         return CollisionObject::empty();
