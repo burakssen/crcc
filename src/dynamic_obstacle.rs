@@ -18,6 +18,7 @@ pub(crate) enum DynamicObstacleTrajectory<E> {
     VaryingShape {
         obstacles: Vec<E>,
         positions: Vec<DPose2>,
+        convex_hulls: Vec<E>,
     },
 }
 
@@ -46,10 +47,21 @@ impl DynamicObstacle {
             positions.len(),
             "time-variant obstacle shape and pose counts must match"
         );
+        let mut convex_hulls = Vec::new();
+        for i in 0..obstacles.len().saturating_sub(1) {
+            let shape_t = &obstacles[i];
+            let shape_t1 = &obstacles[i + 1];
+            let pos_t = positions[i];
+            let pos_t1 = positions[i + 1];
+            let swept_t = shape_t.swept_area(pos_t, pos_t1);
+            let swept_t1 = shape_t1.swept_area(pos_t, pos_t1);
+            convex_hulls.push(swept_t.merge(swept_t1));
+        }
         Self {
             trajectory: DynamicObstacleTrajectory::VaryingShape {
                 obstacles,
                 positions,
+                convex_hulls,
             },
             time_offset,
         }
@@ -78,9 +90,11 @@ impl DynamicObstacleTrajectory<CollisionObject> {
             DynamicObstacleTrajectory::VaryingShape {
                 obstacles,
                 positions,
+                convex_hulls,
             } => DynamicObstacleTrajectory::VaryingShape {
                 obstacles: obstacles.into_iter().map(E::from).collect(),
                 positions,
+                convex_hulls: convex_hulls.into_iter().map(E::from).collect(),
             },
         }
     }
@@ -95,6 +109,7 @@ impl<E> DynamicObstacleTrajectory<E> {
             DynamicObstacleTrajectory::VaryingShape {
                 obstacles,
                 positions,
+                ..
             } => obstacles
                 .get(index)
                 .zip(positions.get(index))

@@ -16,21 +16,33 @@ pub trait CCDColliderAt<C> {
 
 impl<C> CCDColliderAt<C> for GenericDynamicObstacle<C> {
     fn ccd_collider_at(&self, time_step: TimeStep) -> Option<CCDCollider<'_, C>> {
-        let DynamicObstacleTrajectory::FixedShape {
-            shape,
-            positions,
-            convex_hulls,
-        } = &self.trajectory
-        else {
-            return None;
-        };
         let index = time_step.0.checked_sub(self.time_offset.0)? as usize;
-        Some(CCDCollider {
-            shape,
-            position: *positions.get(index)?,
-            next_position: *positions.get(index + 1)?,
-            convex_hull: convex_hulls.get(index)?,
-            convex_hull_position: DPose2::IDENTITY,
-        })
+        match &self.trajectory {
+            DynamicObstacleTrajectory::FixedShape {
+                shape,
+                positions,
+                convex_hulls,
+            } => Some(CCDCollider {
+                shape,
+                position: *positions.get(index)?,
+                next_position: *positions.get(index + 1)?,
+                convex_hull: convex_hulls.get(index)?,
+                convex_hull_position: DPose2::IDENTITY,
+            }),
+            DynamicObstacleTrajectory::VaryingShape {
+                obstacles: _,
+                positions: _,
+                convex_hulls,
+            } => {
+                let swept_area = convex_hulls.get(index)?;
+                Some(CCDCollider {
+                    shape: swept_area,
+                    position: DPose2::IDENTITY,
+                    next_position: DPose2::IDENTITY,
+                    convex_hull: swept_area,
+                    convex_hull_position: DPose2::IDENTITY,
+                })
+            }
+        }
     }
 }

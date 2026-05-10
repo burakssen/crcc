@@ -36,7 +36,7 @@ def test_time_variant_obstacle_uses_per_step_shapes(engine):
     result = checker.collides_dynamic(trajectory)
 
     assert result.collides
-    assert result.time_step == 8
+    assert result.time_step == 7
 
 
 def test_time_variant_obstacle_respects_optional_poses(engine):
@@ -50,7 +50,7 @@ def test_time_variant_obstacle_respects_optional_poses(engine):
     result = checker.collides_dynamic(trajectory)
 
     assert result.collides
-    assert result.time_step == 3
+    assert result.time_step == 2
 
 
 def test_empty_compound_trajectory_does_not_collide():
