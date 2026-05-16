@@ -44,6 +44,10 @@ impl CollisionStatus {
     pub fn __str__(&self) -> String {
         format!("{}", self)
     }
+
+    pub fn __repr__(&self) -> String {
+        self.__str__()
+    }
 }
 
 impl Display for CollisionStatus {
@@ -77,10 +81,10 @@ impl AsRef<SelectedCollisionChecker> for CollisionChecker {
 
 #[pymethods]
 impl CollisionChecker {
-    #[pyo3(signature = (static_obstacle, position=None, min_time=None, max_time=None))]
+    #[pyo3(signature = (query_shape, position=None, min_time=None, max_time=None))]
     pub fn collides_static(
         &self,
-        static_obstacle: &CollisionObject,
+        query_shape: &CollisionObject,
         position: Option<&Pose>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
@@ -90,28 +94,28 @@ impl CollisionChecker {
             None => DPose2::IDENTITY,
         };
         let res = self.0.collides_static_range(
-            static_obstacle.as_ref(),
+            query_shape.as_ref(),
             position,
             min_max_to_range(min_time, max_time),
         )?;
         Ok(res.into())
     }
 
-    #[pyo3(signature = (positioned_static_obstacles, min_time=None, max_time=None))]
+    #[pyo3(signature = (positioned_query_shapes, min_time=None, max_time=None))]
     pub fn par_collides_static(
         &self,
-        positioned_static_obstacles: Vec<(CollisionObject, Pose)>,
+        positioned_query_shapes: Vec<(CollisionObject, Pose)>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Vec<CollisionStatus>> {
-        let positioned_static_obstacles = positioned_static_obstacles
+        let positioned_query_shapes = positioned_query_shapes
             .into_iter()
             .map(|(obstacle, position)| (obstacle.as_ref().clone(), position.0))
             .collect::<Vec<_>>();
         let res = self
             .0
             .par_collides_static(
-                &positioned_static_obstacles,
+                &positioned_query_shapes,
                 min_max_to_range(min_time, max_time),
             )
             .into_iter()
@@ -160,7 +164,8 @@ fn min_max_to_range(
 ) -> RangeInclusive<TimeStep> {
     match (min_time, max_time) {
         (Some(min_t), Some(max_t)) => TimeStep::from(min_t)..=TimeStep::from(max_t),
-        (Some(t), None) | (None, Some(t)) => TimeStep::from(t)..=TimeStep::from(t),
+        (Some(min_t), None) => TimeStep::from(min_t)..=TimeStep::MAX,
+        (None, Some(max_t)) => TimeStep::MIN..=TimeStep::from(max_t),
         (None, None) => TimeStep::MIN..=TimeStep::MAX,
     }
 }

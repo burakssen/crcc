@@ -87,6 +87,29 @@ def test_static_collision_time_window_filtering():
     assert str(checker.collides_static(query, min_time=0, max_time=2)) == "CollidesDynamic(0)"
 
 
+def test_half_bounded_time_range_queries():
+    dynamic_obstacle = DynamicObstacle(
+        Circle(1.0),
+        [
+            Pose.from_translation((10.0, 10.0)),
+            Pose.from_translation((9.0, 9.0)),
+            Pose.from_translation((10.0, 10.0)),
+        ],
+        0,
+    )
+    checker = CollisionCheckerBuilder().with_dynamic_obstacle(dynamic_obstacle).build()
+    query = Circle(1.0, (8.0, 8.0))
+
+    # With only min_time=1, it checks 1..=MAX (which is 1..=2). It should detect collision at step 1.
+    assert str(checker.collides_static(query, min_time=1)) == "CollidesDynamic(1)"
+
+    # With only max_time=1, it checks MIN..=1 (which is 0..=1). It should detect collision at step 0 (during 0 to 1 transition).
+    assert str(checker.collides_static(query, max_time=1)) == "CollidesDynamic(0)"
+
+    # With min_time=2, it checks 2..=MAX. There's no collision from step 2 onwards.
+    assert str(checker.collides_static(query, min_time=2)) == "NoCollision"
+
+
 def test_parallel_static_results_match_sequential_results():
     checker = CollisionCheckerBuilder().with_static_obstacle(Circle(2.0)).build()
     positioned_queries = [(Circle(1.0, (float(index), 0.0)), Pose.identity()) for index in range(8)]
@@ -249,3 +272,6 @@ def test_draw_feature_frame_returns_visible_artists(engine):
 
     assert len(artists) >= 5
     assert "COLLISION" in ax.get_title()
+
+
+

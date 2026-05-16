@@ -25,9 +25,9 @@ class CollisionCheckerBuilder:
 
     def with_static_obstacle(
         self,
-        static_obstacle: CollisionObject,
+        query_shape: CollisionObject,
     ) -> CollisionCheckerBuilder:
-        self._rust_builder.with_static_obstacle(static_obstacle)
+        self._rust_builder.with_static_obstacle(query_shape)
         return self
 
     def with_dynamic_obstacle(
