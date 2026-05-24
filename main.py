@@ -21,6 +21,7 @@ from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
 from matplotlib.patches import Circle as CirclePatch, Rectangle as RectanglePatch
 from matplotlib.transforms import Affine2D
+from matplotlib.widgets import Slider
 
 SCENARIO_PATH = "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
 ENGINE = CollisionEngine.Rhusics
@@ -54,6 +55,7 @@ class ExampleAction(Enum):
     SMOKE = "smoke"
     BENCHMARK = "benchmark"
     VISUALIZE = "visualize"
+    INTERACTIVE = "interactive"
     ALL = "all"
 
 
@@ -160,12 +162,15 @@ def run_action(action, scenario_path: str, engine):
         run_parallel_benchmark(checker, pose_bounds)
     elif action == ExampleAction.VISUALIZE:
         run_visualization(scenario, checker, scenario_path, pose_bounds)
+    elif action == ExampleAction.INTERACTIVE:
+        run_interactive_playground(scenario, checker, scenario_path, pose_bounds)
     elif action == ExampleAction.ALL:
         run_smoke_checks(scenario, checker, scenario_path, pose_bounds)
         run_geometry_examples()
         run_feature_visualization(engine)
         run_parallel_benchmark(checker, pose_bounds)
         run_visualization(scenario, checker, scenario_path, pose_bounds)
+        run_interactive_playground(scenario, checker, scenario_path, pose_bounds)
     else:
         raise ValueError(f"Unsupported example action: {action}")
 
@@ -564,6 +569,108 @@ def car_occupancy_for_pose(pose):
     return CAR_OBSTACLE_SHAPE.compute_occupancy_for_state(
         InitialState(position=np.array(pose.translation), orientation=pose.rotation)
     )
+
+
+def run_interactive_playground(scenario, checker, scenario_path, pose_bounds):
+    car = Rectangle(*CAR_SIZE)
+    time_steps = scenario_time_steps(scenario)
+    current_time_step = time_steps[0]
+
+    fig, ax = plt.subplots(figsize=(10, 7))
+    plt.subplots_adjust(bottom=0.25)  # Make room for the slider
+
+    plot_limits = pose_bounds_to_plot_limits(pose_bounds)
+
+    # Maintain current state
+    state = {
+        "x": (pose_bounds[0][0] + pose_bounds[1][0]) / 2.0,
+        "y": (pose_bounds[0][1] + pose_bounds[1][1]) / 2.0,
+        "angle": 0.0,
+        "time_step": current_time_step,
+        "car_patch": None,
+    }
+
+    # Add slider for time steps
+    ax_slider = plt.axes([0.15, 0.08, 0.7, 0.03])
+    slider = Slider(
+        ax_slider,
+        "Time Step",
+        min(time_steps),
+        max(time_steps),
+        valinit=current_time_step,
+        valfmt="%d",
+        valstep=time_steps,
+    )
+
+    def draw_scene():
+        ax.clear()
+        draw_params = MPDrawParams(time_begin=state["time_step"], time_end=state["time_step"])
+        renderer = MPRenderer(draw_params=draw_params, plot_limits=plot_limits, ax=ax)
+        scenario.draw(renderer, draw_params)
+        renderer.render()
+
+        # Re-add our interactive car patch
+        state["car_patch"] = RectanglePatch(
+            (-CAR_SIZE[0] / 2.0, -CAR_SIZE[1] / 2.0),
+            CAR_SIZE[0],
+            CAR_SIZE[1],
+            facecolor=COLOR_CLEAR,
+            edgecolor=COLOR_CLEAR,
+            alpha=0.6,
+            zorder=20,  # Bring to front
+        )
+        ax.add_patch(state["car_patch"])
+
+        update_car_pose_and_collision()
+
+    def update_car_pose_and_collision():
+        x, y, angle = state["x"], state["y"], state["angle"]
+        t = int(state["time_step"])
+
+        # Query collision status at time t
+        pose = Pose((x, y), angle)
+        status = checker.collides_static(car, position=pose, min_time=t, max_time=t)
+
+        color = COLOR_COLLIDED if status.collides else COLOR_CLEAR
+        state["car_patch"].set_facecolor(color)
+        state["car_patch"].set_edgecolor(color)
+
+        # Update patch transform
+        transform = Affine2D().rotate(angle).translate(x, y) + ax.transData
+        state["car_patch"].set_transform(transform)
+
+        status_text = f"COLLISION at t={t}" if status.collides else "Clear"
+        ax.set_title(
+            f"Interactive Ego Vehicle Playground\nMove Mouse: Translate | Scroll: Rotate | Status: {status_text}",
+            color=color if status.collides else "black",
+        )
+        fig.canvas.draw_idle()
+
+    def on_move(event):
+        if event.inaxes != ax:
+            return
+        state["x"] = event.xdata
+        state["y"] = event.ydata
+        update_car_pose_and_collision()
+
+    def on_scroll(event):
+        if event.inaxes != ax:
+            return
+        # Rotate by 5 degrees per scroll step
+        rotation_delta = np.radians(5.0) if event.button == "up" else -np.radians(5.0)
+        state["angle"] += rotation_delta
+        update_car_pose_and_collision()
+
+    def on_slider_change(val):
+        state["time_step"] = int(val)
+        draw_scene()
+
+    slider.on_changed(on_slider_change)
+    fig.canvas.mpl_connect("motion_notify_event", on_move)
+    fig.canvas.mpl_connect("scroll_event", on_scroll)
+
+    draw_scene()
+    plt.show()
 
 
 if __name__ == "__main__":

@@ -274,4 +274,22 @@ def test_draw_feature_frame_returns_visible_artists(engine):
     assert "COLLISION" in ax.get_title()
 
 
+def test_interactive_playground_initialization_runs_without_crashing(monkeypatch):
+    scenario, checker = main.load_collision_checker(main.SCENARIO_PATH)
+    pose_bounds = main.scenario_pose_bounds(scenario)
 
+    # Mock plt and Slider to avoid rendering / blocking
+    class MockSlider:
+        def __init__(self, *args, **kwargs):
+            pass
+        def on_changed(self, func):
+            pass
+
+    monkeypatch.setattr(main, "Slider", MockSlider)
+    monkeypatch.setattr(main.plt, "subplots", lambda *args, **kwargs: (main.plt.figure(), main.plt.subplot(111)))
+    monkeypatch.setattr(main.plt, "show", lambda: None)
+
+    try:
+        main.run_interactive_playground(scenario, checker, main.SCENARIO_PATH, pose_bounds)
+    finally:
+        main.plt.close("all")

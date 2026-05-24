@@ -1,69 +1,112 @@
-# CommonRoad Collision Checker
+# CommonRoad Collision Checker (`crcc`)
 
-Rust/Python collision checking utilities for CommonRoad scenarios.
+`crcc` is a high-performance, hybrid Rust/Python collision checking library tailored for **CommonRoad** autonomous driving scenarios. It provides fast, exact, and continuous collision checking between various geometric shapes, static obstacles, time-varying dynamic trajectories, and complex road networks.
 
-## Implemented Features
+By wrapping a core Rust library in Python bindings via PyO3 and Maturin, `crcc` delivers the developer experience of Python with the execution speed and concurrency of Rust (backed by Rayon).
 
-- Collision primitives: `Circle`, `Rectangle`, `Triangle`, `Polygon`, `Compound`, `Empty`, `FullSpace`, and `HalfSpace`.
-- Pairwise collision checks between collision objects, including positioned discrete checks and continuous checks between two poses.
-- Collision checker builder for static obstacles, dynamic obstacles, and road-boundary obstacles.
-- Static and dynamic obstacle queries with optional `min_time` / `max_time` filtering.
-- Dynamic obstacles with either one fixed shape moving through poses or time-varying per-step shapes.
-- Collision status reporting through `NoCollision`, `CollidesStatic`, and `CollidesDynamic(t)`.
-- Parallel batch queries for static and dynamic candidates.
-- Collision engine selection between `Parry` and `Rhusics`.
-- CommonRoad helpers for occupancy conversion, obstacle conversion, scenario collision checker construction, and road-boundary generation.
-- Rust library API and Python bindings built with PyO3/maturin.
+---
 
-## Usage
+## Key Features
 
-Running the example script will automatically build and install the package:
+- **Rich Collision Primitives**: Fully supports discrete and continuous collision checking for:
+  * `Circle`
+  * `Rectangle` (oriented bounding boxes)
+  * `Triangle`
+  * `Polygon` (convex, non-convex, and polygons with holes)
+  * `Compound` (composition of multiple shapes)
+  * `Empty` / `FullSpace` / `HalfSpace` (defined via coefficients, normals, or line points)
+- **Continuous Collision Detection (CCD)**: Computes continuous overlaps (rigid shape casting) between moving shapes to prevent "tunneling" (missed collisions at high speeds). Fully supports both `FixedShape` and `VaryingShape` (time-variant) dynamic obstacles.
+- **Batch & Parallel Queries**: Rayon-powered batch collision checks (`par_collides_static`, `par_collides_dynamic`) for high-throughput scenario simulation.
+- **Pluggable Collision Engines**: Switch seamlessly between collision backends:
+  * **Parry** (default, rigid-body physics oriented)
+  * **Rhusics** (broad-phase sweep and prune)
+- **CommonRoad scenario integration**: Standard helpers to load obstacles, build lanelet boundary shapes, and convert occupancies directly from CommonRoad XML scenario files.
 
+---
+
+## Installation & Quick Start
+
+The project uses `uv` for python package and environment management. 
+
+To build, install, and launch the interactive playground example:
 ```bash
 uv run main.py
 ```
 
-Run a specific example directly:
-
+Run specific examples directly:
 ```bash
+# Smoke test on a yield scenario using the Parry engine
 uv run main.py smoke --scenario scenarios/ZAM_Yield-1_1_T-1.xml --engine parry
+
+# Run parallel check benchmarks comparing sequential vs Rayon execution
 uv run main.py benchmark
+
+# Run visual scenario animations showing cumulative ego-vehicle collisions
 uv run main.py visualize
+
+# Run the interactive ego vehicle playground
+uv run main.py interactive
 ```
 
-## Python Public API
+---
 
-The top-level `crcc` package re-exports the main public classes:
+## Interactive Playground
 
+The `interactive` example opens a Matplotlib-based GUI that queries the Rust collision checker in real-time as you move the ego vehicle:
+- **Move Mouse**: Translates the ego vehicle across the scenario.
+- **Scroll Mouse Wheel**: Rotates the ego vehicle by $5^\circ$ per scroll tick.
+- **Slider**: Selects the active time step $t$ (re-rendering other dynamic obstacles at that step).
+- **Feedback**: The vehicle is colored **GREEN** when the pose is clear, and **RED** when a collision is detected.
+
+---
+
+## Python Public API Reference
+
+The top-level `crcc` package exports the main public classes:
 ```python
 from crcc import (
-    Circle,
-    CollisionCheckerBuilder,
-    CollisionEngine,
-    Compound,
-    DynamicObstacle,
     Pose,
+    CollisionObject,
+    Circle,
     Rectangle,
+    Triangle,
+    Polygon,
+    Compound,
+    HalfSpace,
+    Empty,
+    FullSpace,
+    DynamicObstacle,
+    CollisionCheckerBuilder,
+    CollisionChecker,
+    CollisionEngine,
+    CollisionStatus,
 )
 ```
 
-### Poses
-
+### 1. Poses (`Pose`)
+Poses represent 2D transformations (translation and rotation).
 ```python
-Pose(translation: tuple[float, float], angle: float)
+# Constructor
+pose = Pose(translation=(1.0, 2.0), angle=0.5)
+
+# Static methods
 Pose.identity() -> Pose
 Pose.from_translation(translation: tuple[float, float]) -> Pose
 Pose.from_rotation(angle: float) -> Pose
+
+# Properties
 pose.translation -> tuple[float, float]
-pose.rotation -> float
-pose.and_then(other: Pose) -> Pose
+pose.rotation -> float # Rotation angle in radians
+
+# Composition
+new_pose = pose.compose(other: Pose)
+new_pose = pose * other  # Pose multiplication operator
 ```
 
-### Collision Objects
-
-All shapes inherit from `CollisionObject`:
-
+### 2. Collision Objects (`CollisionObject`)
+All shape primitives inherit from `CollisionObject`. They support discrete and continuous queries:
 ```python
+# Discrete pairwise collision check
 obj.collides(
     other: CollisionObject,
     pos_self: Pose = Pose.identity(),
@@ -71,6 +114,7 @@ obj.collides(
     engine: CollisionEngine = CollisionEngine.Parry,
 ) -> bool
 
+# Continuous pairwise collision check (rigid shape casting)
 obj.collides_continuous(
     start_pos_self: Pose,
     end_pos_self: Pose,
@@ -80,12 +124,12 @@ obj.collides_continuous(
     engine: CollisionEngine = CollisionEngine.Parry,
 ) -> bool
 
-obj.merge(other: CollisionObject) -> CollisionObject
-CollisionObject.merge_all(collision_objects: list[CollisionObject]) -> CollisionObject
+# Merge multiple shapes into one CollisionObject
+merged = obj.merge(other: CollisionObject)
+merged = CollisionObject.merge_all(shapes: list[CollisionObject])
 ```
 
-Shape constructors:
-
+#### Shape Constructors:
 ```python
 Circle(radius: float, center: tuple[float, float] = (0.0, 0.0))
 Rectangle(length: float, width: float, orientation: float = 0.0, center: tuple[float, float] = (0.0, 0.0))
@@ -99,122 +143,103 @@ Empty()
 FullSpace()
 ```
 
-### Dynamic Obstacles
-
+### 3. Dynamic Obstacles (`DynamicObstacle`)
+Represents an obstacle moving along a trajectory over time.
 ```python
-DynamicObstacle(shape: CollisionObject, positions: list[Pose], time_offset: int)
-DynamicObstacle.from_time_variant(
-    obstacles: list[CollisionObject],
+# Fixed shape moving through a list of poses
+dynamic_obstacle = DynamicObstacle(shape: CollisionObject, positions: list[Pose], time_offset: int)
+
+# Time-varying (varying shape/size) obstacle
+dynamic_obstacle = DynamicObstacle.from_time_variant(
+    obstacles: list[CollisionObject], # A shape per time step
     time_offset: int = 0,
-    positions: list[Pose] | None = None,
-) -> DynamicObstacle
+    positions: list[Pose] | None = None, # Optional translations per step
+)
 ```
 
-### Collision Checkers
-
+### 4. Collision Checkers & Builders (`CollisionChecker`)
+Builds and executes queries against scenario environments.
 ```python
-CollisionCheckerBuilder(engine: CollisionEngine = CollisionEngine.Parry)
+# 1. Initialize Builder
+builder = CollisionCheckerBuilder(engine: CollisionEngine = CollisionEngine.Parry)
 builder.with_engine(engine: CollisionEngine) -> CollisionCheckerBuilder
-builder.with_static_obstacle(static_obstacle: CollisionObject) -> CollisionCheckerBuilder
+
+# 2. Populate environment obstacles
+builder.with_static_obstacle(query_shape: CollisionObject) -> CollisionCheckerBuilder
 builder.with_dynamic_obstacle(dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder
 builder.with_road_boundary_obstacle(lanelets: list[list[tuple[float, float]]]) -> CollisionCheckerBuilder
-builder.build() -> CollisionChecker
+
+# 3. Build checker
+checker = builder.build() -> CollisionChecker
 ```
 
+#### Executing Queries:
 ```python
-checker.collides_static(
-    static_obstacle: CollisionObject,
+# Check stationary ego vehicle (query_shape) against the environment
+status = checker.collides_static(
+    query_shape: CollisionObject,
     position: Pose | None = None,
-    min_time: int | None = None,
+    min_time: int | None = None,  # Optional half-bounded range filtering
     max_time: int | None = None,
 ) -> CollisionStatus
 
-checker.collides_dynamic(
+# Check dynamic ego vehicle (dynamic_obstacle) trajectory against the environment
+status = checker.collides_dynamic(
     dynamic_obstacle: DynamicObstacle,
     min_time: int | None = None,
     max_time: int | None = None,
 ) -> CollisionStatus
 
-checker.par_collides_static(
-    positioned_static_obstacles: list[tuple[CollisionObject, Pose]],
+# Parallel Rayon-backed static batch check
+statuses = checker.par_collides_static(
+    positioned_query_shapes: list[tuple[CollisionObject, Pose]],
     min_time: int | None = None,
     max_time: int | None = None,
 ) -> list[CollisionStatus]
 
-checker.par_collides_dynamic(
+# Parallel Rayon-backed dynamic batch check
+statuses = checker.par_collides_dynamic(
     dynamic_obstacles: list[DynamicObstacle],
     min_time: int | None = None,
     max_time: int | None = None,
 ) -> list[CollisionStatus]
 ```
 
-`CollisionStatus` variants are `NoCollision`, `CollidesStatic`, and `CollidesDynamic(t)`.
+#### `CollisionStatus` properties:
+- `status.collides` -> `bool` (indicates if a collision occurred)
+- `status.time_step` -> `int | None` (returns the first timestep where collision was detected)
+- `str(status)` -> e.g. `"NoCollision"`, `"CollidesStatic"`, `"CollidesDynamic(15)"`
 
-```python
-status.collides -> bool
-status.time_step -> int | None
-str(status) -> str
-```
-
-Available engines:
-
-```python
-CollisionEngine.Parry
-CollisionEngine.Rhusics
-```
-
-### CommonRoad Helpers
-
-```python
-create_collision_checker_from_scenario(scenario, builder: CollisionCheckerBuilder | None = None) -> CollisionCheckerBuilder
-add_commonroad_static_obstacle_to_builder(builder, static_obstacle) -> CollisionCheckerBuilder
-add_commonroad_dynamic_obstacle_to_builder(builder, dynamic_obstacle) -> CollisionCheckerBuilder
-add_road_boundary_to_builder(builder, lanelet_network) -> CollisionCheckerBuilder
-create_road_boundary_obstacle(lanelet_network) -> CollisionObject
-commonroad_shape_to_collision_object(shape) -> CollisionObject
-commonroad_occupancy_to_collision_object(occupancy) -> CollisionObject
-commonroad_polygon_to_collision_object(polygon) -> CollisionObject
-shapely_geometry_to_collision_object(geometry) -> CollisionObject
-commonroad_state_to_pose(state) -> Pose
-```
+---
 
 ## Rust Public API
 
-The Rust crate exposes these modules:
+The Rust crate consists of the following modules:
+* `collision_object`: Composite `CollisionObject`, primitives, merges, and swept areas.
+* `collision_checker`: `CollisionChecker`, `CollisionCheckerBuilder`, `CollisionStatus`, selected-engine wrappers, and batch Rayon queries.
+* `dynamic_obstacle`: Trajectory types for `FixedShape` and `VaryingShape`.
+* `time`: `TimeStep` and `TimeStepSet` implementations.
+* `error`: `CrccError` and results.
 
-- `collision_object`: composite `CollisionObject`, primitive constructors, merge helpers, and swept-area helpers.
-- `collision_object::simple`: lower-level primitive shape types and shape-specific validation.
-- `collision_checker`: `CollisionCheckerBuilder`, `CollisionChecker`, `CollisionStatus`, selected-engine wrappers, and parallel query support.
-- `collision_checker::engine`: `CollisionEngine`, `EngineCollisionObject`, and direct discrete/continuous engine dispatch helpers.
-- `dynamic_obstacle`: fixed-shape and time-varying `DynamicObstacle` construction.
-- `time`: `TimeStep` and `TimeStepSet`.
-- `error`: `CrccError` and `CrccResult`.
+### Feature Flags
+* `parry`: Compile the Parry collision detection backend.
+* `rhusics`: Compile the Rhusics collision backend.
+* `python_bindings`: Compile the PyO3 modules.
+* `rayon`: Enable Rayon multi-threaded parallel queries.
 
-Feature flags:
+---
 
-- `parry`: enable the Parry collision engine.
-- `rhusics`: enable the Rhusics collision engine.
-- `python_bindings`: enable PyO3 bindings and parallel Python batch queries.
-- `rayon`: enable Rayon-backed parallel query APIs.
+## Development & Testing
 
-## Development
-
-Run the Rust checks:
-
+Run Rust formatting and tests:
 ```bash
 cargo check --all-features
 cargo test --all-features
 cargo clippy --all-features --all-targets -- -D warnings
 ```
 
-Run the Python checks:
-
+Run Python linting and tests:
 ```bash
 uv run ruff check .
 uv run pytest
 ```
-
-## Planned Work
-
-- Plotting of collision objects etc.
-- Python: Separation of generic collision checking and CommonRoad-specific parts
