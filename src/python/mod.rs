@@ -21,7 +21,7 @@ impl From<CrccError> for PyErr {
     }
 }
 
-#[cfg(not(any(feature = "parry", feature = "rhusics")))]
+#[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
 compile_error!(
     "you must enable at least one collision engine when building Python bindings, e.g., `parry`"
 );

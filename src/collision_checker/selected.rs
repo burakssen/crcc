@@ -1,12 +1,12 @@
-#[cfg(any(feature = "parry", feature = "rhusics"))]
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
 use crate::collision_checker::CollisionChecker;
 use crate::collision_checker::CollisionResult;
 use crate::collision_checker::engine::CollisionEngine;
-#[cfg(any(feature = "parry", feature = "rhusics"))]
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
 use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_object::CollisionObject;
 use crate::dynamic_obstacle::DynamicObstacle;
-#[cfg(any(feature = "parry", feature = "rhusics"))]
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
 use crate::dynamic_obstacle::GenericDynamicObstacle;
 use crate::time::TimeStep;
 use glamx::DPose2;
@@ -26,6 +26,14 @@ pub enum SelectedCollisionChecker {
         Box<
             crate::collision_checker::CollisionChecker<
                 crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject,
+            >,
+        >,
+    ),
+    #[cfg(feature = "collide")]
+    Collide(
+        Box<
+            crate::collision_checker::CollisionChecker<
+                crate::collision_checker::engine::collide::CollideCollisionObject,
             >,
         >,
     ),
@@ -79,7 +87,7 @@ impl SelectedCollisionChecker {
         position: DPose2,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
-        #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+        #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
         let _ = (static_obstacle, position, &time_range);
 
         match self {
@@ -91,7 +99,11 @@ impl SelectedCollisionChecker {
             SelectedCollisionChecker::Rhusics(checker) => {
                 collides_static_range(checker, static_obstacle, position, time_range)
             }
-            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            #[cfg(feature = "collide")]
+            SelectedCollisionChecker::Collide(checker) => {
+                collides_static_range(checker, static_obstacle, position, time_range)
+            }
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => Err(crate::error::CrccError::Unsupported),
         }
     }
@@ -101,7 +113,7 @@ impl SelectedCollisionChecker {
         dynamic_obstacle: &DynamicObstacle,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
-        #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+        #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
         let _ = (dynamic_obstacle, &time_range);
 
         match self {
@@ -113,7 +125,11 @@ impl SelectedCollisionChecker {
             SelectedCollisionChecker::Rhusics(checker) => {
                 collides_dynamic_range(checker, dynamic_obstacle, time_range)
             }
-            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            #[cfg(feature = "collide")]
+            SelectedCollisionChecker::Collide(checker) => {
+                collides_dynamic_range(checker, dynamic_obstacle, time_range)
+            }
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => Err(crate::error::CrccError::Unsupported),
         }
     }
@@ -124,7 +140,9 @@ impl SelectedCollisionChecker {
             SelectedCollisionChecker::Parry(_) => CollisionEngine::Parry,
             #[cfg(feature = "rhusics")]
             SelectedCollisionChecker::Rhusics(_) => CollisionEngine::Rhusics,
-            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            #[cfg(feature = "collide")]
+            SelectedCollisionChecker::Collide(_) => CollisionEngine::Collide,
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => CollisionEngine::default(),
         }
     }
@@ -144,7 +162,11 @@ impl SelectedCollisionChecker {
             SelectedCollisionChecker::Rhusics(checker) => {
                 par_collides_static(checker, positioned_static_obstacles, time_range)
             }
-            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            #[cfg(feature = "collide")]
+            SelectedCollisionChecker::Collide(checker) => {
+                par_collides_static(checker, positioned_static_obstacles, time_range)
+            }
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => positioned_static_obstacles
                 .iter()
                 .map(|_| Err(crate::error::CrccError::Unsupported))
@@ -167,7 +189,11 @@ impl SelectedCollisionChecker {
             SelectedCollisionChecker::Rhusics(checker) => {
                 par_collides_dynamic(checker, dynamic_obstacles, time_range)
             }
-            #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+            #[cfg(feature = "collide")]
+            SelectedCollisionChecker::Collide(checker) => {
+                par_collides_dynamic(checker, dynamic_obstacles, time_range)
+            }
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => dynamic_obstacles
                 .iter()
                 .map(|_| Err(crate::error::CrccError::Unsupported))
@@ -176,7 +202,7 @@ impl SelectedCollisionChecker {
     }
 }
 
-#[cfg(any(feature = "parry", feature = "rhusics"))]
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
 fn collides_static_range<E: EngineCollisionObject>(
     checker: &CollisionChecker<E>,
     static_obstacle: &CollisionObject,
@@ -187,7 +213,7 @@ fn collides_static_range<E: EngineCollisionObject>(
     checker.collides_static_range(&static_obstacle, position, time_range)
 }
 
-#[cfg(any(feature = "parry", feature = "rhusics"))]
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
 fn collides_dynamic_range<E: EngineCollisionObject>(
     checker: &CollisionChecker<E>,
     dynamic_obstacle: &DynamicObstacle,
@@ -197,7 +223,10 @@ fn collides_dynamic_range<E: EngineCollisionObject>(
     checker.collides_dynamic_range(&dynamic_obstacle, time_range)
 }
 
-#[cfg(all(feature = "rayon", any(feature = "parry", feature = "rhusics")))]
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
 fn par_collides_static<E: EngineCollisionObject + Send + Sync>(
     checker: &CollisionChecker<E>,
     positioned_static_obstacles: &[(CollisionObject, DPose2)],
@@ -218,7 +247,10 @@ fn par_collides_static<E: EngineCollisionObject + Send + Sync>(
     )
 }
 
-#[cfg(all(feature = "rayon", any(feature = "parry", feature = "rhusics")))]
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
 fn par_collides_dynamic<E: EngineCollisionObject + Send + Sync>(
     checker: &CollisionChecker<E>,
     dynamic_obstacles: &[DynamicObstacle],

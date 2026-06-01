@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
-from crcc._core.collision_checker import CollisionChecker as _CollisionChecker
-from crcc._core.collision_checker import CollisionEngine as _CollisionEngine
-from crcc._core.collision_checker import CollisionStatus as _CollisionStatus
+from crcc._core.collision_checker import (
+    CollisionChecker as _CollisionChecker,
+    CollisionEngine as _CollisionEngine,
+    CollisionStatus as _CollisionStatus,
+)
 from crcc.collision_object import CollisionObject
 from crcc.dynamic_obstacle import DynamicObstacle
 from crcc.pose import Pose
@@ -12,6 +14,7 @@ from crcc.pose import Pose
 class CollisionEngine(_CollisionEngine):
     Parry: CollisionEngine
     Rhusics: CollisionEngine
+    Collide: CollisionEngine
 
 class CollisionStatus(_CollisionStatus):
     @property
@@ -27,24 +30,21 @@ class CollisionChecker(_CollisionChecker):
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> CollisionStatus: ...
-
     def par_collides_static(
         self,
-        positioned_query_shapes: List[Tuple[CollisionObject, Pose]],
+        positioned_query_shapes: Sequence[Tuple[CollisionObject, Pose]],
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> List[CollisionStatus]: ...
-
     def collides_dynamic(
         self,
         dynamic_obstacle: DynamicObstacle,
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> CollisionStatus: ...
-
     def par_collides_dynamic(
         self,
-        dynamic_obstacles: List[DynamicObstacle],
+        dynamic_obstacles: Sequence[DynamicObstacle],
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> List[CollisionStatus]: ...
@@ -56,11 +56,11 @@ class CollisionCheckerBuilder:
     def with_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
     def with_road_boundary_obstacle(
         self,
-        lanelets: List[List[Tuple[float, float]]],
+        lanelets: Sequence[Sequence[Tuple[float, float]]],
     ) -> CollisionCheckerBuilder: ...
     def build(self) -> CollisionChecker: ...
 
-def create_road_boundary_obstacle(lanelets: List[List[Tuple[float, float]]]) -> CollisionObject: ...
+def create_road_boundary_obstacle(lanelets: Sequence[Sequence[Tuple[float, float]]]) -> CollisionObject: ...
 
 __all__ = [
     "CollisionStatus",

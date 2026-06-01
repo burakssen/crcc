@@ -13,9 +13,10 @@ path = "src/main.rs"
 required-features = ["rayon"]
 
 [features]
-default = ["parry", "rhusics"]
+default = ["parry", "rhusics", "collide"]
 parry = ["dep:parry2d-f64"]
-rhusics = ["dep:rhusics-core"]
+rhusics = ["dep:cgmath", "dep:collision", "dep:rhusics-core"]
+collide = ["dep:collide", "dep:collide-convex", "dep:collide-sphere", "dep:simple-vectors"]
 python_bindings = ["dep:pyo3", "rayon"]
 rayon = ["dep:rayon"]
 
@@ -30,8 +31,12 @@ rhusics-core = { version = "0.7.0", optional = true }
 pyo3 = { version = "0.27.1", features = ["abi3-py310"], optional = true }
 rayon = { version = "1.11.0", optional = true }
 replace_with = "0.1.8"
-cgmath = "0.16.0"
-collision = "0.18.0"
+cgmath = { version = "0.16.0", optional = true }
+collision = { version = "0.18.0", optional = true }
+collide = { version = "0.7.0", optional = true }
+collide-convex = { version = "0.5.3", features = ["sphere"], optional = true }
+collide-sphere = { version = "0.3.1", optional = true }
+simple-vectors = { version = "0.5.0", optional = true }
 
 [dev-dependencies]
 rstest = "0.26.1"

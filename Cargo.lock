@@ -96,6 +96,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "collide"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "386780ef217817846cbcf024117b0c244d01bbd660dba4d1f45abceea223ceb1"
+dependencies = [
+ "vector-space",
+]
+
+[[package]]
+name = "collide-convex"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "22f06df93c14564706e039f069ce3857f1977689f4d9837161d754f0b1635c2b"
+dependencies = [
+ "collide",
+ "collide-sphere",
+ "inner-space",
+ "scalars",
+]
+
+[[package]]
+name = "collide-sphere"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc3eb0e81e8558089638afada81a080d61fef4d3b0311871d42458377b1d161c"
+dependencies = [
+ "collide",
+ "inner-space",
+ "scalars",
+]
+
+[[package]]
 name = "collision"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -115,6 +147,9 @@ name = "crcc"
 version = "0.1.0"
 dependencies = [
  "cgmath",
+ "collide",
+ "collide-convex",
+ "collide-sphere",
  "collision",
  "derive_more",
  "enum_dispatch",
@@ -127,6 +162,7 @@ dependencies = [
  "replace_with",
  "rhusics-core",
  "rstest",
+ "simple-vectors",
 ]
 
 [[package]]
@@ -477,6 +513,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
 dependencies = [
  "rustversion",
+]
+
+[[package]]
+name = "inner-space"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2dff135fecfa6c472ef6892d45e0eed32445d1ef0142af9885804f82e9fc84e"
+dependencies = [
+ "scalars",
+ "vector-space",
 ]
 
 [[package]]
@@ -1034,6 +1080,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "scalars"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0751f38792258fdda1fc817f53729b8ff84b15fbcaf98ee6c72f4b35f33094ae"
+dependencies = [
+ "libm",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1086,6 +1141,17 @@ dependencies = [
  "num-traits 0.2.19",
  "paste",
  "wide",
+]
+
+[[package]]
+name = "simple-vectors"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e23fdc68509c33ffb81004fa9fc5af477cb4d5f03e6bc4bf9b191c0af8d73da"
+dependencies = [
+ "inner-space",
+ "scalars",
+ "vector-basis",
 ]
 
 [[package]]
@@ -1205,6 +1271,25 @@ name = "unindent"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
+
+[[package]]
+name = "vector-basis"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aac4cdc3cef2a32f13c0bb9a0b476f0030aa0e83c9a6f3e8d5b9969372aa6ff7"
+dependencies = [
+ "scalars",
+ "vector-space",
+]
+
+[[package]]
+name = "vector-space"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cef3e9fe6ca4e3807d260ce966d098900c682e13058282f9b7607a6b2b779d1e"
+dependencies = [
+ "scalars",
+]
 
 [[package]]
 name = "wasi"

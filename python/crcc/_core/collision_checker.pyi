@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple
 
 from .collision_object import CollisionObject
 from .dynamic_obstacle import DynamicObstacle
@@ -9,6 +9,7 @@ from .pose import Pose
 class CollisionEngine:
     Parry: CollisionEngine
     Rhusics: CollisionEngine
+    Collide: CollisionEngine
 
 class CollisionStatus:
     @staticmethod
@@ -33,7 +34,7 @@ class CollisionChecker:
     ) -> CollisionStatus: ...
     def par_collides_static(
         self,
-        positioned_static_obstacle: List[Tuple[CollisionObject, Pose]],
+        positioned_static_obstacle: Sequence[Tuple[CollisionObject, Pose]],
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> List[CollisionStatus]: ...
@@ -45,7 +46,7 @@ class CollisionChecker:
     ) -> CollisionStatus: ...
     def par_collides_dynamic(
         self,
-        dynamic_obstacles: List[DynamicObstacle],
+        dynamic_obstacles: Sequence[DynamicObstacle],
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> List[CollisionStatus]: ...
@@ -54,7 +55,17 @@ class CollisionCheckerBuilder:
     def __init__(self) -> None: ...
     def with_static_obstacle(self, collision_object: CollisionObject) -> CollisionCheckerBuilder: ...
     def with_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
-    def with_road_boundary_obstacle(self, lanelets: List[List[Tuple[float, float]]]) -> CollisionCheckerBuilder: ...
+    def with_road_boundary_obstacle(
+        self, lanelets: Sequence[Sequence[Tuple[float, float]]]
+    ) -> CollisionCheckerBuilder: ...
     def build(self, engine: Optional[CollisionEngine] = None) -> CollisionChecker: ...
 
-__all__ = ["CollisionEngine", "CollisionStatus", "CollisionChecker", "CollisionCheckerBuilder"]
+def create_road_boundary_obstacle(lanelets: Sequence[Sequence[Tuple[float, float]]]) -> CollisionObject: ...
+
+__all__ = [
+    "CollisionEngine",
+    "CollisionStatus",
+    "CollisionChecker",
+    "CollisionCheckerBuilder",
+    "create_road_boundary_obstacle",
+]

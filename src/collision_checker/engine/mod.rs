@@ -2,6 +2,8 @@ use crate::collision_object::CollisionObject;
 use crate::error::CrccError;
 use glamx::DPose2;
 
+#[cfg(feature = "collide")]
+pub mod collide;
 #[cfg(feature = "parry")]
 pub mod parry;
 #[cfg(feature = "rhusics")]
@@ -36,7 +38,7 @@ pub fn collides(
     pos_other: DPose2,
     engine: CollisionEngine,
 ) -> Result<bool, CrccError> {
-    #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+    #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
     let _ = (slf, pos_self, other, pos_other);
 
     match engine {
@@ -58,6 +60,15 @@ pub fn collides(
         }
         #[cfg(not(feature = "rhusics"))]
         CollisionEngine::Rhusics => Err(CrccError::Unsupported),
+        #[cfg(feature = "collide")]
+        CollisionEngine::Collide => {
+            use collide::CollideCollisionObject;
+            let slf = CollideCollisionObject::from(slf.clone());
+            let other = CollideCollisionObject::from(other.clone());
+            slf.collides_at(pos_self, &other, pos_other)
+        }
+        #[cfg(not(feature = "collide"))]
+        CollisionEngine::Collide => Err(CrccError::Unsupported),
     }
 }
 
@@ -70,7 +81,7 @@ pub fn collides_continuous(
     end_pos_other: DPose2,
     engine: CollisionEngine,
 ) -> Result<bool, CrccError> {
-    #[cfg(not(any(feature = "parry", feature = "rhusics")))]
+    #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
     let _ = (
         slf,
         start_pos_self,
@@ -111,6 +122,21 @@ pub fn collides_continuous(
         }
         #[cfg(not(feature = "rhusics"))]
         CollisionEngine::Rhusics => Err(CrccError::Unsupported),
+        #[cfg(feature = "collide")]
+        CollisionEngine::Collide => {
+            use collide::CollideCollisionObject;
+            let slf = CollideCollisionObject::from(slf.clone());
+            let other = CollideCollisionObject::from(other.clone());
+            slf.collides_continuous(
+                start_pos_self,
+                end_pos_self,
+                &other,
+                start_pos_other,
+                end_pos_other,
+            )
+        }
+        #[cfg(not(feature = "collide"))]
+        CollisionEngine::Collide => Err(CrccError::Unsupported),
     }
 }
 
@@ -120,9 +146,10 @@ pub enum CollisionEngine {
     #[default]
     Parry,
     Rhusics,
+    Collide,
 }
 
-#[cfg(all(test, feature = "parry", feature = "rhusics"))]
+#[cfg(all(test, feature = "parry", feature = "rhusics", feature = "collide"))]
 mod tests {
     use super::{CollisionEngine, collides, collides_continuous};
     use crate::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
@@ -131,7 +158,7 @@ mod tests {
     use crate::time::TimeStep;
     use geo::{Polygon, Rect, Triangle};
     use glamx::DPose2;
-    use std::f64::consts::FRAC_PI_2;
+    use std::f64::consts::{FRAC_PI_2, PI};
 
     fn assert_engine_parity(left: &CollisionObject, right: &CollisionObject, expected: bool) {
         assert_engine_parity_at(left, DPose2::IDENTITY, right, DPose2::IDENTITY, expected);
@@ -146,11 +173,13 @@ mod tests {
     ) {
         let parry = collides(left, pos_left, right, pos_right, CollisionEngine::Parry).unwrap();
         let rhusics = collides(left, pos_left, right, pos_right, CollisionEngine::Rhusics).unwrap();
+        let collide = collides(left, pos_left, right, pos_right, CollisionEngine::Collide).unwrap();
         assert_eq!(parry, expected);
         assert_eq!(rhusics, expected);
+        assert_eq!(collide, expected);
     }
 
-    fn assert_rhusics_collision(
+    fn assert_rhusics_and_collide_collision(
         left: &CollisionObject,
         pos_left: DPose2,
         right: &CollisionObject,
@@ -158,7 +187,9 @@ mod tests {
         expected: bool,
     ) {
         let rhusics = collides(left, pos_left, right, pos_right, CollisionEngine::Rhusics).unwrap();
+        let collide = collides(left, pos_left, right, pos_right, CollisionEngine::Collide).unwrap();
         assert_eq!(rhusics, expected);
+        assert_eq!(collide, expected);
     }
 
     #[test]
@@ -301,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn rhusics_handles_large_finite_shapes_without_bound_wrappers() {
+    fn non_parry_backends_handle_large_finite_shapes_without_bound_wrappers() {
         let large_polygon = CollisionObject::polygon(Polygon::new(
             vec![
                 (-1_000_000.0, -1_000_000.0),
@@ -338,14 +369,14 @@ mod tests {
         let circle = CollisionObject::circle((500_000.0, 500_000.0), 1.0).unwrap();
         let hole_circle = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
 
-        assert_rhusics_collision(
+        assert_rhusics_and_collide_collision(
             &large_polygon,
             DPose2::IDENTITY,
             &circle,
             DPose2::IDENTITY,
             true,
         );
-        assert_rhusics_collision(
+        assert_rhusics_and_collide_collision(
             &polygon_with_hole,
             DPose2::IDENTITY,
             &hole_circle,
@@ -355,7 +386,7 @@ mod tests {
     }
 
     #[test]
-    fn rhusics_matches_parry_for_non_convex_polygon_collision() {
+    fn engines_match_for_non_convex_polygon_collision() {
         let non_convex_polygon = CollisionObject::polygon(Polygon::new(
             vec![
                 (0.0, 0.0),
@@ -382,35 +413,35 @@ mod tests {
     }
 
     #[test]
-    fn rhusics_handles_half_space_pairs_exactly() {
+    fn non_parry_backends_handle_half_space_pairs_exactly() {
         let x_le_zero = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
         let x_ge_minus_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, 1.0);
         let x_ge_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, -1.0);
         let x_le_two = CollisionObject::half_space_from_coeffs(1.0, 0.0, 2.0);
         let y_le_zero = CollisionObject::half_space_from_coeffs(0.0, 1.0, 0.0);
 
-        assert_rhusics_collision(
+        assert_rhusics_and_collide_collision(
             &x_le_zero,
             DPose2::IDENTITY,
             &x_ge_minus_one,
             DPose2::IDENTITY,
             true,
         );
-        assert_rhusics_collision(
+        assert_rhusics_and_collide_collision(
             &x_le_zero,
             DPose2::IDENTITY,
             &x_ge_one,
             DPose2::IDENTITY,
             false,
         );
-        assert_rhusics_collision(
+        assert_rhusics_and_collide_collision(
             &x_le_zero,
             DPose2::IDENTITY,
             &x_le_two,
             DPose2::IDENTITY,
             true,
         );
-        assert_rhusics_collision(
+        assert_rhusics_and_collide_collision(
             &x_le_zero,
             DPose2::IDENTITY,
             &y_le_zero,
@@ -424,7 +455,11 @@ mod tests {
         let moving = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
         let fixed = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
 
-        for engine in [CollisionEngine::Parry, CollisionEngine::Rhusics] {
+        for engine in [
+            CollisionEngine::Parry,
+            CollisionEngine::Rhusics,
+            CollisionEngine::Collide,
+        ] {
             assert!(
                 collides_continuous(
                     &moving,
@@ -441,27 +476,73 @@ mod tests {
     }
 
     #[test]
-    fn rhusics_detects_continuous_half_space_endpoint_crossing() {
+    fn engines_detect_continuous_half_space_endpoint_crossing() {
         let moving = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
         let half_space = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
 
+        for engine in [CollisionEngine::Rhusics, CollisionEngine::Collide] {
+            assert!(
+                collides_continuous(
+                    &moving,
+                    DPose2::translation(5.0, 0.0),
+                    DPose2::translation(-5.0, 0.0),
+                    &half_space,
+                    DPose2::IDENTITY,
+                    DPose2::IDENTITY,
+                    engine,
+                )
+                .unwrap()
+            )
+        }
+    }
+
+    #[test]
+    fn non_parry_backends_detect_continuous_half_space_between_endpoints() {
+        let moving = CollisionObject::rectangle(Rect::new((-2.0, -0.1), (2.0, 0.1)), 0.0).unwrap();
+        let half_space = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
+
+        for engine in [CollisionEngine::Rhusics, CollisionEngine::Collide] {
+            assert!(
+                collides_continuous(
+                    &moving,
+                    DPose2::new((1.2, 0.0).into(), FRAC_PI_2),
+                    DPose2::new((1.2, 0.0).into(), -FRAC_PI_2),
+                    &half_space,
+                    DPose2::IDENTITY,
+                    DPose2::IDENTITY,
+                    engine,
+                )
+                .unwrap()
+            )
+        }
+    }
+
+    #[test]
+    fn continuous_engines_use_shortest_rotation_across_angle_wrap() {
+        let moving = CollisionObject::rectangle(Rect::new((-5.0, -0.1), (5.0, 0.1)), 0.0).unwrap();
+        let fixed = CollisionObject::circle((0.0, 4.0), 0.5).unwrap();
+
         assert!(
-            collides_continuous(
+            !collides_continuous(
                 &moving,
-                DPose2::translation(5.0, 0.0),
-                DPose2::translation(-5.0, 0.0),
-                &half_space,
+                DPose2::new((0.0, 0.0).into(), PI - 0.1),
+                DPose2::new((0.0, 0.0).into(), -PI + 0.1),
+                &fixed,
                 DPose2::IDENTITY,
                 DPose2::IDENTITY,
-                CollisionEngine::Rhusics,
+                CollisionEngine::Parry,
             )
             .unwrap()
-        );
+        )
     }
 
     #[test]
     fn builder_can_select_each_engine() {
-        for engine in [CollisionEngine::Parry, CollisionEngine::Rhusics] {
+        for engine in [
+            CollisionEngine::Parry,
+            CollisionEngine::Rhusics,
+            CollisionEngine::Collide,
+        ] {
             let checker = CollisionCheckerBuilder::new()
                 .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
                 .build_with_engine(engine)

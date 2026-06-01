@@ -27,7 +27,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [tool.maturin]
-features = ["python_bindings", "parry", "rhusics"]
+features = ["python_bindings", "parry", "rhusics", "collide"]
 module-name = "crcc._core"
 python-packages = ["crcc"]
 python-source = "python"

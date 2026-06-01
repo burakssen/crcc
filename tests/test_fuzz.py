@@ -25,4 +25,6 @@ def test_engines_match_for_seeded_random_shapes():
         right = random_shape(rng)
         parry = left.collides(right, engine=CollisionEngine.Parry)
         rhusics = left.collides(right, engine=CollisionEngine.Rhusics)
+        collide = left.collides(right, engine=CollisionEngine.Collide)
         assert parry == rhusics, index
+        assert parry == collide, index

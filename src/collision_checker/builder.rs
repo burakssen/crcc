@@ -64,6 +64,12 @@ impl CollisionCheckerBuilder {
             }
             #[cfg(not(feature = "rhusics"))]
             CollisionEngine::Rhusics => Err(CrccError::Unsupported),
+            #[cfg(feature = "collide")]
+            CollisionEngine::Collide => {
+                Ok(SelectedCollisionChecker::Collide(Box::new(self.build())))
+            }
+            #[cfg(not(feature = "collide"))]
+            CollisionEngine::Collide => Err(CrccError::Unsupported),
         }
     }
 
