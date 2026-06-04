@@ -5,6 +5,7 @@ use parry2d_f64::query::{
     NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, intersection_test,
 };
 use parry2d_f64::shape::{Compound, TriMesh, TriMeshBuilderError};
+use std::f64::consts::{PI, TAU};
 
 // Most collision objects will be non-trivial, so boxing them would be counter-productive.
 // See https://rust-lang.github.io/rust-clippy/rust-1.92.0/index.html#large_enum_variant
@@ -132,8 +133,12 @@ impl NonTrivial {
 
 fn motion_from_start_end(start: DPose2, end: DPose2) -> NonlinearRigidMotion {
     let velocity = end.translation - start.translation;
-    let angular_velocity = end.rotation.angle() - start.rotation.angle();
+    let angular_velocity = shortest_angular_delta(start.rotation.angle(), end.rotation.angle());
     NonlinearRigidMotion::new(start, DVec2::ZERO, velocity, angular_velocity)
+}
+
+fn shortest_angular_delta(start: f64, end: f64) -> f64 {
+    (end - start + PI).rem_euclid(TAU) - PI
 }
 
 impl From<CollisionObject> for ParryCollisionObjectInner {

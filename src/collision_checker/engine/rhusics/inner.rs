@@ -11,6 +11,9 @@ use rhusics_core::collide2d::BodyPose2;
 use std::fmt;
 
 const HALF_SPACE_EPSILON: f64 = 1e-9;
+const HALF_SPACE_TOI_TIME_TOLERANCE: f64 = 1e-9;
+const HALF_SPACE_TOI_INITIAL_SAMPLES: usize = 64;
+const HALF_SPACE_TOI_MAX_DEPTH: usize = 4;
 
 #[derive(Debug, Clone)]
 pub struct Unsupported(pub String);
@@ -166,15 +169,6 @@ fn components_collide(
     }
 }
 
-/// Per-component continuous collision detection.
-///
-/// This implementation splits into two paths:
-/// 1. **Exact (Finite vs Finite)**: Uses Rhusics' GJK-based Time of Impact (TOI)
-///    solver for continuous collision of finite shapes.
-/// 2. **Conservative (Half-Space involved)**: Checks only the start and end
-///    positions for collisions involving infinite half-spaces. This is
-///    conservative for linear translations but may miss rotational tunneling
-///    if the half-space is moving fast.
 fn components_collide_continuous(
     gjk: &GJK2<f64>,
     left: &RhusicsCoreCollisionComponent,
@@ -197,11 +191,67 @@ fn components_collide_continuous(
             right_start_pose,
             right_end_pose,
         ),
-        _ => {
-            // Conservative path for infinite components: check endpoints only.
-            components_collide(gjk, left, left_start_pose, right, right_start_pose)
-                || components_collide(gjk, left, left_end_pose, right, right_end_pose)
+        _ => RhusicsContinuousPair {
+            gjk,
+            left,
+            left_start_pose,
+            left_end_pose,
+            right,
+            right_start_pose,
+            right_end_pose,
         }
+        .collides(),
+    }
+}
+
+struct RhusicsContinuousPair<'a> {
+    gjk: &'a GJK2<f64>,
+    left: &'a RhusicsCoreCollisionComponent,
+    left_start_pose: DPose2,
+    left_end_pose: DPose2,
+    right: &'a RhusicsCoreCollisionComponent,
+    right_start_pose: DPose2,
+    right_end_pose: DPose2,
+}
+
+impl RhusicsContinuousPair<'_> {
+    fn collides(&self) -> bool {
+        if self.collides_at(0.0) || self.collides_at(1.0) {
+            return true;
+        }
+
+        let mut previous_t = 0.0;
+        for index in 1..=HALF_SPACE_TOI_INITIAL_SAMPLES {
+            let t = index as f64 / HALF_SPACE_TOI_INITIAL_SAMPLES as f64;
+            if self.collides_at(t) || self.interval_collides(previous_t, t, 0) {
+                return true;
+            }
+            previous_t = t;
+        }
+        false
+    }
+
+    fn collides_at(&self, t: f64) -> bool {
+        components_collide(
+            self.gjk,
+            self.left,
+            interpolate_pose(self.left_start_pose, self.left_end_pose, t),
+            self.right,
+            interpolate_pose(self.right_start_pose, self.right_end_pose, t),
+        )
+    }
+
+    fn interval_collides(&self, t0: f64, t1: f64, depth: usize) -> bool {
+        let mid = (t0 + t1) / 2.0;
+        if self.collides_at(mid) {
+            return true;
+        }
+
+        if t1 - t0 <= HALF_SPACE_TOI_TIME_TOLERANCE || depth >= HALF_SPACE_TOI_MAX_DEPTH {
+            return false;
+        }
+
+        self.interval_collides(t0, mid, depth + 1) || self.interval_collides(mid, t1, depth + 1)
     }
 }
 
@@ -349,6 +399,13 @@ fn finite_support_point(finite: &FiniteShape, pose: DPose2, direction: DVec2) ->
             })
             .expect("Finite polygonal shapes should have vertices"),
     }
+}
+
+fn interpolate_pose(start: DPose2, end: DPose2, t: f64) -> DPose2 {
+    DPose2::from_parts(
+        start.translation.lerp(end.translation, t),
+        start.rotation.slerp(&end.rotation, t),
+    )
 }
 
 impl From<CollisionObject> for RhusicsCoreCollisionObjectInner {
