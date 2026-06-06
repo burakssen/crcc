@@ -14,11 +14,9 @@ from commonroad.scenario.lanelet import LaneletNetwork
 from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import InitialState, TraceState
 from shapely.geometry import MultiPolygon, Polygon as ShapelyPolygon
-from shapely.geometry.polygon import orient
-from shapely.ops import unary_union
 
 from crcc.collision_checker import CollisionCheckerBuilder
-from crcc.collision_object import Circle, CollisionObject, Compound, HalfSpace, Polygon, Rectangle
+from crcc.collision_object import Circle, CollisionObject, Compound, Polygon, Rectangle
 from crcc.dynamic_obstacle import DynamicObstacle
 from crcc.pose import Pose
 
@@ -84,10 +82,8 @@ def add_road_boundary_to_builder(
 def create_road_boundary_obstacle(lanelet_network: LaneletNetwork) -> CollisionObject:
     """Creates an obstacle for all space outside the lanelet network."""
     import crcc._core.collision_checker as core
-    lanelets = [
-        [tuple(v) for v in lanelet.polygon.vertices]
-        for lanelet in lanelet_network.lanelets
-    ]
+
+    lanelets = [[tuple(v) for v in lanelet.polygon.vertices] for lanelet in lanelet_network.lanelets]
     return core.create_road_boundary_obstacle(lanelets)
 
 

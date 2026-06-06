@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Iterator
+from typing import Any
 
 from crcc.collision_checker import CollisionCheckerBuilder
 from crcc.collision_object import CollisionObject

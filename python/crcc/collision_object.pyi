@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 from crcc._core.collision_checker import CollisionEngine
 from crcc._core.collision_object import CollisionObject as _CollisionObject
@@ -60,7 +60,9 @@ class FullSpace(CollisionObject):
 
 class Polygon(CollisionObject):
     def __init__(
-        self, exterior: List[Tuple[float, float]], interiors: Optional[List[List[Tuple[float, float]]]] = None
+        self,
+        exterior: Sequence[Tuple[float, float]],
+        interiors: Optional[Sequence[Sequence[Tuple[float, float]]]] = None,
     ) -> None: ...
 
 class Rectangle(CollisionObject):

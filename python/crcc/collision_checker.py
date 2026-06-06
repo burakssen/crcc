@@ -9,6 +9,7 @@ from crcc.dynamic_obstacle import DynamicObstacle
 CollisionStatus = core.CollisionStatus
 CollisionChecker = core.CollisionChecker
 CollisionEngine = core.CollisionEngine
+create_road_boundary_obstacle = core.create_road_boundary_obstacle
 
 
 class CollisionCheckerBuilder:

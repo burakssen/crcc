@@ -236,7 +236,9 @@ pub fn create_road_boundary_obstacle(lanelets: Vec<Vec<(f64, f64)>>) -> PyResult
         .into_iter()
         .map(|exterior| geo::Polygon::new(exterior.into(), vec![]))
         .collect::<Vec<_>>();
-    Ok(CollisionObject::from(crate::collision_checker::create_road_boundary_obstacle(&lanelets)))
+    Ok(CollisionObject::from(
+        crate::collision_checker::create_road_boundary_obstacle(&lanelets),
+    ))
 }
 
 #[pymodule]
