@@ -12,7 +12,8 @@ from crcc.pose import Pose
 from shapely.geometry import Point, Polygon as ShapelyPolygon
 
 
-def test_occupancy_group_collides_with_each_member():
+def test_occupancy_group_collision_mapping():
+    """Ensure occupancy group members map correctly to local CollisionObject instances."""
     occupancy_group = OccupancyGroup(
         (
             CircleOccupancy(1.0, Point(0.0, 0.0)),
@@ -25,27 +26,17 @@ def test_occupancy_group_collides_with_each_member():
     assert collision_object.collides(Circle(0.1, (0.0, 0.0)))
     assert collision_object.collides(Circle(0.1, (4.0, 0.0)))
     assert collision_object.collides(Circle(0.1, (7.5, 0.0)))
-
-
-def test_occupancy_group_does_not_collide_in_gap_between_members():
-    occupancy_group = OccupancyGroup(
-        (
-            CircleOccupancy(1.0, Point(0.0, 0.0)),
-            RectOccupancy(Point(4.0, 0.0), width=1.0, length=2.0, orientation=0.0),
-        )
-    )
-    collision_object = commonroad_occupancy_to_collision_object(occupancy_group)
-
     assert not collision_object.collides(Circle(0.1, (2.0, 0.0)))
 
 
-def test_empty_occupancy_group_does_not_collide():
+def test_empty_occupancy_group():
+    """Check that an empty occupancy group produces a non-colliding object."""
     collision_object = commonroad_occupancy_to_collision_object(OccupancyGroup(()))
-
     assert not collision_object.collides(Circle(1.0))
 
 
-def test_static_obstacle_uses_initial_occupancy():
+def test_static_obstacle_conversion():
+    """Verify conversion of static obstacles preserves coordinates and initial time states."""
     static_obstacle = StaticObstacle(
         obstacle_id=1,
         obstacle_type=ObstacleType.PARKED_VEHICLE,

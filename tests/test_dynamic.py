@@ -4,7 +4,8 @@ from crcc.dynamic_obstacle import DynamicObstacle
 from crcc.pose import Pose
 
 
-def test_dynamic_query_collides_with_static_only_checker(engine):
+def test_dynamic_query_against_static_environment(engine):
+    """Test queries where a dynamic ego trajectory collides with a static checker environment."""
     trajectory = DynamicObstacle(
         Circle(1.0),
         [
@@ -17,13 +18,14 @@ def test_dynamic_query_collides_with_static_only_checker(engine):
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(1.0)).build()
 
     result = checker.collides_dynamic(trajectory)
-
     assert result.collides
     assert result.time_step == 3
 
 
-def test_time_variant_obstacle_uses_per_step_shapes(engine):
-    trajectory = DynamicObstacle.from_time_variant(
+def test_time_variant_obstacle_behavior(engine):
+    """Ensure dynamic obstacles composed of varying shapes and offsets collide correctly."""
+    # Test shape variant step selection
+    trajectory1 = DynamicObstacle.from_time_variant(
         [
             Circle(0.25, (10.0, 0.0)),
             Rectangle(2.0, 2.0, 0.0, (0.0, 0.0)),
@@ -31,36 +33,32 @@ def test_time_variant_obstacle_uses_per_step_shapes(engine):
         ],
         time_offset=7,
     )
-    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.5)).build()
+    checker1 = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.5)).build()
+    result1 = checker1.collides_dynamic(trajectory1)
+    assert result1.collides
+    assert result1.time_step == 7
 
-    result = checker.collides_dynamic(trajectory)
-
-    assert result.collides
-    assert result.time_step == 7
-
-
-def test_time_variant_obstacle_respects_optional_poses(engine):
-    trajectory = DynamicObstacle.from_time_variant(
+    # Test time-variant dynamic obstacle respecting explicitly specified positions
+    trajectory2 = DynamicObstacle.from_time_variant(
         [Rectangle(1.0, 1.0), Rectangle(1.0, 1.0)],
         2,
         [Pose.from_translation((5.0, 0.0)), Pose.from_translation((0.0, 0.0))],
     )
-    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75)).build()
-
-    result = checker.collides_dynamic(trajectory)
-
-    assert result.collides
-    assert result.time_step == 2
+    checker2 = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75)).build()
+    result2 = checker2.collides_dynamic(trajectory2)
+    assert result2.collides
+    assert result2.time_step == 2
 
 
-def test_empty_compound_trajectory_does_not_collide():
+def test_empty_compound_trajectories():
+    """Verify empty trajectory definitions safely return no collisions."""
     trajectory = DynamicObstacle.from_time_variant([Compound([])], time_offset=0)
     checker = CollisionCheckerBuilder().with_static_obstacle(Rectangle(1.0, 1.0)).build()
-
     assert not checker.collides_dynamic(trajectory).collides
 
 
-def test_dynamic_dynamic_time_window_and_parallel_results(engine):
+def test_dynamic_obstacle_time_windows_and_parallelization(engine):
+    """Verify time window filtering and parallelized dynamic collision batch checks."""
     obstacle = DynamicObstacle(Circle(1.0), [Pose.from_translation((0.0, 0.0))], 5)
     miss = DynamicObstacle(Circle(0.5), [Pose.from_translation((10.0, 0.0))], 5)
     hit = DynamicObstacle(Circle(0.5), [Pose.from_translation((0.25, 0.0))], 5)
