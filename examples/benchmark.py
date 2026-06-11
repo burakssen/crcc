@@ -2,7 +2,7 @@ from crcc.collision_object import Rectangle
 
 from examples.utils import CAR_SIZE, count_collisions, sample_poses, timed
 
-BENCHMARK_SAMPLE_COUNT = 1_000_000
+BENCHMARK_SAMPLE_COUNT = 100_000
 
 
 def run(checker, pose_bounds, sample_count=BENCHMARK_SAMPLE_COUNT):
