@@ -34,11 +34,11 @@ fn demo_parallel_collision_checks() {
     let test_objects_seq = test_objects.clone();
 
     let now = Instant::now();
-    let results = collision_checker.par_collides_static(&test_objects, ..);
+    let results = collision_checker.par_static(&test_objects, ..);
     println!("Parallel collision checks took {:?}", Instant::now() - now);
     println!("Parallel collisions: {}", count_collisions(&results));
     let now = Instant::now();
-    let results = collision_checker.par_collides_static(&test_objects, ..);
+    let results = collision_checker.par_static(&test_objects, ..);
     println!(
         "Parallel collision checks (second run) took {:?}",
         Instant::now() - now

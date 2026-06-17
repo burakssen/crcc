@@ -30,7 +30,7 @@ class CollisionChecker(_CollisionChecker):
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> CollisionStatus: ...
-    def par_collides_static(
+    def par_static(
         self,
         positioned_query_shapes: Sequence[Tuple[CollisionObject, Pose]],
         min_time: Optional[int] = None,
@@ -42,7 +42,7 @@ class CollisionChecker(_CollisionChecker):
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> CollisionStatus: ...
-    def par_collides_dynamic(
+    def par_dynamic(
         self,
         dynamic_obstacles: Sequence[DynamicObstacle],
         min_time: Optional[int] = None,
@@ -54,18 +54,18 @@ class CollisionCheckerBuilder:
     def with_engine(self, engine: CollisionEngine) -> CollisionCheckerBuilder: ...
     def with_static_obstacle(self, query_shape: CollisionObject) -> CollisionCheckerBuilder: ...
     def with_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
-    def with_road_boundary_obstacle(
+    def with_road_boundary(
         self,
         lanelets: Sequence[Sequence[Tuple[float, float]]],
     ) -> CollisionCheckerBuilder: ...
     def build(self) -> CollisionChecker: ...
 
-def create_road_boundary_obstacle(lanelets: Sequence[Sequence[Tuple[float, float]]]) -> CollisionObject: ...
+def road_boundary(lanelets: Sequence[Sequence[Tuple[float, float]]]) -> CollisionObject: ...
 
 __all__ = [
     "CollisionStatus",
     "CollisionChecker",
     "CollisionEngine",
     "CollisionCheckerBuilder",
-    "create_road_boundary_obstacle",
+    "road_boundary",
 ]

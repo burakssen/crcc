@@ -60,7 +60,7 @@ impl CollideCollisionObjectInner {
         }
     }
 
-    pub fn collides_continuous(
+    pub fn collides_sweep(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -77,7 +77,7 @@ impl CollideCollisionObjectInner {
             (
                 CollideCollisionObjectInner::NonTrivial(slf),
                 CollideCollisionObjectInner::NonTrivial(other),
-            ) => Ok(slf.collides_continuous(
+            ) => Ok(slf.collides_sweep(
                 start_pos_self,
                 end_pos_self,
                 other,
@@ -100,7 +100,7 @@ impl NonTrivial {
         false
     }
 
-    pub fn collides_continuous(
+    pub fn collides_sweep(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -110,7 +110,7 @@ impl NonTrivial {
     ) -> bool {
         for component_self in &self.components {
             for component_other in &other.components {
-                if components_collide_continuous(
+                if components_hit_sweep(
                     component_self,
                     start_pos_self,
                     end_pos_self,
@@ -143,15 +143,15 @@ fn components_collide(
         (
             CollideCollisionComponent::HalfSpace(half_space),
             CollideCollisionComponent::Finite(finite),
-        ) => half_space_collides_finite(half_space, left_pose, finite, right_pose),
+        ) => half_space_hits_finite(half_space, left_pose, finite, right_pose),
         (
             CollideCollisionComponent::Finite(finite),
             CollideCollisionComponent::HalfSpace(half_space),
-        ) => half_space_collides_finite(half_space, right_pose, finite, left_pose),
+        ) => half_space_hits_finite(half_space, right_pose, finite, left_pose),
     }
 }
 
-fn components_collide_continuous(
+fn components_hit_sweep(
     left: &CollideCollisionComponent,
     left_start_pose: DPose2,
     left_end_pose: DPose2,
@@ -202,9 +202,9 @@ impl ContinuousPair<'_> {
     fn collides_at(&self, t: f64) -> bool {
         components_collide(
             self.left,
-            interpolate_pose(self.left_start_pose, self.left_end_pose, t),
+            lerp_pose(self.left_start_pose, self.left_end_pose, t),
             self.right,
-            interpolate_pose(self.right_start_pose, self.right_end_pose, t),
+            lerp_pose(self.right_start_pose, self.right_end_pose, t),
         )
     }
 
@@ -282,7 +282,7 @@ fn transform_collide_point(point: CollideVec2, pose: DPose2) -> CollideVec2 {
     vec2(pose * DVec2::new(point[0], point[1]))
 }
 
-fn half_space_collides_finite(
+fn half_space_hits_finite(
     half_space: &HalfSpaceComponent,
     half_space_pose: DPose2,
     finite: &FiniteShape,
@@ -350,7 +350,7 @@ fn component_interval_aabb(
             // Endpoints plus interior points make rotating boxes/polygons rejectable while
             // preserving a deterministic bounded solver.
             for sample in [t0, (2.0 * t0 + t1) / 3.0, (t0 + 2.0 * t1) / 3.0, t1] {
-                let pose = interpolate_pose(start_pose, end_pose, sample);
+                let pose = lerp_pose(start_pose, end_pose, sample);
                 let sample_aabb = finite_aabb_at(finite, pose);
                 aabb = Some(match aabb {
                     Some(existing) => existing.union(sample_aabb),
@@ -414,7 +414,7 @@ impl Aabb {
     }
 }
 
-fn interpolate_pose(start: DPose2, end: DPose2, t: f64) -> DPose2 {
+fn lerp_pose(start: DPose2, end: DPose2, t: f64) -> DPose2 {
     DPose2::from_parts(
         start.translation.lerp(end.translation, t),
         start.rotation.slerp(&end.rotation, t),

@@ -91,7 +91,7 @@ def run(scenario, checker, scenario_path, pose_bounds, sample_count=VISUALIZATIO
         return draw_frame(time_steps[0])
 
     def update_frame(time_step):
-        collision_results = checker.par_collides_static(
+        collision_results = checker.par_static(
             positioned_cars,
             min_time=time_step,
             max_time=time_step,

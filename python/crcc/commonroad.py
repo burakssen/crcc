@@ -45,7 +45,7 @@ def add_commonroad_static_obstacle_to_builder(
     static_obstacle: cr_obstacle.StaticObstacle,
 ) -> CollisionCheckerBuilder:
     """Adds a CommonRoad static obstacle to the builder."""
-    collision_object = commonroad_occupancy_to_collision_object(
+    collision_object = commonroad_occupancy(
         static_obstacle.occupancy_at_time(static_obstacle.initial_state.time_step)
     )
     builder.with_static_obstacle(collision_object)
@@ -62,7 +62,7 @@ def add_commonroad_dynamic_obstacle_to_builder(
         trajectory = dynamic_obstacle.prediction.trajectory
         states = [dynamic_obstacle.initial_state] + trajectory.state_list
         poses = [commonroad_state_to_pose(state) for state in states]
-        shape = commonroad_shape_to_collision_object(dynamic_obstacle.obstacle_shape)
+        shape = commonroad_shape(dynamic_obstacle.obstacle_shape)
         collision_obstacle = DynamicObstacle(shape, poses, initial_time)
         builder.with_dynamic_obstacle(collision_obstacle)
     else:
@@ -75,26 +75,26 @@ def add_road_boundary_to_builder(
     lanelet_network: LaneletNetwork,
 ) -> CollisionCheckerBuilder:
     """Adds the road boundary from a lanelet network to the builder."""
-    builder.with_static_obstacle(create_road_boundary_obstacle(lanelet_network))
+    builder.with_static_obstacle(road_boundary(lanelet_network))
     return builder
 
 
-def create_road_boundary_obstacle(lanelet_network: LaneletNetwork) -> CollisionObject:
+def road_boundary(lanelet_network: LaneletNetwork) -> CollisionObject:
     """Creates an obstacle for all space outside the lanelet network."""
     import crcc._core.collision_checker as core
 
     lanelets = [[tuple(v) for v in lanelet.polygon.vertices] for lanelet in lanelet_network.lanelets]
-    return core.create_road_boundary_obstacle(lanelets)
+    return core.road_boundary(lanelets)
 
 
-def commonroad_polygon_to_collision_object(polygon: ShapelyPolygon) -> CollisionObject:
+def commonroad_polygon(polygon: ShapelyPolygon) -> CollisionObject:
     return Polygon(
         exterior=[tuple(v) for v in polygon.exterior.coords],
         interiors=[[tuple(v) for v in interior.coords] for interior in polygon.interiors],
     )
 
 
-def commonroad_shape_to_collision_object(shape: ObstacleShape) -> CollisionObject:
+def commonroad_shape(shape: ObstacleShape) -> CollisionObject:
     """Converts a CommonRoad obstacle shape to a local crcc CollisionObject."""
     if isinstance(shape, CircleObstacleShape):
         return Circle(shape.radius)
@@ -103,12 +103,12 @@ def commonroad_shape_to_collision_object(shape: ObstacleShape) -> CollisionObjec
     if isinstance(shape, PolygonObstacleShape):
         return Polygon([tuple(v) for v in shape.vertices], [])
 
-    return commonroad_occupancy_to_collision_object(
+    return commonroad_occupancy(
         shape.compute_occupancy_for_state(InitialState(position=(0.0, 0.0), orientation=0.0))
     )
 
 
-def commonroad_occupancy_to_collision_object(occupancy: Occupancy) -> CollisionObject:
+def commonroad_occupancy(occupancy: Occupancy) -> CollisionObject:
     """Converts a CommonRoad occupancy to a world-positioned crcc CollisionObject."""
     if isinstance(occupancy, CircleOccupancy):
         return Circle(occupancy.radius, (occupancy.circle_center.x, occupancy.circle_center.y))
@@ -120,18 +120,18 @@ def commonroad_occupancy_to_collision_object(occupancy: Occupancy) -> CollisionO
             (occupancy.rect_center.x, occupancy.rect_center.y),
         )
     if isinstance(occupancy, PolygonOccupancy):
-        return commonroad_polygon_to_collision_object(occupancy.shapely_object)
+        return commonroad_polygon(occupancy.shapely_object)
 
-    return shapely_geometry_to_collision_object(occupancy.shapely_object)
+    return shapely_geometry(occupancy.shapely_object)
 
 
-def shapely_geometry_to_collision_object(geometry) -> CollisionObject:
+def shapely_geometry(geometry) -> CollisionObject:
     if geometry.is_empty:
         return Compound([])
     if isinstance(geometry, ShapelyPolygon):
-        return commonroad_polygon_to_collision_object(geometry)
+        return commonroad_polygon(geometry)
     if isinstance(geometry, MultiPolygon):
-        return Compound([commonroad_polygon_to_collision_object(polygon) for polygon in geometry.geoms])
+        return Compound([commonroad_polygon(polygon) for polygon in geometry.geoms])
     raise ValueError(f"Unknown occupancy geometry type {type(geometry)}")
 
 

@@ -67,7 +67,7 @@ def test_dynamic_obstacle_time_windows_and_parallelization(engine):
     assert not checker.collides_dynamic(hit, min_time=4, max_time=4).collides
     assert checker.collides_dynamic(hit, min_time=5, max_time=5).time_step == 5
 
-    parallel = checker.par_collides_dynamic([miss, hit], min_time=5, max_time=5)
+    parallel = checker.par_dynamic([miss, hit], min_time=5, max_time=5)
     sequential = [
         checker.collides_dynamic(miss, min_time=5, max_time=5),
         checker.collides_dynamic(hit, min_time=5, max_time=5),

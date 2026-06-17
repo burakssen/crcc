@@ -16,7 +16,7 @@ mod selected;
 
 pub use builder::CollisionCheckerBuilder;
 #[cfg(feature = "python_bindings")]
-pub(crate) use builder::create_road_boundary_obstacle;
+pub(crate) use builder::road_boundary;
 pub use selected::SelectedCollisionChecker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,7 +217,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
                     obstacle_ccd_collider.convex_hull_position,
                     ccd_collider.convex_hull,
                     ccd_collider.convex_hull_position,
-                )? && E::collides_continuous(
+                )? && E::collides_sweep(
                     // Narrow-phase check with CCD
                     obstacle_ccd_collider.shape,
                     obstacle_ccd_collider.position,

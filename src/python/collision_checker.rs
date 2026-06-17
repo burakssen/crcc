@@ -102,7 +102,7 @@ impl CollisionChecker {
     }
 
     #[pyo3(signature = (positioned_query_shapes, min_time=None, max_time=None))]
-    pub fn par_collides_static(
+    pub fn par_static(
         &self,
         positioned_query_shapes: Vec<(CollisionObject, Pose)>,
         min_time: Option<TimeStepInner>,
@@ -114,7 +114,7 @@ impl CollisionChecker {
             .collect::<Vec<_>>();
         let res = self
             .0
-            .par_collides_static(
+            .par_static(
                 &positioned_query_shapes,
                 min_max_to_range(min_time, max_time),
             )
@@ -138,7 +138,7 @@ impl CollisionChecker {
     }
 
     #[pyo3(signature = (dynamic_obstacles, min_time=None, max_time=None))]
-    pub fn par_collides_dynamic(
+    pub fn par_dynamic(
         &self,
         dynamic_obstacles: Vec<DynamicObstacle>,
         min_time: Option<TimeStepInner>,
@@ -150,7 +150,7 @@ impl CollisionChecker {
             .collect::<Vec<_>>();
         let res = self
             .0
-            .par_collides_dynamic(&dynamic_obstacles, min_max_to_range(min_time, max_time))
+            .par_dynamic(&dynamic_obstacles, min_max_to_range(min_time, max_time))
             .into_iter()
             .map(|result| result.map(CollisionStatus::from))
             .collect::<Result<_, _>>()?;
@@ -200,7 +200,7 @@ impl CollisionCheckerBuilder {
         slf
     }
 
-    pub fn with_road_boundary_obstacle(
+    pub fn with_road_boundary(
         mut slf: PyRefMut<Self>,
         lanelets: Vec<Vec<(f64, f64)>>,
     ) -> PyRefMut<Self> {
@@ -209,7 +209,7 @@ impl CollisionCheckerBuilder {
             .map(|exterior| Polygon::new(exterior.into(), vec![]))
             .collect_vec();
         replace_with(&mut slf.0, Default::default, |builder| {
-            builder.with_road_boundary_obstacle(&lanelets)
+            builder.with_road_boundary(&lanelets)
         });
         slf
     }
@@ -231,13 +231,13 @@ impl Default for CollisionCheckerBuilder {
 }
 
 #[pyfunction]
-pub fn create_road_boundary_obstacle(lanelets: Vec<Vec<(f64, f64)>>) -> PyResult<CollisionObject> {
+pub fn road_boundary(lanelets: Vec<Vec<(f64, f64)>>) -> PyResult<CollisionObject> {
     let lanelets = lanelets
         .into_iter()
         .map(|exterior| geo::Polygon::new(exterior.into(), vec![]))
         .collect::<Vec<_>>();
     Ok(CollisionObject::from(
-        crate::collision_checker::create_road_boundary_obstacle(&lanelets),
+        crate::collision_checker::road_boundary(&lanelets),
     ))
 }
 
@@ -247,8 +247,7 @@ pub(super) mod collision_checker {
 
     #[pymodule_export]
     use super::{
-        CollisionChecker, CollisionCheckerBuilder, CollisionEngine, CollisionStatus,
-        create_road_boundary_obstacle,
+        CollisionChecker, CollisionCheckerBuilder, CollisionEngine, CollisionStatus, road_boundary,
     };
 
     /// Hack: workaround for https://github.com/PyO3/pyo3/issues/759

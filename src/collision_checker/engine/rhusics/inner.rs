@@ -67,7 +67,7 @@ impl RhusicsCoreCollisionObjectInner {
         }
     }
 
-    pub fn collides_continuous(
+    pub fn collides_sweep(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -83,7 +83,7 @@ impl RhusicsCoreCollisionObjectInner {
             (
                 RhusicsCoreCollisionObjectInner::NonTrivial(slf),
                 RhusicsCoreCollisionObjectInner::NonTrivial(other),
-            ) => slf.collides_continuous(
+            ) => slf.collides_sweep(
                 start_pos_self,
                 end_pos_self,
                 other,
@@ -113,7 +113,7 @@ impl NonTrivial {
         Ok(false)
     }
 
-    pub fn collides_continuous(
+    pub fn collides_sweep(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -125,7 +125,7 @@ impl NonTrivial {
 
         for component_self in &self.components {
             for component_other in &other.components {
-                if components_collide_continuous(
+                if components_hit_sweep(
                     &gjk,
                     component_self,
                     start_pos_self,
@@ -161,15 +161,15 @@ fn components_collide(
         (
             RhusicsCoreCollisionComponent::HalfSpace(half_space),
             RhusicsCoreCollisionComponent::Finite(finite),
-        ) => half_space_collides_finite(half_space, left_pose, finite, right_pose),
+        ) => half_space_hits_finite(half_space, left_pose, finite, right_pose),
         (
             RhusicsCoreCollisionComponent::Finite(finite),
             RhusicsCoreCollisionComponent::HalfSpace(half_space),
-        ) => half_space_collides_finite(half_space, right_pose, finite, left_pose),
+        ) => half_space_hits_finite(half_space, right_pose, finite, left_pose),
     }
 }
 
-fn components_collide_continuous(
+fn components_hit_sweep(
     gjk: &GJK2<f64>,
     left: &RhusicsCoreCollisionComponent,
     left_start_pose: DPose2,
@@ -182,7 +182,7 @@ fn components_collide_continuous(
         (
             RhusicsCoreCollisionComponent::Finite(left),
             RhusicsCoreCollisionComponent::Finite(right),
-        ) => finite_shapes_collide_continuous(
+        ) => finite_hit_sweep(
             gjk,
             left,
             left_start_pose,
@@ -235,9 +235,9 @@ impl RhusicsContinuousPair<'_> {
         components_collide(
             self.gjk,
             self.left,
-            interpolate_pose(self.left_start_pose, self.left_end_pose, t),
+            lerp_pose(self.left_start_pose, self.left_end_pose, t),
             self.right,
-            interpolate_pose(self.right_start_pose, self.right_end_pose, t),
+            lerp_pose(self.right_start_pose, self.right_end_pose, t),
         )
     }
 
@@ -319,7 +319,7 @@ fn project_vertices(vertices: &[DVec2], axis: DVec2) -> (f64, f64) {
     )
 }
 
-fn finite_shapes_collide_continuous(
+fn finite_hit_sweep(
     gjk: &GJK2<f64>,
     left: &FiniteShape,
     left_start_pose: DPose2,
@@ -346,7 +346,7 @@ fn finite_shapes_collide_continuous(
     .is_some()
 }
 
-fn half_space_collides_finite(
+fn half_space_hits_finite(
     half_space: &HalfSpaceComponent,
     half_space_pose: DPose2,
     finite: &FiniteShape,
@@ -401,7 +401,7 @@ fn finite_support_point(finite: &FiniteShape, pose: DPose2, direction: DVec2) ->
     }
 }
 
-fn interpolate_pose(start: DPose2, end: DPose2, t: f64) -> DPose2 {
+fn lerp_pose(start: DPose2, end: DPose2, t: f64) -> DPose2 {
     DPose2::from_parts(
         start.translation.lerp(end.translation, t),
         start.rotation.slerp(&end.rotation, t),

@@ -7,7 +7,7 @@ from commonroad.scenario.obstacle import ObstacleType, StaticObstacle
 from commonroad.scenario.state import InitialState
 from crcc.collision_checker import CollisionCheckerBuilder
 from crcc.collision_object import Circle, Rectangle
-from crcc.commonroad import add_commonroad_static_obstacle_to_builder, commonroad_occupancy_to_collision_object
+from crcc.commonroad import add_commonroad_static_obstacle_to_builder, commonroad_occupancy
 from crcc.dynamic_obstacle import DynamicObstacle
 from crcc.pose import Pose
 from shapely.geometry import Point, Polygon as ShapelyPolygon
@@ -22,7 +22,7 @@ def test_occupancy_group_collision_mapping():
             PolygonOccupancy(ShapelyPolygon([(7.0, -0.5), (8.0, -0.5), (8.0, 0.5), (7.0, 0.5)])),
         )
     )
-    collision_object = commonroad_occupancy_to_collision_object(occupancy_group)
+    collision_object = commonroad_occupancy(occupancy_group)
 
     assert collision_object.collides(Circle(0.1, (0.0, 0.0)))
     assert collision_object.collides(Circle(0.1, (4.0, 0.0)))
@@ -32,7 +32,7 @@ def test_occupancy_group_collision_mapping():
 
 def test_empty_occupancy_group():
     """Check that an empty occupancy group produces a non-colliding object."""
-    collision_object = commonroad_occupancy_to_collision_object(OccupancyGroup(()))
+    collision_object = commonroad_occupancy(OccupancyGroup(()))
     assert not collision_object.collides(Circle(1.0))
 
 
@@ -47,7 +47,7 @@ def test_occupancy_group_time_variant_dynamic_obstacle(engine):
     trajectory = DynamicObstacle.from_time_variant(
         [
             Circle(0.25, (10.0, 0.0)),
-            commonroad_occupancy_to_collision_object(occupancy_group),
+            commonroad_occupancy(occupancy_group),
             Circle(0.25, (10.0, 0.0)),
         ],
         time_offset=4,

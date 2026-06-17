@@ -12,7 +12,7 @@ def run(checker, pose_bounds, sample_count=BENCHMARK_SAMPLE_COUNT):
     positioned_cars = [(car, pose) for pose in poses]
 
     parallel_results, parallel_elapsed = timed(
-        lambda: checker.par_collides_static(positioned_cars),
+        lambda: checker.par_static(positioned_cars),
     )
     print(f"Parallel any-time checks: {parallel_elapsed:.4f} seconds, {count_collisions(parallel_results)} collisions")
 

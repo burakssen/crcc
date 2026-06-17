@@ -26,9 +26,9 @@ impl CollisionCheckerBuilder {
         self
     }
 
-    pub fn with_road_boundary_obstacle(self, lanelets: &[Polygon]) -> Self {
-        let road_boundary = create_road_boundary_obstacle(lanelets);
-        self.with_static_obstacle(road_boundary)
+    pub fn with_road_boundary(self, lanelets: &[Polygon]) -> Self {
+        let boundary = road_boundary(lanelets);
+        self.with_static_obstacle(boundary)
     }
 
     pub fn with_dynamic_obstacle(mut self, dynamic_obstacle: DynamicObstacle) -> Self {
@@ -82,7 +82,7 @@ impl CollisionCheckerBuilder {
     }
 }
 
-pub(crate) fn create_road_boundary_obstacle(lanelets: &[Polygon]) -> CollisionObject {
+pub(crate) fn road_boundary(lanelets: &[Polygon]) -> CollisionObject {
     let road = unary_union(lanelets).simplify(0.01); // Simplify with 1 cm tolerance to reduce artifacts
     if road.is_empty() {
         return CollisionObject::empty();

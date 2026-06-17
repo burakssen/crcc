@@ -11,7 +11,7 @@ use std::ops::RangeBounds;
 pub trait ParallelCollisionChecker: private::Sealed {
     type ECollisionObject: EngineCollisionObject;
 
-    fn par_collides_static<'a, I>(
+    fn par_static<'a, I>(
         &self,
         positioned_static_obstacles: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -20,7 +20,7 @@ pub trait ParallelCollisionChecker: private::Sealed {
         Self::ECollisionObject: 'a,
         I: IntoParallelIterator<Item = (&'a Self::ECollisionObject, DPose2)>;
 
-    fn par_collides_dynamic<'a, I>(
+    fn par_dynamic<'a, I>(
         &self,
         dynamic_obstacles: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -33,7 +33,7 @@ pub trait ParallelCollisionChecker: private::Sealed {
 impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for CollisionChecker<E> {
     type ECollisionObject = E;
 
-    fn par_collides_static<'a, I>(
+    fn par_static<'a, I>(
         &self,
         positioned_static_obstacles: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -50,7 +50,7 @@ impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for Collis
             .collect()
     }
 
-    fn par_collides_dynamic<'a, I>(
+    fn par_dynamic<'a, I>(
         &self,
         dynamic_obstacles: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,

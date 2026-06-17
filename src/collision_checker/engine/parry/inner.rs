@@ -43,7 +43,7 @@ impl ParryCollisionObjectInner {
         }
     }
 
-    pub fn collides_continuous(
+    pub fn collides_sweep(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -60,7 +60,7 @@ impl ParryCollisionObjectInner {
             (
                 ParryCollisionObjectInner::NonTrivial(slf),
                 ParryCollisionObjectInner::NonTrivial(other),
-            ) => slf.collides_continuous(
+            ) => slf.collides_sweep(
                 start_pos_self,
                 end_pos_self,
                 other,
@@ -94,7 +94,7 @@ impl NonTrivial {
         Ok(false)
     }
 
-    pub fn collides_continuous(
+    pub fn collides_sweep(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -133,11 +133,11 @@ impl NonTrivial {
 
 fn motion_from_start_end(start: DPose2, end: DPose2) -> NonlinearRigidMotion {
     let velocity = end.translation - start.translation;
-    let angular_velocity = shortest_angular_delta(start.rotation.angle(), end.rotation.angle());
+    let angular_velocity = shortest_angle_delta(start.rotation.angle(), end.rotation.angle());
     NonlinearRigidMotion::new(start, DVec2::ZERO, velocity, angular_velocity)
 }
 
-fn shortest_angular_delta(start: f64, end: f64) -> f64 {
+fn shortest_angle_delta(start: f64, end: f64) -> f64 {
     (end - start + PI).rem_euclid(TAU) - PI
 }
 

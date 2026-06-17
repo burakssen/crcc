@@ -88,7 +88,7 @@ def test_parallel_vs_sequential_query_parity():
     checker = CollisionCheckerBuilder().with_static_obstacle(Circle(2.0)).build()
     positioned_queries = [(Circle(1.0, (float(index), 0.0)), Pose.identity()) for index in range(8)]
 
-    parallel_results = checker.par_collides_static(positioned_queries)
+    parallel_results = checker.par_static(positioned_queries)
     sequential_results = [checker.collides_static(query, pose) for query, pose in positioned_queries]
 
     assert [str(result) for result in parallel_results] == [str(result) for result in sequential_results]

@@ -9,7 +9,7 @@ from crcc.dynamic_obstacle import DynamicObstacle
 CollisionStatus = core.CollisionStatus
 CollisionChecker = core.CollisionChecker
 CollisionEngine = core.CollisionEngine
-create_road_boundary_obstacle = core.create_road_boundary_obstacle
+road_boundary = core.road_boundary
 
 
 class CollisionCheckerBuilder:
@@ -38,11 +38,11 @@ class CollisionCheckerBuilder:
         self._rust_builder.with_dynamic_obstacle(dynamic_obstacle)
         return self
 
-    def with_road_boundary_obstacle(
+    def with_road_boundary(
         self,
         lanelets: list[list[tuple[float, float]]],
     ) -> CollisionCheckerBuilder:
-        self._rust_builder.with_road_boundary_obstacle(lanelets)
+        self._rust_builder.with_road_boundary(lanelets)
         return self
 
     def build(self) -> core.CollisionChecker:

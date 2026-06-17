@@ -148,7 +148,7 @@ impl SelectedCollisionChecker {
     }
 
     #[cfg(feature = "rayon")]
-    pub fn par_collides_static(
+    pub fn par_static(
         &self,
         positioned_static_obstacles: &[(CollisionObject, DPose2)],
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -156,15 +156,15 @@ impl SelectedCollisionChecker {
         match self {
             #[cfg(feature = "parry")]
             SelectedCollisionChecker::Parry(checker) => {
-                par_collides_static(checker, positioned_static_obstacles, time_range)
+                par_static(checker, positioned_static_obstacles, time_range)
             }
             #[cfg(feature = "rhusics")]
             SelectedCollisionChecker::Rhusics(checker) => {
-                par_collides_static(checker, positioned_static_obstacles, time_range)
+                par_static(checker, positioned_static_obstacles, time_range)
             }
             #[cfg(feature = "collide")]
             SelectedCollisionChecker::Collide(checker) => {
-                par_collides_static(checker, positioned_static_obstacles, time_range)
+                par_static(checker, positioned_static_obstacles, time_range)
             }
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => positioned_static_obstacles
@@ -175,7 +175,7 @@ impl SelectedCollisionChecker {
     }
 
     #[cfg(feature = "rayon")]
-    pub fn par_collides_dynamic(
+    pub fn par_dynamic(
         &self,
         dynamic_obstacles: &[DynamicObstacle],
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -183,15 +183,15 @@ impl SelectedCollisionChecker {
         match self {
             #[cfg(feature = "parry")]
             SelectedCollisionChecker::Parry(checker) => {
-                par_collides_dynamic(checker, dynamic_obstacles, time_range)
+                par_dynamic(checker, dynamic_obstacles, time_range)
             }
             #[cfg(feature = "rhusics")]
             SelectedCollisionChecker::Rhusics(checker) => {
-                par_collides_dynamic(checker, dynamic_obstacles, time_range)
+                par_dynamic(checker, dynamic_obstacles, time_range)
             }
             #[cfg(feature = "collide")]
             SelectedCollisionChecker::Collide(checker) => {
-                par_collides_dynamic(checker, dynamic_obstacles, time_range)
+                par_dynamic(checker, dynamic_obstacles, time_range)
             }
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => dynamic_obstacles
@@ -227,7 +227,7 @@ fn collides_dynamic_range<E: EngineCollisionObject>(
     feature = "rayon",
     any(feature = "parry", feature = "rhusics", feature = "collide")
 ))]
-fn par_collides_static<E: EngineCollisionObject + Send + Sync>(
+fn par_static<E: EngineCollisionObject + Send + Sync>(
     checker: &CollisionChecker<E>,
     positioned_static_obstacles: &[(CollisionObject, DPose2)],
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -239,7 +239,7 @@ fn par_collides_static<E: EngineCollisionObject + Send + Sync>(
         .iter()
         .map(|(obstacle, position)| (E::from(obstacle.clone()), *position))
         .collect::<Vec<_>>();
-    checker.par_collides_static(
+    checker.par_static(
         converted
             .par_iter()
             .map(|(obstacle, position)| (obstacle, *position)),
@@ -251,7 +251,7 @@ fn par_collides_static<E: EngineCollisionObject + Send + Sync>(
     feature = "rayon",
     any(feature = "parry", feature = "rhusics", feature = "collide")
 ))]
-fn par_collides_dynamic<E: EngineCollisionObject + Send + Sync>(
+fn par_dynamic<E: EngineCollisionObject + Send + Sync>(
     checker: &CollisionChecker<E>,
     dynamic_obstacles: &[DynamicObstacle],
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -264,5 +264,5 @@ fn par_collides_dynamic<E: EngineCollisionObject + Send + Sync>(
         .cloned()
         .map(DynamicObstacle::convert_repr)
         .collect::<Vec<GenericDynamicObstacle<E>>>();
-    checker.par_collides_dynamic(converted.par_iter(), time_range)
+    checker.par_dynamic(converted.par_iter(), time_range)
 }
