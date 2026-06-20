@@ -10,7 +10,23 @@ from matplotlib.lines import Line2D
 from .config import ENGINE_ITEMS
 from .io import read_dicts
 
-BACKEND_COLORS = {"parry": "#1f77b4", "rhusics": "#ff7f0e", "collide": "#2ca02c"}
+# Apply a clean, modern design styling globally
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": ["Inter", "SF Pro Text", "Helvetica Neue", "Arial", "DejaVu Sans", "sans-serif"],
+    "font.size": 9.5,
+    "axes.titlesize": 11,
+    "axes.titleweight": "bold",
+    "axes.labelsize": 9.5,
+    "xtick.labelsize": 8.5,
+    "ytick.labelsize": 8.5,
+    "legend.fontsize": 8.5,
+    "legend.title_fontsize": 9.5,
+    "figure.facecolor": "#ffffff",
+    "axes.facecolor": "#ffffff",
+})
+
+BACKEND_COLORS = {"parry": "#3b82f6", "rhusics": "#f43f5e", "collide": "#10b981"}
 BACKEND_MARKERS = {"parry": "o", "rhusics": "s", "collide": "^"}
 PLOT_NAMES = {
     "backend_throughput_dotplot",
@@ -61,7 +77,7 @@ def _plot_backend_throughput_dotplot(path_base: Path, rows):
     bar_width = 0.22
     offsets = np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends)) if len(backends) > 1 else [0.0]
     
-    fig, ax = plt.subplots(figsize=(10.2, 5.8))
+    fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
     for offset, backend in zip(offsets, backends, strict=True):
         values = []
         positions = []
@@ -81,14 +97,13 @@ def _plot_backend_throughput_dotplot(path_base: Path, rows):
             zorder=3,
         )
 
-    ax.set_title("Backend Throughput by Synthetic Workload")
+    ax.set_title("Backend Throughput by Synthetic Workload", loc="left", pad=12)
     ax.set_ylabel("median throughput (queries/s, log)")
     ax.set_xticks(x_base)
-    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right")
+    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right", rotation_mode="anchor")
     ax.set_yscale("log")
     _style_axis(ax, axis="y")
     _legend_outside(fig, ax, backends)
-    fig.tight_layout(rect=(0, 0, 0.86, 1))
     _save_plot(fig, path_base)
 
 
@@ -104,7 +119,7 @@ def _plot_latency_tail_ratio(path_base: Path, rows):
     bar_width = 0.22
     offsets = np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends)) if len(backends) > 1 else [0.0]
     
-    fig, ax = plt.subplots(figsize=(10.2, 5.8))
+    fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
     for offset, backend in zip(offsets, backends, strict=True):
         values = []
         positions = []
@@ -131,15 +146,14 @@ def _plot_latency_tail_ratio(path_base: Path, rows):
             zorder=3,
         )
 
-    ax.axhline(1.0, color="black", linestyle="--", alpha=0.35)
-    ax.set_title("Tail Latency Ratio by Workload")
+    ax.axhline(1.0, color="#6b7280", linestyle="--", linewidth=1.0, alpha=0.6)
+    ax.set_title("Tail Latency Ratio by Workload", loc="left", pad=12)
     ax.set_ylabel("p99 / p50 latency ratio (log)")
     ax.set_xticks(x_base)
-    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right")
+    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right", rotation_mode="anchor")
     ax.set_yscale("log")
     _style_axis(ax, axis="y")
     _legend_outside(fig, ax, backends)
-    fig.tight_layout(rect=(0, 0, 0.86, 1))
     _save_plot(fig, path_base)
 
 
@@ -159,6 +173,7 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
         sharex=True,
         sharey=True,
         squeeze=False,
+        layout="constrained",
     )
     for ax, density in zip(axes.ravel(), densities, strict=True):
         density_rows = [row for row in scene_rows if _float(row["density"]) == density]
@@ -175,8 +190,10 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
                 marker=BACKEND_MARKERS.get(backend, "o"),
                 color=BACKEND_COLORS.get(backend),
                 label=backend,
+                linewidth=1.8,
+                markersize=5,
             )
-        ax.set_title(f"Collision density {density:.0%}", loc="left", fontsize=10)
+        ax.set_title(f"Collision density {density:.0%}", loc="left", fontsize=9.5, fontweight="semibold", color="#374151")
         ax.set_ylabel("queries/s")
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -186,9 +203,8 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
         upper = max(y_values) * 1.25
         axes.ravel()[0].set_ylim(lower, upper)
     axes.ravel()[-1].set_xlabel("static objects")
-    fig.suptitle("Scene Scaling by Object Count and Collision Density")
+    fig.suptitle("Scene Scaling by Object Count and Collision Density", x=0.02, ha="left", fontsize=11.5, fontweight="bold", color="#111827")
     _legend_outside(fig, axes.ravel()[0], backends)
-    fig.tight_layout(rect=(0, 0, 0.86, 0.96))
     _save_plot(fig, path_base)
 
 
@@ -204,7 +220,7 @@ def _plot_scenario_parallel_speedup_dotplot(path_base: Path, rows):
     bar_width = 0.22
     offsets = np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends)) if len(backends) > 1 else [0.0]
     
-    fig, ax = plt.subplots(figsize=(10.2, 5.8))
+    fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
     for offset, backend in zip(offsets, backends, strict=True):
         ratios = []
         positions = []
@@ -227,14 +243,13 @@ def _plot_scenario_parallel_speedup_dotplot(path_base: Path, rows):
             zorder=3,
         )
 
-    ax.axhline(1.0, color="black", linestyle="--", alpha=0.35)
-    ax.set_title("Scenario Parallel Speedup")
+    ax.axhline(1.0, color="#6b7280", linestyle="--", linewidth=1.0, alpha=0.6)
+    ax.set_title("Scenario Parallel Speedup", loc="left", pad=12)
     ax.set_ylabel("parallel / sequential throughput")
     ax.set_xticks(x_base)
-    ax.set_xticklabels([_short_scenario_label(scenario) for scenario in scenarios], rotation=45, ha="right")
+    ax.set_xticklabels([_short_scenario_label(scenario) for scenario in scenarios], rotation=45, ha="right", rotation_mode="anchor")
     _style_axis(ax, axis="y")
     _legend_outside(fig, ax, backends)
-    fig.tight_layout(rect=(0, 0, 0.86, 1))
     _save_plot(fig, path_base)
 
 
@@ -244,7 +259,7 @@ def _plot_parallel_summary(path_base: Path, rows, metric: str, ylabel: str):
         return
 
     backends = _present_backends(rows)
-    fig, ax = plt.subplots(figsize=(8.8, 5.4))
+    fig, ax = plt.subplots(figsize=(8.8, 5.4), layout="constrained")
     for backend in backends:
         grouped = _group_metric_by_thread([row for row in rows if row["backend"] == backend], metric)
         if not grouped:
@@ -266,21 +281,33 @@ def _plot_parallel_summary(path_base: Path, rows, metric: str, ylabel: str):
             color=color,
             linewidth=2.0,
             label=backend,
+            markersize=6,
         )
-        ax.fill_between(threads, lows, highs, color=color, alpha=0.16, linewidth=0)
+        ax.fill_between(threads, lows, highs, color=color, alpha=0.12, linewidth=0)
 
     thread_values = sorted({_int(row["threads"]) for row in rows})
+    if thread_values:
+        ax.set_xticks(thread_values)
+        ax.set_xticklabels([str(t) for t in thread_values])
     if metric == "speedup" and thread_values:
-        ax.plot(thread_values, thread_values, color="black", linestyle="--", alpha=0.35, label="ideal")
+        ax.plot(thread_values, thread_values, color="#6b7280", linestyle="--", linewidth=1.2, alpha=0.6, label="ideal")
     if metric == "efficiency":
-        ax.axhline(1.0, color="black", linestyle="--", alpha=0.35, label="ideal")
+        ax.axhline(1.0, color="#6b7280", linestyle="--", linewidth=1.2, alpha=0.6, label="ideal")
         ax.set_ylim(bottom=0)
-    ax.set_title("Parallel Scaling Summary" if metric == "speedup" else "Parallel Efficiency Summary")
+    ax.set_title("Parallel Scaling Summary" if metric == "speedup" else "Parallel Efficiency Summary", loc="left", pad=12)
     ax.set_xlabel("threads")
     ax.set_ylabel(ylabel)
     _style_axis(ax)
-    ax.legend(fontsize=8)
-    fig.tight_layout()
+    legend = ax.legend(
+        loc="upper left" if metric == "speedup" else "lower left",
+        fontsize=8.5,
+        title_fontsize=9,
+        frameon=True,
+        facecolor="#f9fafb",
+        edgecolor="#e5e7eb",
+        fancybox=True,
+    )
+    legend.get_frame().set_linewidth(0.8)
     _save_plot(fig, path_base)
 
 
@@ -304,14 +331,13 @@ def _plot_correctness_summary(path_base: Path, rows):
     labels = [f"{row['feature']}:{row['workload']} / {row['backend']}" for row in nonzero]
     values = [_int(row["mismatches"]) for row in nonzero]
     order = np.argsort(values)
-    fig, ax = plt.subplots(figsize=(9.8, max(4.8, len(labels) * 0.4)))
-    ax.barh(np.arange(len(labels)), [values[index] for index in order], color="#d62728")
-    ax.set_title(f"Correctness Mismatches ({total_mismatches:,} total)")
+    fig, ax = plt.subplots(figsize=(9.8, max(4.8, len(labels) * 0.4)), layout="constrained")
+    ax.barh(np.arange(len(labels)), [values[index] for index in order], color="#ef4444", edgecolor="none", height=0.6)
+    ax.set_title(f"Correctness Mismatches ({total_mismatches:,} total)", loc="left", pad=12)
     ax.set_xlabel("mismatches")
     ax.set_yticks(np.arange(len(labels)))
     ax.set_yticklabels([labels[index] for index in order])
     _style_axis(ax, axis="x")
-    fig.tight_layout()
     _save_plot(fig, path_base)
 
 
@@ -336,7 +362,7 @@ def _plot_throughput_variability_ratio(path_base: Path, rows):
     bar_width = 0.22
     offsets = np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends)) if len(backends) > 1 else [0.0]
     
-    fig, ax = plt.subplots(figsize=(10.2, 5.8))
+    fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
     for offset, backend in zip(offsets, backends, strict=True):
         values = []
         positions = []
@@ -366,13 +392,12 @@ def _plot_throughput_variability_ratio(path_base: Path, rows):
             zorder=3,
         )
 
-    ax.set_title("Throughput Variability Across Repetitions")
+    ax.set_title("Throughput Variability Across Repetitions", loc="left", pad=12)
     ax.set_ylabel("relative IQR: (q75 - q25) / median")
     ax.set_xticks(x_base)
-    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right")
+    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right", rotation_mode="anchor")
     _style_axis(ax, axis="y")
     _legend_outside(fig, ax, backends)
-    fig.tight_layout(rect=(0, 0, 0.86, 1))
     _save_plot(fig, path_base)
 
 
@@ -455,13 +480,19 @@ def _figure_height(labels):
 
 
 def _legend_outside(fig, ax, backends):
-    ax.legend(
+    legend = ax.legend(
         handles=_backend_handles(backends),
         title="Backend",
         loc="center left",
-        bbox_to_anchor=(1.01, 0.5),
-        fontsize=8,
+        bbox_to_anchor=(1.02, 0.5),
+        fontsize=8.5,
+        title_fontsize=9.5,
+        frameon=True,
+        facecolor="#f9fafb",
+        edgecolor="#e5e7eb",
+        fancybox=True,
     )
+    legend.get_frame().set_linewidth(0.8)
 
 
 def _backend_handles(backends):
@@ -473,28 +504,36 @@ def _backend_handles(backends):
             color=BACKEND_COLORS.get(backend),
             label=backend,
             linestyle="None",
-            markersize=7,
+            markersize=6,
         )
         for backend in backends
     ]
 
 
 def _style_axis(ax, *, axis="both"):
-    ax.grid(axis=axis, alpha=0.25)
+    ax.grid(axis=axis, which="major", color="#e5e7eb", linestyle="-", linewidth=0.5)
+    if ax.get_yscale() == "log" or ax.get_xscale() == "log":
+        ax.grid(axis=axis, which="minor", color="#f3f4f6", linestyle=":", linewidth=0.4)
     ax.set_axisbelow(True)
+    for spine in ["top", "right"]:
+        ax.spines[spine].set_visible(False)
+    for spine in ["left", "bottom"]:
+        ax.spines[spine].set_color("#9ca3af")
+        ax.spines[spine].set_linewidth(0.8)
+    ax.tick_params(which="major", colors="#4b5563", width=0.8, length=4)
+    ax.tick_params(which="minor", colors="#9ca3af", width=0.6, length=2)
 
 
 def _plot_status(path_base: Path, title: str, message: str, detail: str | None = None):
-    fig, ax = plt.subplots(figsize=(7.2, 4.2))
-    ax.set_title(title)
-    ax.text(0.5, 0.56, message, ha="center", va="center", transform=ax.transAxes, fontsize=14)
+    fig, ax = plt.subplots(figsize=(7.2, 4.2), layout="constrained")
+    ax.set_title(title, loc="left", pad=12)
+    ax.text(0.5, 0.56, message, ha="center", va="center", transform=ax.transAxes, fontsize=12, color="#374151")
     if detail:
-        ax.text(0.5, 0.44, detail, ha="center", va="center", transform=ax.transAxes, fontsize=10)
+        ax.text(0.5, 0.44, detail, ha="center", va="center", transform=ax.transAxes, fontsize=9.5, color="#6b7280")
     ax.set_xticks([])
     ax.set_yticks([])
     for spine in ax.spines.values():
         spine.set_visible(False)
-    fig.tight_layout()
     _save_plot(fig, path_base)
 
 
@@ -572,10 +611,11 @@ def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
         1,
         figsize=(8.8, max(4.8, 3.0 * len(backends))),
         sharex=True,
-        squeeze=False
+        squeeze=False,
+        layout="constrained"
     )
 
-    colors = cm.plasma(np.linspace(0, 0.85, len(object_sizes)))
+    colors = cm.viridis(np.linspace(0.1, 0.9, len(object_sizes)))
 
     for ax, backend in zip(axes.ravel(), backends):
         backend_rows = [r for r in parsed_rows if r["backend"] == backend]
@@ -594,9 +634,11 @@ def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
                     marker="o",
                     color=color,
                     label=f"{obj_size:,} objects",
+                    linewidth=1.8,
+                    markersize=5,
                 )
 
-        ax.set_title(f"Engine: {backend}", loc="left", fontsize=10)
+        ax.set_title(f"Engine: {backend}", loc="left", fontsize=9.5, fontweight="semibold", color="#374151")
         ax.set_ylabel("queries/s")
         ax.set_yscale("log")
         ax.set_xscale("log", base=2)
@@ -606,9 +648,21 @@ def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
         _style_axis(ax)
 
     axes.ravel()[-1].set_xlabel("thread count")
-    fig.suptitle("Parallel Throughput by Thread Count and Object Size")
+    fig.suptitle("Parallel Throughput by Thread Count and Object Size", x=0.02, ha="left", fontsize=11.5, fontweight="bold", color="#111827")
 
     handles, labels_list = axes.ravel()[0].get_legend_handles_labels()
-    fig.legend(handles, labels_list, loc="center left", bbox_to_anchor=(0.88, 0.5), title="Scene Size")
-    fig.tight_layout(rect=(0, 0, 0.86, 0.96))
+    legend = axes.ravel()[0].legend(
+        handles,
+        labels_list,
+        loc="center left",
+        bbox_to_anchor=(1.02, 0.5),
+        title="Scene Size",
+        fontsize=8.5,
+        title_fontsize=9.5,
+        frameon=True,
+        facecolor="#f9fafb",
+        edgecolor="#e5e7eb",
+        fancybox=True,
+    )
+    legend.get_frame().set_linewidth(0.8)
     _save_plot(fig, path_base)

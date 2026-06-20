@@ -60,6 +60,9 @@ def test_parse_args_behavior():
     assert args2.engine == CollisionEngine.Collide
     assert args2.benchmark_scenarios == ["all"]
 
+    args3 = main.parse_args(["plot"])
+    assert args3.action == main.ExampleAction.PLOT
+
 
 def test_prompt_for_action_parsing():
     """Verify interactive menus translate string inputs to ExampleAction enum instances."""

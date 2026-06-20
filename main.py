@@ -15,6 +15,7 @@ class ExampleAction(Enum):
     FEATURES = "features"
     SMOKE = "smoke"
     BENCHMARK = "benchmark"
+    PLOT = "plot"
     VISUALIZE = "visualize"
     INTERACTIVE = "interactive"
     ALL = "all"
@@ -151,6 +152,18 @@ def run_action(
             seed=benchmark_seed,
             engines=benchmark_engines,
             step=benchmark_step,
+        )
+        return
+    if action == ExampleAction.PLOT:
+        benchmark.run_all(
+            benchmark_scenario_paths(benchmark_scenarios),
+            sample_count=benchmark_samples,
+            output_dir=benchmark_output,
+            thread_counts=benchmark_thread_counts,
+            repetitions=benchmark_repetitions,
+            seed=benchmark_seed,
+            engines=benchmark_engines,
+            step="plot",
         )
         return
 
