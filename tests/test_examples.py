@@ -1,3 +1,4 @@
+import csv
 import io
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -10,7 +11,7 @@ from crcc.pose import Pose
 from matplotlib import pyplot as plt
 
 import main
-from examples import features, interactive, utils as ex_utils, visualize
+from examples import benchmark, features, interactive, utils as ex_utils, visualize
 
 
 class CollisionResultStub:
@@ -20,14 +21,44 @@ class CollisionResultStub:
 
 def test_parse_args_behavior():
     """Verify parsing CLI arguments yields correct actions, scenario paths, and engines."""
-    args = main.parse_args(["benchmark", "--scenario", "scenarios/ZAM_Yield-1_1_T-1.xml", "--engine", "parry"])
+    args = main.parse_args(
+        [
+            "benchmark",
+            "--scenario",
+            "scenarios/ZAM_Yield-1_1_T-1.xml",
+            "--engine",
+            "parry",
+            "--benchmark-scenarios",
+            "scenarios/ZAM_Yield-1_1_T-1.xml",
+            "scenarios/ZAM_Merge-1_1_T-1.xml",
+            "--benchmark-thread-counts",
+            "1",
+            "2",
+            "--benchmark-repetitions",
+            "3",
+            "--benchmark-step",
+            "run",
+            "--benchmark-engines",
+            "parry",
+            "rhusics",
+        ]
+    )
     assert args.action == main.ExampleAction.BENCHMARK
     assert args.scenario == "scenarios/ZAM_Yield-1_1_T-1.xml"
     assert args.engine == CollisionEngine.Parry
+    assert args.benchmark_scenarios == [
+        "scenarios/ZAM_Yield-1_1_T-1.xml",
+        "scenarios/ZAM_Merge-1_1_T-1.xml",
+    ]
+    assert args.benchmark_thread_counts == [1, 2]
+    assert args.benchmark_repetitions == 3
+    assert args.benchmark_step == "run"
+    assert args.benchmark_engines == ["parry", "rhusics"]
 
     args2 = main.parse_args(["smoke", "--engine", "collide"])
     assert args2.action == main.ExampleAction.SMOKE
     assert args2.engine == CollisionEngine.Collide
+    assert args2.benchmark_scenarios == ["all"]
 
 
 def test_prompt_for_action_parsing():
@@ -92,6 +123,86 @@ def test_parallel_vs_sequential_query_parity():
     sequential_results = [checker.collides_static(query, pose) for query, pose in positioned_queries]
 
     assert [str(result) for result in parallel_results] == [str(result) for result in sequential_results]
+
+
+def test_benchmark_writes_csv_outputs(tmp_path, monkeypatch):
+    monkeypatch.setattr(benchmark.runner, "DEFAULT_SCENE_SIZES", (10, 50))
+    benchmark.run_all(
+        ["scenarios/ZAM_Yield-1_1_T-1.xml", "scenarios/ZAM_Merge-1_1_T-1.xml"],
+        sample_count=4,
+        output_dir=tmp_path,
+        seed=1,
+        thread_counts=[1, 2],
+        repetitions=1,
+    )
+
+    runs_path = tmp_path / "runs.csv"
+    summary_path = tmp_path / "summary.csv"
+    correctness_path = tmp_path / "correctness.csv"
+    parallel_path = tmp_path / "parallel_scaling.csv"
+    metadata_path = tmp_path / "metadata.json"
+    plot_dir = tmp_path / "plots"
+    assert runs_path.exists()
+    assert summary_path.exists()
+    assert correctness_path.exists()
+    assert parallel_path.exists()
+    assert metadata_path.exists()
+    assert plot_dir.exists()
+
+    with runs_path.open(newline="") as file:
+        run_rows = list(csv.DictReader(file))
+    assert {row["schema_version"] for row in run_rows} == {"2"}
+    assert {"parry", "rhusics", "collide"} <= {row["backend"] for row in run_rows}
+    assert {"pair", "scene_scaling", "ccd", "distance"} <= {row["feature"] for row in run_rows}
+    unsupported_distance = {
+        row["backend"]
+        for row in run_rows
+        if row["feature"] == "distance" and row["unsupported"] == "True"
+    }
+    assert unsupported_distance == set()
+
+    with summary_path.open(newline="") as file:
+        rows = list(csv.DictReader(file))
+    scenario_rows = [row for row in rows if row["feature"] == "scenario"]
+    assert {"parry", "rhusics", "collide"} == {row["backend"] for row in rows}
+    assert {"ZAM_Yield-1_1_T-1", "ZAM_Merge-1_1_T-1"} == {row["scenario"] for row in scenario_rows}
+    assert {row["workload"] for row in scenario_rows} == {"static_sequential", "static_parallel"}
+
+    with correctness_path.open(newline="") as file:
+        correctness_rows = list(csv.DictReader(file))
+    robustness_rows = [
+        row
+        for row in correctness_rows
+        if row["feature"] == "pair" and row["workload"] == "numerical_robustness"
+    ]
+    assert all(row["mismatches"] == "0" for row in robustness_rows)
+    scenario_correctness = [row for row in correctness_rows if row["feature"] == "scenario"]
+    assert {"parry", "rhusics", "collide"} == {row["backend"] for row in scenario_correctness}
+    assert {"ZAM_Yield-1_1_T-1", "ZAM_Merge-1_1_T-1"} == {row["scenario"] for row in scenario_correctness}
+    assert all(row["mismatches"] == "0" for row in scenario_correctness)
+
+    with parallel_path.open(newline="") as file:
+        parallel_rows = list(csv.DictReader(file))
+    assert {"parry", "rhusics", "collide"} == {row["backend"] for row in parallel_rows}
+    assert {"ZAM_Yield-1_1_T-1", "ZAM_Merge-1_1_T-1"} <= {row["scenario"] for row in parallel_rows}
+    assert {"1", "2"} == {row["threads"] for row in parallel_rows}
+    assert all(float(row["queries_per_s"]) > 0.0 for row in parallel_rows)
+    assert all(float(row["speedup"]) > 0.0 for row in parallel_rows)
+
+    expected_plots = {
+        "backend_throughput_dotplot",
+        "latency_tail_ratio",
+        "scene_scaling_curves",
+        "scenario_parallel_speedup_dotplot",
+        "parallel_scaling_summary",
+        "parallel_efficiency_summary",
+        "correctness_summary",
+        "throughput_variability_ratio",
+        "parallel_scene_scaling",
+    }
+    for plot_name in expected_plots:
+        assert (plot_dir / f"{plot_name}.png").exists()
+        assert (plot_dir / f"{plot_name}.pdf").exists()
 
 
 def test_scenario_load_and_bounds():

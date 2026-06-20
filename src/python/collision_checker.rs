@@ -81,6 +81,11 @@ impl AsRef<SelectedCollisionChecker> for CollisionChecker {
 
 #[pymethods]
 impl CollisionChecker {
+    #[getter]
+    pub fn engine(&self) -> CollisionEngine {
+        self.0.engine()
+    }
+
     #[pyo3(signature = (query_shape, position=None, min_time=None, max_time=None))]
     pub fn collides_static(
         &self,
@@ -123,6 +128,36 @@ impl CollisionChecker {
             .collect::<Result<_, _>>()?;
         Ok(res)
     }
+
+    #[pyo3(signature = (positioned_query_shapes, threads, min_time=None, max_time=None))]
+    pub fn par_static_threads(
+        &self,
+        positioned_query_shapes: Vec<(CollisionObject, Pose)>,
+        threads: usize,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<Vec<CollisionStatus>> {
+        let positioned_query_shapes = positioned_query_shapes
+            .into_iter()
+            .map(|(obstacle, position)| (obstacle.as_ref().clone(), position.0))
+            .collect::<Vec<_>>();
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(threads.max(1))
+            .build()
+            .map_err(|err| pyo3::exceptions::PyRuntimeError::new_err(err.to_string()))?;
+        let res = pool.install(|| {
+            self.0
+                .par_static(
+                    &positioned_query_shapes,
+                    min_max_to_range(min_time, max_time),
+                )
+                .into_iter()
+                .map(|result| result.map(CollisionStatus::from))
+                .collect::<Result<Vec<_>, _>>()
+        })?;
+        Ok(res)
+    }
+
     #[pyo3(signature = (dynamic_obstacle, min_time=None, max_time=None))]
     pub fn collides_dynamic(
         &self,

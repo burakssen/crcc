@@ -23,6 +23,8 @@ class CollisionStatus(_CollisionStatus):
     def time_step(self) -> Optional[int]: ...
 
 class CollisionChecker(_CollisionChecker):
+    @property
+    def engine(self) -> CollisionEngine: ...
     def collides_static(
         self,
         query_shape: CollisionObject,
@@ -33,6 +35,13 @@ class CollisionChecker(_CollisionChecker):
     def par_static(
         self,
         positioned_query_shapes: Sequence[Tuple[CollisionObject, Pose]],
+        min_time: Optional[int] = None,
+        max_time: Optional[int] = None,
+    ) -> List[CollisionStatus]: ...
+    def par_static_threads(
+        self,
+        positioned_query_shapes: Sequence[Tuple[CollisionObject, Pose]],
+        threads: int,
         min_time: Optional[int] = None,
         max_time: Optional[int] = None,
     ) -> List[CollisionStatus]: ...

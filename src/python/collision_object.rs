@@ -52,6 +52,23 @@ impl CollisionObject {
         )?)
     }
 
+    #[pyo3(signature = (other, pos_self = Pose::identity(), pos_other = Pose::identity(), engine = CollisionEngine::Parry))]
+    pub fn distance(
+        &self,
+        other: &CollisionObject,
+        pos_self: Pose,
+        pos_other: Pose,
+        engine: CollisionEngine,
+    ) -> PyResult<f64> {
+        Ok(crate::collision_checker::engine::distance(
+            self.as_ref(),
+            pos_self.0,
+            other.as_ref(),
+            pos_other.0,
+            engine,
+        )?)
+    }
+
     pub fn merge(&self, other: &CollisionObject) -> CollisionObject {
         CollisionObject::from(RustCollisionObject::merge(
             self.as_ref().clone(),

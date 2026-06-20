@@ -11,6 +11,7 @@ use rhusics_core::collide2d::BodyPose2;
 use std::fmt;
 
 const HALF_SPACE_EPSILON: f64 = 1e-9;
+const FINITE_COLLISION_EPSILON: f64 = 1e-12;
 const HALF_SPACE_TOI_TIME_TOLERANCE: f64 = 1e-9;
 const HALF_SPACE_TOI_INITIAL_SAMPLES: usize = 64;
 const HALF_SPACE_TOI_MAX_DEPTH: usize = 4;
@@ -262,6 +263,21 @@ fn finite_shapes_collide(
     right: &FiniteShape,
     right_pose: DPose2,
 ) -> bool {
+    if let (
+        FiniteShapeSupport::Circle {
+            radius: left_radius,
+        },
+        FiniteShapeSupport::Circle {
+            radius: right_radius,
+        },
+    ) = (&left.support, &right.support)
+    {
+        let left_center = (left_pose * left.position).translation;
+        let right_center = (right_pose * right.position).translation;
+        return left_center.distance(right_center)
+            <= left_radius + right_radius + FINITE_COLLISION_EPSILON;
+    }
+
     if let (
         FiniteShapeSupport::Vertices(left_vertices),
         FiniteShapeSupport::Vertices(right_vertices),

@@ -29,6 +29,15 @@ pub trait EngineCollisionObject: From<CollisionObject> {
         start_pos_other: DPose2,
         end_pos_other: DPose2,
     ) -> Result<bool, CrccError>;
+
+    fn distance_at(
+        &self,
+        _pos_self: DPose2,
+        _other: &Self,
+        _pos_other: DPose2,
+    ) -> Result<f64, CrccError> {
+        Err(CrccError::Unsupported)
+    }
 }
 
 pub fn collides(
@@ -140,6 +149,47 @@ pub fn collides_sweep(
     }
 }
 
+pub fn distance(
+    slf: &CollisionObject,
+    pos_self: DPose2,
+    other: &CollisionObject,
+    pos_other: DPose2,
+    engine: CollisionEngine,
+) -> Result<f64, CrccError> {
+    #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+    let _ = (slf, pos_self, other, pos_other);
+
+    match engine {
+        #[cfg(feature = "parry")]
+        CollisionEngine::Parry => {
+            use parry::ParryCollisionObject;
+            let slf = ParryCollisionObject::from(slf.clone());
+            let other = ParryCollisionObject::from(other.clone());
+            slf.distance_at(pos_self, &other, pos_other)
+        }
+        #[cfg(not(feature = "parry"))]
+        CollisionEngine::Parry => Err(CrccError::Unsupported),
+        #[cfg(feature = "rhusics")]
+        CollisionEngine::Rhusics => {
+            use rhusics::RhusicsCoreCollisionObject;
+            let slf = RhusicsCoreCollisionObject::from(slf.clone());
+            let other = RhusicsCoreCollisionObject::from(other.clone());
+            slf.distance_at(pos_self, &other, pos_other)
+        }
+        #[cfg(not(feature = "rhusics"))]
+        CollisionEngine::Rhusics => Err(CrccError::Unsupported),
+        #[cfg(feature = "collide")]
+        CollisionEngine::Collide => {
+            use collide::CollideCollisionObject;
+            let slf = CollideCollisionObject::from(slf.clone());
+            let other = CollideCollisionObject::from(other.clone());
+            slf.distance_at(pos_self, &other, pos_other)
+        }
+        #[cfg(not(feature = "collide"))]
+        CollisionEngine::Collide => Err(CrccError::Unsupported),
+    }
+}
+
 #[cfg_attr(feature = "python_bindings", pyo3::pyclass(eq, eq_int))]
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CollisionEngine {
@@ -151,7 +201,7 @@ pub enum CollisionEngine {
 
 #[cfg(all(test, feature = "parry", feature = "rhusics", feature = "collide"))]
 mod tests {
-    use super::{CollisionEngine, collides, collides_sweep};
+    use super::{CollisionEngine, collides, collides_sweep, distance};
     use crate::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
     use crate::collision_object::CollisionObject;
     use crate::collision_object::simple::SimpleCollisionObject;
@@ -258,11 +308,60 @@ mod tests {
         assert_engine_parity(&empty, &full, false);
         assert_engine_parity(&full, &distant_circle, true);
         assert_engine_parity(&circle, &distant_circle, false);
+        assert_engine_parity_at(
+            &circle,
+            DPose2::IDENTITY,
+            &distant_circle,
+            DPose2::translation(-3.0, 0.0),
+            true,
+        );
+        assert_engine_parity_at(
+            &circle,
+            DPose2::IDENTITY,
+            &distant_circle,
+            DPose2::translation(-3.0 + 1e-9, 0.0),
+            false,
+        );
         assert_engine_parity(&circle, &rectangle, true);
         assert_engine_parity(&triangle, &circle, true);
         assert_engine_parity(&convex_polygon, &circle, true);
         assert_engine_parity(&non_convex_polygon, &circle, true);
         assert_engine_parity(&polygon_with_hole, &distant_circle, false);
+    }
+
+    #[test]
+    fn parry_distance_reports_separation_for_basic_shapes() {
+        let left = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
+        let right = CollisionObject::circle((5.0, 0.0), 1.0).unwrap();
+
+        let separation = distance(
+            &left,
+            DPose2::IDENTITY,
+            &right,
+            DPose2::IDENTITY,
+            CollisionEngine::Parry,
+        )
+        .unwrap();
+
+        assert!((separation - 3.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn all_engines_distance_reports_separation_for_basic_shapes() {
+        let left = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
+        let right = CollisionObject::circle((5.0, 0.0), 1.0).unwrap();
+
+        for engine in [CollisionEngine::Parry, CollisionEngine::Rhusics, CollisionEngine::Collide] {
+            let separation = distance(
+                &left,
+                DPose2::IDENTITY,
+                &right,
+                DPose2::IDENTITY,
+                engine,
+            )
+            .unwrap();
+            assert!((separation - 3.0).abs() < 1e-9);
+        }
     }
 
     #[test]

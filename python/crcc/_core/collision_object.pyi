@@ -22,6 +22,13 @@ class CollisionObject:
         end_pos_other: Pose,
         engine: CollisionEngine = CollisionEngine.Parry,
     ) -> bool: ...
+    def distance(
+        self,
+        other: CollisionObject,
+        pos_self: Pose = Pose.identity(),
+        pos_other: Pose = Pose.identity(),
+        engine: CollisionEngine = CollisionEngine.Parry,
+    ) -> float: ...
     def merge(self, other: CollisionObject) -> CollisionObject: ...
     @staticmethod
     def merge_all(collision_objects: Sequence[CollisionObject]) -> CollisionObject: ...

@@ -39,6 +39,17 @@ impl EngineCollisionObject for ParryCollisionObject {
             end_pos_other,
         )?)
     }
+
+    fn distance_at(
+        &self,
+        pos_self: DPose2,
+        other: &Self,
+        pos_other: DPose2,
+    ) -> Result<f64, CrccError> {
+        Ok(self
+            .as_ref()
+            .distance(pos_self, other.as_ref(), pos_other)?)
+    }
 }
 
 impl From<CollisionObject> for ParryCollisionObject {

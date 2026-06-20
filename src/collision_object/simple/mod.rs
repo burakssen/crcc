@@ -139,7 +139,7 @@ fn swept_areas(
         .collect()
 }
 
-fn pose_to_affine(pose: DPose2) -> AffineTransform {
+pub(crate) fn pose_to_affine(pose: DPose2) -> AffineTransform {
     AffineTransform::rotate(pose.rotation.angle().to_degrees(), (0.0, 0.0))
         .translated(pose.translation.x, pose.translation.y)
 }

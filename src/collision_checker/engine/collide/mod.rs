@@ -8,7 +8,10 @@ mod inner;
 mod simple;
 
 #[derive(Debug, Clone)]
-pub struct CollideCollisionObject(CollideCollisionObjectInner);
+pub struct CollideCollisionObject {
+    inner: CollideCollisionObjectInner,
+    original: CollisionObject,
+}
 
 impl EngineCollisionObject for CollideCollisionObject {
     fn collides_at(
@@ -38,17 +41,29 @@ impl EngineCollisionObject for CollideCollisionObject {
             end_pos_other,
         )?)
     }
+
+    fn distance_at(
+        &self,
+        pos_self: DPose2,
+        other: &Self,
+        pos_other: DPose2,
+    ) -> Result<f64, CrccError> {
+        self.original.distance(pos_self, &other.original, pos_other)
+    }
 }
 
 impl From<CollisionObject> for CollideCollisionObject {
     fn from(value: CollisionObject) -> Self {
-        Self(value.into())
+        Self {
+            inner: value.clone().into(),
+            original: value,
+        }
     }
 }
 
 impl AsRef<CollideCollisionObjectInner> for CollideCollisionObject {
     fn as_ref(&self) -> &CollideCollisionObjectInner {
-        &self.0
+        &self.inner
     }
 }
 

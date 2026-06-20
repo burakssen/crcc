@@ -2,7 +2,7 @@ use crate::collision_checker::engine::parry::simple::ParrySimpleCollisionObject;
 use crate::collision_object::CollisionObject;
 use glamx::{DPose2, DVec2};
 use parry2d_f64::query::{
-    NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, intersection_test,
+    NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, distance, intersection_test,
 };
 use parry2d_f64::shape::{Compound, TriMesh, TriMeshBuilderError};
 use std::f64::consts::{PI, TAU};
@@ -69,6 +69,24 @@ impl ParryCollisionObjectInner {
             ),
         }
     }
+
+    pub fn distance(
+        &self,
+        pos_self: DPose2,
+        other: &Self,
+        pos_other: DPose2,
+    ) -> Result<f64, Unsupported> {
+        match (self, other) {
+            (ParryCollisionObjectInner::Empty, _)
+            | (_, ParryCollisionObjectInner::Empty)
+            | (ParryCollisionObjectInner::FullSpace, _)
+            | (_, ParryCollisionObjectInner::FullSpace) => Err(Unsupported),
+            (
+                ParryCollisionObjectInner::NonTrivial(slf),
+                ParryCollisionObjectInner::NonTrivial(other),
+            ) => slf.distance(pos_self, other, pos_other),
+        }
+    }
 }
 
 impl NonTrivial {
@@ -128,6 +146,32 @@ impl NonTrivial {
             }
         }
         Ok(false)
+    }
+
+    pub fn distance(
+        &self,
+        pos_self: DPose2,
+        other: &Self,
+        pos_other: DPose2,
+    ) -> Result<f64, Unsupported> {
+        let mut min_distance = f64::INFINITY;
+        for comp_self in [&self.generic_compound, &self.tri_mesh_compound]
+            .into_iter()
+            .flatten()
+        {
+            for comp_other in [&other.generic_compound, &other.tri_mesh_compound]
+                .into_iter()
+                .flatten()
+            {
+                min_distance =
+                    min_distance.min(distance(&pos_self, comp_self, &pos_other, comp_other)?);
+            }
+        }
+        if min_distance.is_finite() {
+            Ok(min_distance)
+        } else {
+            Err(Unsupported)
+        }
     }
 }
 
