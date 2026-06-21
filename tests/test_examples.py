@@ -142,12 +142,14 @@ def test_benchmark_writes_csv_outputs(tmp_path, monkeypatch):
     runs_path = tmp_path / "runs.csv"
     summary_path = tmp_path / "summary.csv"
     correctness_path = tmp_path / "correctness.csv"
+    comparisons_path = tmp_path / "comparisons.csv"
     parallel_path = tmp_path / "parallel_scaling.csv"
     metadata_path = tmp_path / "metadata.json"
     plot_dir = tmp_path / "plots"
     assert runs_path.exists()
     assert summary_path.exists()
     assert correctness_path.exists()
+    assert comparisons_path.exists()
     assert parallel_path.exists()
     assert metadata_path.exists()
     assert plot_dir.exists()
@@ -184,6 +186,14 @@ def test_benchmark_writes_csv_outputs(tmp_path, monkeypatch):
     assert {"ZAM_Yield-1_1_T-1", "ZAM_Merge-1_1_T-1"} == {row["scenario"] for row in scenario_correctness}
     assert all(row["mismatches"] == "0" for row in scenario_correctness)
 
+    with comparisons_path.open(newline="") as file:
+        comparison_rows = list(csv.DictReader(file))
+    assert comparison_rows
+    assert {row["baseline_backend"] for row in comparison_rows} == {"parry"}
+    assert {"rhusics", "collide"} <= {row["backend"] for row in comparison_rows}
+    assert all(float(row["speedup_median"]) > 0.0 for row in comparison_rows)
+    assert {row["verdict"] for row in comparison_rows} <= {"faster", "slower", "inconclusive"}
+
     with parallel_path.open(newline="") as file:
         parallel_rows = list(csv.DictReader(file))
     assert {"parry", "rhusics", "collide"} == {row["backend"] for row in parallel_rows}
@@ -201,6 +211,8 @@ def test_benchmark_writes_csv_outputs(tmp_path, monkeypatch):
         "parallel_efficiency_summary",
         "correctness_summary",
         "throughput_variability_ratio",
+        "backend_speedup_forest",
+        "throughput_repetition_strip",
         "parallel_scene_scaling",
     }
     for plot_name in expected_plots:

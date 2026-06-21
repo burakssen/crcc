@@ -37,6 +37,8 @@ PLOT_NAMES = {
     "parallel_efficiency_summary",
     "correctness_summary",
     "throughput_variability_ratio",
+    "backend_speedup_forest",
+    "throughput_repetition_strip",
     "parallel_scene_scaling",
 }
 
@@ -49,6 +51,7 @@ def write_plots(output_dir: Path):
 
     runs = _read_optional(output_dir / "runs.csv")
     summary = _read_optional(output_dir / "summary.csv")
+    comparisons = _read_optional(output_dir / "comparisons.csv")
     correctness = _read_optional(output_dir / "correctness.csv")
     parallel = _read_optional(output_dir / "parallel_scaling.csv")
 
@@ -62,6 +65,8 @@ def write_plots(output_dir: Path):
     _plot_parallel_summary(plot_dir / "parallel_efficiency_summary", parallel, "efficiency", "parallel efficiency")
     _plot_correctness_summary(plot_dir / "correctness_summary", correctness)
     _plot_throughput_variability_ratio(plot_dir / "throughput_variability_ratio", plottable_runs)
+    _plot_backend_speedup_forest(plot_dir / "backend_speedup_forest", comparisons)
+    _plot_throughput_repetition_strip(plot_dir / "throughput_repetition_strip", plottable_runs)
     _plot_parallel_scene_scaling(plot_dir / "parallel_scene_scaling", parallel)
 
 
@@ -344,7 +349,7 @@ def _plot_correctness_summary(path_base: Path, rows):
 def _plot_throughput_variability_ratio(path_base: Path, rows):
     synthetic_rows = _synthetic_run_rows(rows)
     labels = _ordered_workload_labels(synthetic_rows)
-    backends = _present_backends(synthetic_run_rows := synthetic_rows)
+    backends = _present_backends(synthetic_rows)
     repetition_count = len({row["repetition"] for row in synthetic_rows})
     if not labels:
         _plot_status(path_base, "Throughput Variability", "No per-run synthetic rows")
@@ -401,6 +406,87 @@ def _plot_throughput_variability_ratio(path_base: Path, rows):
     _save_plot(fig, path_base)
 
 
+def _plot_backend_speedup_forest(path_base: Path, rows):
+    if not rows:
+        _plot_status(path_base, "Backend Speedup vs Baseline", "No paired comparison rows")
+        return
+
+    ordered = sorted(rows, key=lambda row: (_float(row["speedup_median"]), row["feature"], row["workload"]))
+    labels = [_comparison_label(row) for row in ordered]
+    y = np.arange(len(labels))
+    fig, ax = plt.subplots(figsize=(10.4, _figure_height(labels)), layout="constrained")
+    for index, row in enumerate(ordered):
+        median = _float(row["speedup_median"])
+        low = _float(row["speedup_ci_low"])
+        high = _float(row["speedup_ci_high"])
+        color = BACKEND_COLORS.get(row["backend"], "#4b5563")
+        ax.errorbar(
+            median,
+            y[index],
+            xerr=[[max(0.0, median - low)], [max(0.0, high - median)]],
+            fmt=BACKEND_MARKERS.get(row["backend"], "o"),
+            color=color,
+            ecolor=color,
+            elinewidth=1.4,
+            capsize=3,
+            markersize=5.5,
+            zorder=3,
+        )
+
+    ax.axvline(1.0, color="#6b7280", linestyle="--", linewidth=1.1, alpha=0.75)
+    ax.set_title("Backend Speedup vs Baseline", loc="left", pad=12)
+    ax.set_xlabel("speedup ratio with 95% bootstrap CI (log scale)")
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels)
+    ax.set_xscale("log")
+    _style_axis(ax, axis="x")
+    _save_plot(fig, path_base)
+
+
+def _plot_throughput_repetition_strip(path_base: Path, rows):
+    synthetic_rows = _synthetic_run_rows(rows)
+    labels = _ordered_workload_labels(synthetic_rows)
+    backends = _present_backends(synthetic_rows)
+    if not labels or not backends:
+        _plot_status(path_base, "Throughput by Repetition", "No per-run synthetic rows")
+        return
+
+    x_base = np.arange(len(labels))
+    offsets = _offsets(backends, 0.24)
+    fig, ax = plt.subplots(figsize=(10.8, 5.8), layout="constrained")
+    for offset, backend in zip(offsets, backends, strict=True):
+        color = BACKEND_COLORS.get(backend)
+        for index, label in enumerate(labels):
+            values = [
+                _float(row["queries_per_s"])
+                for row in synthetic_rows
+                if _row_workload_label(row) == label and row["backend"] == backend and _float(row["queries_per_s"]) > 0
+            ]
+            if not values:
+                continue
+            x = x_base[index] + offset
+            jitter = np.linspace(-0.035, 0.035, len(values)) if len(values) > 1 else [0.0]
+            ax.scatter(
+                [x + item for item in jitter],
+                values,
+                color=color,
+                alpha=0.48,
+                s=18,
+                linewidth=0,
+                zorder=3,
+            )
+            ax.plot([x - 0.055, x + 0.055], [np.median(values), np.median(values)], color=color, linewidth=2.0, zorder=4)
+
+    ax.set_title("Throughput Distribution Across Repetitions", loc="left", pad=12)
+    ax.set_ylabel("queries/s (log)")
+    ax.set_xticks(x_base)
+    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right", rotation_mode="anchor")
+    ax.set_yscale("log")
+    _style_axis(ax, axis="y")
+    _legend_outside(fig, ax, backends)
+    _save_plot(fig, path_base)
+
+
 def _clean_plot_dir(plot_dir: Path):
     for path in plot_dir.iterdir():
         if path.is_file() and path.suffix in {".png", ".pdf"}:
@@ -441,6 +527,15 @@ def _ordered_workload_labels(rows):
 
 def _row_workload_label(row):
     return f"{row['feature']}:{row['workload']}"
+
+
+def _comparison_label(row):
+    base = f"{row['backend']} / {row['feature']}:{row['workload']}"
+    if row.get("scenario"):
+        base = f"{row['backend']} / {row['scenario']}:{row['workload']}"
+    if row.get("objects"):
+        base = f"{base} / n={row['objects']}, hit={_float(row['density']):.0%}"
+    return base
 
 
 def _summary_row(rows, label, backend):
@@ -579,7 +674,9 @@ def _save_plot(fig, path_base: Path):
 
 def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
     import re
+
     import matplotlib.cm as cm
+
     scene_rows = [row for row in parallel_rows if "scene_scaling_objects_" in row["scenario"]]
     if not scene_rows:
         _plot_status(path_base, "Parallel Scene Scaling", "No scene scaling parallel rows")
