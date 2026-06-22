@@ -1,30 +1,19 @@
-use std::error::Error;
-use std::fmt::{Display, Formatter};
+use derive_more::Display;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Display)]
 pub enum CrccError {
+    #[display("Circle radius must be positive, got {_0}.")]
     InvalidRadius(f64),
+    #[display("Shape must be convex.")]
     NotConvex,
+    #[display("Shape may not have holes.")]
     HasHoles,
+    #[display("Shape must not be empty.")]
     EmptyShape,
+    #[display("Collision checking of shape combination is not supported.")]
     Unsupported,
 }
 
-impl Display for CrccError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CrccError::InvalidRadius(r) => write!(f, "Circle radius must be positive, got {}.", r),
-            CrccError::NotConvex => write!(f, "Shape must be convex."),
-            CrccError::HasHoles => write!(f, "Shape may not have holes."),
-            CrccError::EmptyShape => write!(f, "Shape must not be empty."),
-            CrccError::Unsupported => write!(
-                f,
-                "Collision checking of shape combination is not supported."
-            ),
-        }
-    }
-}
-
-impl Error for CrccError {}
+impl std::error::Error for CrccError {}
 
 pub type CrccResult<T> = Result<T, CrccError>;

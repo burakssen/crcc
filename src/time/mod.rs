@@ -1,5 +1,5 @@
 pub use crate::time::set::TimeStepSet;
-use derive_more::{Add, Mul, Sub, Sum};
+use derive_more::{Add, From, Mul, Sub, Sum};
 use std::fmt::Display;
 use std::ops::RangeBounds;
 
@@ -7,7 +7,7 @@ mod set;
 
 pub(crate) type TimeStepInner = i32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Add, Mul, Sub, Sum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Add, Mul, Sub, Sum, From)]
 pub struct TimeStep(pub TimeStepInner);
 
 impl TimeStep {
@@ -45,12 +45,6 @@ impl TimeStep {
 impl Display for TimeStep {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "t_{}", self.0)
-    }
-}
-
-impl From<TimeStepInner> for TimeStep {
-    fn from(value: TimeStepInner) -> Self {
-        Self(value)
     }
 }
 

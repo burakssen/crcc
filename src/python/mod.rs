@@ -9,15 +9,7 @@ mod pose;
 
 impl From<CrccError> for PyErr {
     fn from(value: CrccError) -> Self {
-        match value {
-            CrccError::Unsupported => PyValueError::new_err("Unsupported shape combination"),
-            CrccError::InvalidRadius(r) => {
-                PyValueError::new_err(format!("Circle radius must be positive, got {}.", r))
-            }
-            CrccError::NotConvex => PyValueError::new_err("Shape must be convex."),
-            CrccError::HasHoles => PyValueError::new_err("Shape may not have holes."),
-            CrccError::EmptyShape => PyValueError::new_err("Shape must not be empty."),
-        }
+        PyValueError::new_err(value.to_string())
     }
 }
 
