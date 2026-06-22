@@ -191,12 +191,37 @@ pub fn distance(
 }
 
 #[cfg_attr(feature = "python_bindings", pyo3::pyclass(eq, eq_int))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CollisionEngine {
-    #[default]
     Parry,
     Rhusics,
     Collide,
+}
+
+impl Default for CollisionEngine {
+    fn default() -> Self {
+        default_collision_engine()
+    }
+}
+
+#[cfg(feature = "parry")]
+fn default_collision_engine() -> CollisionEngine {
+    CollisionEngine::Parry
+}
+
+#[cfg(all(not(feature = "parry"), feature = "rhusics"))]
+fn default_collision_engine() -> CollisionEngine {
+    CollisionEngine::Rhusics
+}
+
+#[cfg(all(not(feature = "parry"), not(feature = "rhusics"), feature = "collide"))]
+fn default_collision_engine() -> CollisionEngine {
+    CollisionEngine::Collide
+}
+
+#[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+fn default_collision_engine() -> CollisionEngine {
+    CollisionEngine::Parry
 }
 
 #[cfg(all(test, feature = "parry", feature = "rhusics", feature = "collide"))]
@@ -351,15 +376,13 @@ mod tests {
         let left = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
         let right = CollisionObject::circle((5.0, 0.0), 1.0).unwrap();
 
-        for engine in [CollisionEngine::Parry, CollisionEngine::Rhusics, CollisionEngine::Collide] {
-            let separation = distance(
-                &left,
-                DPose2::IDENTITY,
-                &right,
-                DPose2::IDENTITY,
-                engine,
-            )
-            .unwrap();
+        for engine in [
+            CollisionEngine::Parry,
+            CollisionEngine::Rhusics,
+            CollisionEngine::Collide,
+        ] {
+            let separation =
+                distance(&left, DPose2::IDENTITY, &right, DPose2::IDENTITY, engine).unwrap();
             assert!((separation - 3.0).abs() < 1e-9);
         }
     }

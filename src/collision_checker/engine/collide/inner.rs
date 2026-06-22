@@ -3,9 +3,10 @@ use crate::collision_checker::engine::collide::simple::{
     FiniteShapeSupport, HalfSpaceComponent, vec2,
 };
 use crate::collision_object::CollisionObject;
-use collide::{Collider, Transform, Transformable};
+use collide::{Collider, CollisionInfo, Transform, Transformable};
 use collide_convex::Convex as CollideConvex;
 use collide_sphere::Sphere as CollideSphere;
+use collision_detection::CollisionManager;
 use glamx::{DPose2, DVec2};
 use std::fmt;
 
@@ -90,8 +91,21 @@ impl CollideCollisionObjectInner {
 
 impl NonTrivial {
     pub fn collides(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> bool {
+        if finite_components_collide(&self.components, pos_self, &other.components, pos_other) {
+            return true;
+        }
+
         for component_self in &self.components {
             for component_other in &other.components {
+                if matches!(
+                    (component_self, component_other),
+                    (
+                        CollideCollisionComponent::Finite(_),
+                        CollideCollisionComponent::Finite(_)
+                    )
+                ) {
+                    continue;
+                }
                 if components_collide(component_self, pos_self, component_other, pos_other) {
                     return true;
                 }
@@ -123,6 +137,74 @@ impl NonTrivial {
             }
         }
         false
+    }
+}
+
+fn finite_components_collide(
+    left_components: &[CollideCollisionComponent],
+    left_pose: DPose2,
+    right_components: &[CollideCollisionComponent],
+    right_pose: DPose2,
+) -> bool {
+    let Some(left) = finite_component_manager(left_components, left_pose) else {
+        return false;
+    };
+    let Some(right) = finite_component_manager(right_components, right_pose) else {
+        return false;
+    };
+
+    left
+        .compute_collisions_with(&right)
+        .values()
+        .any(|hits| !hits.is_empty())
+}
+
+fn finite_component_manager(
+    components: &[CollideCollisionComponent],
+    pose: DPose2,
+) -> Option<CollisionManager<ManagedFiniteShape, usize>> {
+    let finite_count = components
+        .iter()
+        .filter(|component| matches!(component, CollideCollisionComponent::Finite(_)))
+        .count();
+    if finite_count == 0 {
+        return None;
+    }
+
+    let mut manager = CollisionManager::with_capacity(finite_count);
+    for (index, component) in components.iter().enumerate() {
+        if let CollideCollisionComponent::Finite(finite) = component {
+            manager.insert_collider(ManagedFiniteShape::new(finite, pose), index);
+        }
+    }
+    Some(manager)
+}
+
+#[derive(Clone)]
+struct ManagedFiniteShape {
+    collider: CollideConvex<CollideVec2>,
+    bounding_sphere: CollideSphere<CollideVec2>,
+}
+
+impl ManagedFiniteShape {
+    fn new(finite: &FiniteShape, pose: DPose2) -> Self {
+        let pose = pose * finite.position;
+        Self {
+            collider: transformed_convex_at_pose(finite, pose),
+            bounding_sphere: transformed_bounding_sphere_at_pose(finite, pose),
+        }
+    }
+}
+
+impl Collider for ManagedFiniteShape {
+    type Vector = CollideVec2;
+
+    fn check_collision(&self, other: &Self) -> bool {
+        self.bounding_sphere.check_collision(&other.bounding_sphere)
+    }
+
+    fn collision_info(&self, other: &Self) -> Option<CollisionInfo<Self::Vector>> {
+        self.collider.collision_info(&other.collider)
     }
 }
 
@@ -246,23 +328,24 @@ fn finite_shapes_collide(
     right: &FiniteShape,
     right_pose: DPose2,
 ) -> bool {
-    let left_pose = left_pose * left.position;
-    let right_pose = right_pose * right.position;
-    if !transformed_bounding_sphere(left, left_pose)
-        .check_collision(&transformed_bounding_sphere(right, right_pose))
-    {
-        return false;
-    }
-    transformed_convex(left, left_pose)
-        .collision_info(&transformed_convex(right, right_pose))
-        .is_some()
+    let mut left_manager = CollisionManager::with_capacity(1);
+    let mut right_manager = CollisionManager::with_capacity(1);
+    left_manager.insert_collider(ManagedFiniteShape::new(left, left_pose), 0);
+    right_manager.insert_collider(ManagedFiniteShape::new(right, right_pose), 0);
+    left_manager
+        .compute_collisions_with(&right_manager)
+        .values()
+        .any(|hits| !hits.is_empty())
 }
 
-fn transformed_convex(finite: &FiniteShape, pose: DPose2) -> CollideConvex<CollideVec2> {
+fn transformed_convex_at_pose(finite: &FiniteShape, pose: DPose2) -> CollideConvex<CollideVec2> {
     finite.collider.transformed(&CollideTransform(pose))
 }
 
-fn transformed_bounding_sphere(finite: &FiniteShape, pose: DPose2) -> CollideSphere<CollideVec2> {
+fn transformed_bounding_sphere_at_pose(
+    finite: &FiniteShape,
+    pose: DPose2,
+) -> CollideSphere<CollideVec2> {
     CollideSphere::new(
         transform_collide_point(finite.bounding_sphere.center, pose),
         finite.bounding_sphere.radius,

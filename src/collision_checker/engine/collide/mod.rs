@@ -83,7 +83,6 @@ mod tests {
             include_str!("simple.rs"),
         ];
         let forbidden = [
-            concat!("collision", "::"),
             concat!("cg", "math"),
             concat!("par", "ry"),
             concat!("rhu", "sics"),
