@@ -1,7 +1,7 @@
-use crate::collision_object::simple::{SimpleCollisionObject, pose_to_affine};
 use crate::collision_object::CollisionObject;
+use crate::collision_object::simple::{SimpleCollisionObject, pose_to_affine};
 use crate::error::CrccError;
-use geo::{Distance, Euclidean, Point, Polygon, AffineOps, Rotate};
+use geo::{AffineOps, Distance, Euclidean, Point, Polygon, Rotate};
 use glamx::{DPose2, DVec2};
 
 #[derive(Debug)]
@@ -59,24 +59,22 @@ pub fn distance_geo(g1: &GeoRepresentation, g2: &GeoRepresentation) -> Result<f6
         (GeoRepresentation::Empty, _) | (_, GeoRepresentation::Empty) => {
             Err(CrccError::Unsupported)
         }
-        (GeoRepresentation::FullSpace, _) | (_, GeoRepresentation::FullSpace) => {
-            Ok(0.0)
-        }
+        (GeoRepresentation::FullSpace, _) | (_, GeoRepresentation::FullSpace) => Ok(0.0),
         (
-            GeoRepresentation::Circle { center: c1, radius: r1 },
-            GeoRepresentation::Circle { center: c2, radius: r2 },
+            GeoRepresentation::Circle {
+                center: c1,
+                radius: r1,
+            },
+            GeoRepresentation::Circle {
+                center: c2,
+                radius: r2,
+            },
         ) => {
             let d = Euclidean.distance(c1, c2);
             Ok((d - r1 - r2).max(0.0))
         }
-        (
-            GeoRepresentation::Circle { center, radius },
-            GeoRepresentation::Polygon(poly),
-        )
-        | (
-            GeoRepresentation::Polygon(poly),
-            GeoRepresentation::Circle { center, radius },
-        ) => {
+        (GeoRepresentation::Circle { center, radius }, GeoRepresentation::Polygon(poly))
+        | (GeoRepresentation::Polygon(poly), GeoRepresentation::Circle { center, radius }) => {
             let d = Euclidean.distance(center, poly);
             Ok((d - radius).max(0.0))
         }
@@ -84,12 +82,18 @@ pub fn distance_geo(g1: &GeoRepresentation, g2: &GeoRepresentation) -> Result<f6
             Ok(Euclidean.distance(p1, p2))
         }
         (
-            GeoRepresentation::HalfSpace { outward_normal: n, offset },
+            GeoRepresentation::HalfSpace {
+                outward_normal: n,
+                offset,
+            },
             GeoRepresentation::Circle { center, radius },
         )
         | (
             GeoRepresentation::Circle { center, radius },
-            GeoRepresentation::HalfSpace { outward_normal: n, offset },
+            GeoRepresentation::HalfSpace {
+                outward_normal: n,
+                offset,
+            },
         ) => {
             let center_vec = DVec2::new(center.x(), center.y());
             let proj = n.dot(center_vec);
@@ -97,12 +101,18 @@ pub fn distance_geo(g1: &GeoRepresentation, g2: &GeoRepresentation) -> Result<f6
             Ok((d - radius).max(0.0))
         }
         (
-            GeoRepresentation::HalfSpace { outward_normal: n, offset },
+            GeoRepresentation::HalfSpace {
+                outward_normal: n,
+                offset,
+            },
             GeoRepresentation::Polygon(poly),
         )
         | (
             GeoRepresentation::Polygon(poly),
-            GeoRepresentation::HalfSpace { outward_normal: n, offset },
+            GeoRepresentation::HalfSpace {
+                outward_normal: n,
+                offset,
+            },
         ) => {
             let mut min_d = f64::INFINITY;
             for p in poly.exterior().points() {
@@ -114,8 +124,14 @@ pub fn distance_geo(g1: &GeoRepresentation, g2: &GeoRepresentation) -> Result<f6
             Ok(min_d.max(0.0))
         }
         (
-            GeoRepresentation::HalfSpace { outward_normal: n1, offset: o1 },
-            GeoRepresentation::HalfSpace { outward_normal: n2, offset: o2 },
+            GeoRepresentation::HalfSpace {
+                outward_normal: n1,
+                offset: o1,
+            },
+            GeoRepresentation::HalfSpace {
+                outward_normal: n2,
+                offset: o2,
+            },
         ) => {
             let dot = n1.dot(*n2);
             if (dot + 1.0).abs() < 1e-9 {

@@ -5,8 +5,8 @@ use geo::{Polygon, Rect, Triangle};
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
 
-pub mod simple;
 pub mod distance;
+pub mod simple;
 
 #[derive(Debug, Clone)]
 pub struct CollisionObject {
