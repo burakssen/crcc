@@ -26,7 +26,7 @@ By wrapping a core Rust library in Python bindings via PyO3 and Maturin, `crcc` 
 
 ## Installation & Quick Start
 
-The project uses `uv` for python package and environment management. 
+The project uses `uv` for python package and environment management.
 
 To build, install, and launch the interactive playground example:
 ```bash

@@ -45,9 +45,7 @@ def add_commonroad_static_obstacle_to_builder(
     static_obstacle: cr_obstacle.StaticObstacle,
 ) -> CollisionCheckerBuilder:
     """Adds a CommonRoad static obstacle to the builder."""
-    collision_object = commonroad_occupancy(
-        static_obstacle.occupancy_at_time(static_obstacle.initial_state.time_step)
-    )
+    collision_object = commonroad_occupancy(static_obstacle.occupancy_at_time(static_obstacle.initial_state.time_step))
     builder.with_static_obstacle(collision_object)
     return builder
 
@@ -103,9 +101,7 @@ def commonroad_shape(shape: ObstacleShape) -> CollisionObject:
     if isinstance(shape, PolygonObstacleShape):
         return Polygon([tuple(v) for v in shape.vertices], [])
 
-    return commonroad_occupancy(
-        shape.compute_occupancy_for_state(InitialState(position=(0.0, 0.0), orientation=0.0))
-    )
+    return commonroad_occupancy(shape.compute_occupancy_for_state(InitialState(position=(0.0, 0.0), orientation=0.0)))
 
 
 def commonroad_occupancy(occupancy: Occupancy) -> CollisionObject:

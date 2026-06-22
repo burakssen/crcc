@@ -26,7 +26,9 @@ def write_artifacts(config: BenchmarkConfig, runs, correctness, parallel_rows):
     write_dicts(config.output_dir / "runs.csv", RUN_FIELDS, [run_row(result) for result in runs])
     write_dicts(config.output_dir / "summary.csv", SUMMARY_FIELDS, summarize_runs(runs))
     write_dicts(config.output_dir / "comparisons.csv", COMPARISON_FIELDS, compare_runs(runs))
-    write_dicts(config.output_dir / "correctness.csv", CORRECTNESS_FIELDS, [correctness_row(result) for result in correctness])
+    write_dicts(
+        config.output_dir / "correctness.csv", CORRECTNESS_FIELDS, [correctness_row(result) for result in correctness]
+    )
     write_dicts(config.output_dir / "parallel_scaling.csv", PARALLEL_SCALING_FIELDS, parallel_rows)
     write_metadata(config.output_dir / "metadata.json", config)
 

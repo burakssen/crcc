@@ -11,20 +11,22 @@ from .config import ENGINE_ITEMS
 from .io import read_dicts
 
 # Apply a clean, modern design styling globally
-plt.rcParams.update({
-    "font.family": "sans-serif",
-    "font.sans-serif": ["Inter", "SF Pro Text", "Helvetica Neue", "Arial", "DejaVu Sans", "sans-serif"],
-    "font.size": 9.5,
-    "axes.titlesize": 11,
-    "axes.titleweight": "bold",
-    "axes.labelsize": 9.5,
-    "xtick.labelsize": 8.5,
-    "ytick.labelsize": 8.5,
-    "legend.fontsize": 8.5,
-    "legend.title_fontsize": 9.5,
-    "figure.facecolor": "#ffffff",
-    "axes.facecolor": "#ffffff",
-})
+plt.rcParams.update(
+    {
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Inter", "SF Pro Text", "Helvetica Neue", "Arial", "DejaVu Sans", "sans-serif"],
+        "font.size": 9.5,
+        "axes.titlesize": 11,
+        "axes.titleweight": "bold",
+        "axes.labelsize": 9.5,
+        "xtick.labelsize": 8.5,
+        "ytick.labelsize": 8.5,
+        "legend.fontsize": 8.5,
+        "legend.title_fontsize": 9.5,
+        "figure.facecolor": "#ffffff",
+        "axes.facecolor": "#ffffff",
+    }
+)
 
 BACKEND_COLORS = {"parry": "#3b82f6", "rhusics": "#f43f5e", "collide": "#10b981"}
 BACKEND_MARKERS = {"parry": "o", "rhusics": "s", "collide": "^"}
@@ -80,8 +82,12 @@ def _plot_backend_throughput_dotplot(path_base: Path, rows):
     backends = _present_backends(synthetic_rows)
     x_base = np.arange(len(labels))
     bar_width = 0.22
-    offsets = np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends)) if len(backends) > 1 else [0.0]
-    
+    offsets = (
+        np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends))
+        if len(backends) > 1
+        else [0.0]
+    )
+
     fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
     for offset, backend in zip(offsets, backends, strict=True):
         values = []
@@ -122,8 +128,12 @@ def _plot_latency_tail_ratio(path_base: Path, rows):
     backends = _present_backends(synthetic_rows)
     x_base = np.arange(len(labels))
     bar_width = 0.22
-    offsets = np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends)) if len(backends) > 1 else [0.0]
-    
+    offsets = (
+        np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends))
+        if len(backends) > 1
+        else [0.0]
+    )
+
     fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
     for offset, backend in zip(offsets, backends, strict=True):
         values = []
@@ -198,7 +208,9 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
                 linewidth=1.8,
                 markersize=5,
             )
-        ax.set_title(f"Collision density {density:.0%}", loc="left", fontsize=9.5, fontweight="semibold", color="#374151")
+        ax.set_title(
+            f"Collision density {density:.0%}", loc="left", fontsize=9.5, fontweight="semibold", color="#374151"
+        )
         ax.set_ylabel("queries/s")
         ax.set_xscale("log")
         ax.set_yscale("log")
@@ -208,7 +220,14 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
         upper = max(y_values) * 1.25
         axes.ravel()[0].set_ylim(lower, upper)
     axes.ravel()[-1].set_xlabel("static objects")
-    fig.suptitle("Scene Scaling by Object Count and Collision Density", x=0.02, ha="left", fontsize=11.5, fontweight="bold", color="#111827")
+    fig.suptitle(
+        "Scene Scaling by Object Count and Collision Density",
+        x=0.02,
+        ha="left",
+        fontsize=11.5,
+        fontweight="bold",
+        color="#111827",
+    )
     _legend_outside(fig, axes.ravel()[0], backends)
     _save_plot(fig, path_base)
 
@@ -223,8 +242,12 @@ def _plot_scenario_parallel_speedup_dotplot(path_base: Path, rows):
 
     x_base = np.arange(len(scenarios))
     bar_width = 0.22
-    offsets = np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends)) if len(backends) > 1 else [0.0]
-    
+    offsets = (
+        np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends))
+        if len(backends) > 1
+        else [0.0]
+    )
+
     fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
     for offset, backend in zip(offsets, backends, strict=True):
         ratios = []
@@ -252,7 +275,9 @@ def _plot_scenario_parallel_speedup_dotplot(path_base: Path, rows):
     ax.set_title("Scenario Parallel Speedup", loc="left", pad=12)
     ax.set_ylabel("parallel / sequential throughput")
     ax.set_xticks(x_base)
-    ax.set_xticklabels([_short_scenario_label(scenario) for scenario in scenarios], rotation=45, ha="right", rotation_mode="anchor")
+    ax.set_xticklabels(
+        [_short_scenario_label(scenario) for scenario in scenarios], rotation=45, ha="right", rotation_mode="anchor"
+    )
     _style_axis(ax, axis="y")
     _legend_outside(fig, ax, backends)
     _save_plot(fig, path_base)
@@ -299,7 +324,9 @@ def _plot_parallel_summary(path_base: Path, rows, metric: str, ylabel: str):
     if metric == "efficiency":
         ax.axhline(1.0, color="#6b7280", linestyle="--", linewidth=1.2, alpha=0.6, label="ideal")
         ax.set_ylim(bottom=0)
-    ax.set_title("Parallel Scaling Summary" if metric == "speedup" else "Parallel Efficiency Summary", loc="left", pad=12)
+    ax.set_title(
+        "Parallel Scaling Summary" if metric == "speedup" else "Parallel Efficiency Summary", loc="left", pad=12
+    )
     ax.set_xlabel("threads")
     ax.set_ylabel(ylabel)
     _style_axis(ax)
@@ -365,8 +392,12 @@ def _plot_throughput_variability_ratio(path_base: Path, rows):
 
     x_base = np.arange(len(labels))
     bar_width = 0.22
-    offsets = np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends)) if len(backends) > 1 else [0.0]
-    
+    offsets = (
+        np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends))
+        if len(backends) > 1
+        else [0.0]
+    )
+
     fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
     for offset, backend in zip(offsets, backends, strict=True):
         values = []
@@ -475,7 +506,9 @@ def _plot_throughput_repetition_strip(path_base: Path, rows):
                 linewidth=0,
                 zorder=3,
             )
-            ax.plot([x - 0.055, x + 0.055], [np.median(values), np.median(values)], color=color, linewidth=2.0, zorder=4)
+            ax.plot(
+                [x - 0.055, x + 0.055], [np.median(values), np.median(values)], color=color, linewidth=2.0, zorder=4
+            )
 
     ax.set_title("Throughput Distribution Across Repetitions", loc="left", pad=12)
     ax.set_ylabel("queries/s (log)")
@@ -522,7 +555,9 @@ def _median_iqr(values):
 
 def _ordered_workload_labels(rows):
     order = {"pair": 0, "ccd": 1, "distance": 2}
-    return sorted({_row_workload_label(row) for row in rows}, key=lambda label: (order.get(label.split(":")[0], 99), label))
+    return sorted(
+        {_row_workload_label(row) for row in rows}, key=lambda label: (order.get(label.split(":")[0], 99), label)
+    )
 
 
 def _row_workload_label(row):
@@ -688,13 +723,15 @@ def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
         if m:
             objects = int(m.group(1))
             density = float(m.group(2))
-            parsed_rows.append({
-                "backend": r["backend"],
-                "threads": int(r["threads"]),
-                "objects": objects,
-                "density": density,
-                "queries_per_s": float(r["queries_per_s"])
-            })
+            parsed_rows.append(
+                {
+                    "backend": r["backend"],
+                    "threads": int(r["threads"]),
+                    "objects": objects,
+                    "density": density,
+                    "queries_per_s": float(r["queries_per_s"]),
+                }
+            )
 
     if not parsed_rows:
         _plot_status(path_base, "Parallel Scene Scaling", "No parsed scene scaling parallel rows")
@@ -704,12 +741,7 @@ def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
     object_sizes = sorted({r["objects"] for r in parsed_rows})
 
     fig, axes = plt.subplots(
-        len(backends),
-        1,
-        figsize=(8.8, max(4.8, 3.0 * len(backends))),
-        sharex=True,
-        squeeze=False,
-        layout="constrained"
+        len(backends), 1, figsize=(8.8, max(4.8, 3.0 * len(backends))), sharex=True, squeeze=False, layout="constrained"
     )
 
     colors = cm.viridis(np.linspace(0.1, 0.9, len(object_sizes)))
@@ -745,7 +777,14 @@ def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
         _style_axis(ax)
 
     axes.ravel()[-1].set_xlabel("thread count")
-    fig.suptitle("Parallel Throughput by Thread Count and Object Size", x=0.02, ha="left", fontsize=11.5, fontweight="bold", color="#111827")
+    fig.suptitle(
+        "Parallel Throughput by Thread Count and Object Size",
+        x=0.02,
+        ha="left",
+        fontsize=11.5,
+        fontweight="bold",
+        color="#111827",
+    )
 
     handles, labels_list = axes.ravel()[0].get_legend_handles_labels()
     legend = axes.ravel()[0].legend(

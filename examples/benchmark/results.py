@@ -194,7 +194,15 @@ def summarize_runs(results: list[RunResult]):
     rows = []
     grouped: dict[tuple[Any, ...], list[RunResult]] = {}
     for result in results:
-        key = (result.feature, result.scenario, result.backend, result.workload, result.objects, result.density, result.oracle)
+        key = (
+            result.feature,
+            result.scenario,
+            result.backend,
+            result.workload,
+            result.objects,
+            result.density,
+            result.oracle,
+        )
         grouped.setdefault(key, []).append(result)
 
     for (feature, scenario, backend, workload, objects, density, oracle), group in sorted(grouped.items()):

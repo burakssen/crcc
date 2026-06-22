@@ -30,7 +30,9 @@ def run_all(
 ):
     config = BenchmarkConfig.from_args(
         scenario_paths=scenario_paths,
-        sample_count=BenchmarkConfig.__dataclass_fields__["sample_count"].default if sample_count is None else sample_count,
+        sample_count=BenchmarkConfig.__dataclass_fields__["sample_count"].default
+        if sample_count is None
+        else sample_count,
         repetitions=BenchmarkConfig.__dataclass_fields__["repetitions"].default if repetitions is None else repetitions,
         output_dir=BenchmarkConfig.__dataclass_fields__["output_dir"].default if output_dir is None else output_dir,
         seed=seed,
@@ -70,6 +72,7 @@ def run_benchmarks(config: BenchmarkConfig):
             for backend, engine in engine_items:
                 for repetition in range(config.repetitions):
                     from crcc.collision_checker import CollisionCheckerBuilder
+
                     builder = CollisionCheckerBuilder(engine=engine)
                     for static_object in workload.static_objects:
                         builder.with_static_obstacle(static_object)
@@ -100,7 +103,11 @@ def run_benchmarks(config: BenchmarkConfig):
                     else:
                         run_res = _measure_scene_with_checker(backend, engine, workload, checker, repetition)
                         group_results.append(run_res)
-                        parallel_rows.extend(_measure_scene_parallel_scaling(backend, checker, workload, config.thread_counts, repetition))
+                        parallel_rows.extend(
+                            _measure_scene_parallel_scaling(
+                                backend, checker, workload, config.thread_counts, repetition
+                            )
+                        )
             runs.extend(group_results)
             _print_group("scene_scaling", f"objects={objects},density={density:.2f}", group_results)
 
@@ -116,7 +123,9 @@ def run_benchmarks(config: BenchmarkConfig):
                         _measure_checker_parallel(backend, checker, workload, repetition),
                     ]
                 )
-                parallel_rows.extend(_measure_parallel_scaling(backend, checker, workload, config.thread_counts, repetition))
+                parallel_rows.extend(
+                    _measure_parallel_scaling(backend, checker, workload, config.thread_counts, repetition)
+                )
             runs.extend(group_results)
             correctness.append(_parallel_correctness(backend, checker, workload))
             _print_group("scenario", workload.name, group_results)
@@ -163,7 +172,9 @@ def _synthetic_correctness(backend, engine, workload):
     counter = counts()
     mismatches = 0
     if workload.operation == "distance":
-        return CorrectnessResult(workload.feature, None, backend, workload.workload, len(workload.queries), "", "", "", "", 0, "finite")
+        return CorrectnessResult(
+            workload.feature, None, backend, workload.workload, len(workload.queries), "", "", "", "", 0, "finite"
+        )
     for query in workload.queries:
         try:
             actual = bool(_execute_pair_query(engine, workload.operation, query))
@@ -223,7 +234,9 @@ def _measure_scene_parallel_scaling(backend, checker, workload, thread_counts, r
     baseline_ns = None
     for threads in thread_counts:
         try:
-            checker.par_static_threads(workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))], threads)
+            checker.par_static_threads(
+                workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))], threads
+            )
         except Exception:
             pass
         start = time.perf_counter_ns()
@@ -248,7 +261,9 @@ def _measure_scene_parallel_scaling(backend, checker, workload, thread_counts, r
                 "collisions": count_collisions(results),
                 "errors": errors,
                 "total_ns": total_ns,
-                "queries_per_s": f"{len(workload.positioned_queries) * 1_000_000_000 / total_ns:.3f}" if total_ns else "0.000",
+                "queries_per_s": f"{len(workload.positioned_queries) * 1_000_000_000 / total_ns:.3f}"
+                if total_ns
+                else "0.000",
                 "speedup": f"{speedup:.3f}",
                 "efficiency": f"{speedup / threads:.3f}" if threads else "0.000",
             }
@@ -326,7 +341,9 @@ def _measure_parallel_scaling(backend, checker, workload, thread_counts, repetit
     baseline_ns = None
     for threads in thread_counts:
         try:
-            checker.par_static_threads(workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))], threads)
+            checker.par_static_threads(
+                workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))], threads
+            )
         except Exception:
             pass
         start = time.perf_counter_ns()
@@ -351,7 +368,9 @@ def _measure_parallel_scaling(backend, checker, workload, thread_counts, repetit
                 "collisions": count_collisions(results),
                 "errors": errors,
                 "total_ns": total_ns,
-                "queries_per_s": f"{len(workload.positioned_queries) * 1_000_000_000 / total_ns:.3f}" if total_ns else "0.000",
+                "queries_per_s": f"{len(workload.positioned_queries) * 1_000_000_000 / total_ns:.3f}"
+                if total_ns
+                else "0.000",
                 "speedup": f"{speedup:.3f}",
                 "efficiency": f"{speedup / threads:.3f}" if threads else "0.000",
             }
@@ -365,7 +384,19 @@ def _parallel_correctness(backend, checker, workload):
     parallel = checker.par_static(positioned)
     sequential = [checker.collides_static(workload.car, pose) for pose in poses]
     mismatches = sum(str(left) != str(right) for left, right in zip(parallel, sequential, strict=True))
-    return CorrectnessResult("scenario", workload.name, backend, "parallel_vs_sequential", len(poses), "", "", "", "", mismatches, "sequential")
+    return CorrectnessResult(
+        "scenario",
+        workload.name,
+        backend,
+        "parallel_vs_sequential",
+        len(poses),
+        "",
+        "",
+        "",
+        "",
+        mismatches,
+        "sequential",
+    )
 
 
 def _execute_pair_query(engine, operation, query):

@@ -53,7 +53,9 @@ def synthetic_workloads(sample_count: int, seed: int):
     yield SyntheticWorkload("pair", "polygon_complexity", "collides", tuple(polygon_complexity_queries(sample_count)))
     yield SyntheticWorkload("pair", "numerical_robustness", "collides", tuple(robustness_queries()))
     yield SyntheticWorkload("ccd", "swept_motion", "ccd", tuple(ccd_queries(sample_count)))
-    yield SyntheticWorkload("distance", "circle_rectangle", "distance", tuple(primitive_queries(sample_count, "circle_rectangle", seed)))
+    yield SyntheticWorkload(
+        "distance", "circle_rectangle", "distance", tuple(primitive_queries(sample_count, "circle_rectangle", seed))
+    )
 
 
 def scene_workload(objects: int, queries: int, density: float):

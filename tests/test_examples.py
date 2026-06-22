@@ -160,9 +160,7 @@ def test_benchmark_writes_csv_outputs(tmp_path, monkeypatch):
     assert {"parry", "rhusics", "collide"} <= {row["backend"] for row in run_rows}
     assert {"pair", "scene_scaling", "ccd", "distance"} <= {row["feature"] for row in run_rows}
     unsupported_distance = {
-        row["backend"]
-        for row in run_rows
-        if row["feature"] == "distance" and row["unsupported"] == "True"
+        row["backend"] for row in run_rows if row["feature"] == "distance" and row["unsupported"] == "True"
     }
     assert unsupported_distance == set()
 
@@ -176,9 +174,7 @@ def test_benchmark_writes_csv_outputs(tmp_path, monkeypatch):
     with correctness_path.open(newline="") as file:
         correctness_rows = list(csv.DictReader(file))
     robustness_rows = [
-        row
-        for row in correctness_rows
-        if row["feature"] == "pair" and row["workload"] == "numerical_robustness"
+        row for row in correctness_rows if row["feature"] == "pair" and row["workload"] == "numerical_robustness"
     ]
     assert all(row["mismatches"] == "0" for row in robustness_rows)
     scenario_correctness = [row for row in correctness_rows if row["feature"] == "scenario"]

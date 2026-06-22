@@ -46,7 +46,9 @@ class BenchmarkConfig:
         engines=None,
         step: str = "all",
     ):
-        selected_scenarios = discover_scenario_paths() if scenario_paths is None else tuple(Path(path) for path in scenario_paths)
+        selected_scenarios = (
+            discover_scenario_paths() if scenario_paths is None else tuple(Path(path) for path in scenario_paths)
+        )
         selected_engines = tuple(name.lower() for name in (engines or ENGINE_BY_NAME))
         unknown = sorted(set(selected_engines) - set(ENGINE_BY_NAME))
         if unknown:
