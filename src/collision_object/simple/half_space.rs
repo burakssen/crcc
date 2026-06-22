@@ -55,7 +55,7 @@ impl SweptArea for HalfSpace {
                 let outward_normal = start_pos.rotation * self.outward_normal;
                 let start_offset = outward_normal.dot(start_pos.translation);
                 let end_offset = outward_normal.dot(end_pos.translation);
-                let offset = start_offset.min(end_offset) + self.offset;
+                let offset = start_offset.max(end_offset) + self.offset;
                 swept_areas.push(SimpleCollisionObject::half_space(outward_normal, offset));
             }
         }
@@ -87,7 +87,7 @@ mod tests {
             DPose2::new(DVec2::new(0.0, 1.0), FRAC_PI_2),
             DPose2::new(DVec2::new(0.0, -1.0), FRAC_PI_2),
         );
-        let expected = HalfSpace::from_coeffs(0.0, 1.0, 4.0); // y <= 4.0
+        let expected = HalfSpace::from_coeffs(0.0, 1.0, 6.0); // y <= 6.0
         match swept_area {
             SimpleCollisionObject::HalfSpace(swept_hs) => {
                 assert!(

@@ -243,8 +243,8 @@ mod tests {
     fn swept_area_for_translated_half_space_keeps_expected_boundary() {
         let hs = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0); // x <= 0.0
         let swept_area = hs.swept_area(DPose2::IDENTITY, DPose2::translation(-1.0, 0.0));
-        // The swept area should be x <= -1.0
-        let expected_hs = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, -1.0);
+        // The swept area should be x <= 0.0
+        let expected_hs = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
         match (swept_area, expected_hs) {
             (SimpleCollisionObject::HalfSpace(sa), SimpleCollisionObject::HalfSpace(ea)) => {
                 assert!(sa.almost_equal(&ea), "Expected {:?}, got {:?}", ea, sa);
