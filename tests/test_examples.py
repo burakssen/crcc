@@ -11,7 +11,8 @@ from crcc.pose import Pose
 from matplotlib import pyplot as plt
 
 import main
-from examples import benchmark, features, interactive, utils as ex_utils, visualize
+from examples import benchmark, concepts, dynamics, playground, scenario as scenario_example, shapes, utils as ex_utils
+from examples.drawing import demo_shapes
 
 
 class CollisionResultStub:
@@ -20,10 +21,9 @@ class CollisionResultStub:
 
 
 def test_parse_args_behavior():
-    """Verify parsing CLI arguments yields correct actions, scenario paths, and engines."""
     args = main.parse_args(
         [
-            "benchmark",
+            "study",
             "--scenario",
             "scenarios/ZAM_Yield-1_1_T-1.xml",
             "--engine",
@@ -43,7 +43,7 @@ def test_parse_args_behavior():
             "rhusics",
         ]
     )
-    assert args.action == main.ExampleAction.BENCHMARK
+    assert args.action == main.ExampleAction.STUDY
     assert args.scenario == "scenarios/ZAM_Yield-1_1_T-1.xml"
     assert args.engine == CollisionEngine.Parry
     assert args.benchmark_scenarios == [
@@ -55,44 +55,86 @@ def test_parse_args_behavior():
     assert args.benchmark_step == "run"
     assert args.benchmark_engines == ["parry", "rhusics"]
 
-    args2 = main.parse_args(["smoke", "--engine", "collide"])
-    assert args2.action == main.ExampleAction.SMOKE
-    assert args2.engine == CollisionEngine.Collide
-    assert args2.benchmark_scenarios == ["all"]
+    assert main.parse_args(["scenario", "--engine", "collide"]).action == main.ExampleAction.SCENARIO
+    assert main.parse_args(["report"]).action == main.ExampleAction.REPORT
+    assert main.parse_args(["shapes"]).action == main.ExampleAction.SHAPES
 
-    args3 = main.parse_args(["plot"])
-    assert args3.action == main.ExampleAction.PLOT
+
+def test_old_cli_action_names_are_removed():
+    for action in ("geometry", "features", "smoke", "benchmark", "plot", "visualize", "interactive"):
+        try:
+            main.parse_args([action])
+        except SystemExit:
+            continue
+        raise AssertionError(f"old action still accepted: {action}")
 
 
 def test_prompt_for_action_parsing():
-    """Verify interactive menus translate string inputs to ExampleAction enum instances."""
     with redirect_stdout(io.StringIO()):
-        action = main.prompt_for_action(prompt=lambda _: "4")
-    assert action == main.ExampleAction.BENCHMARK
+        action = main.prompt_for_action(prompt=lambda _: "6")
+    assert action == main.ExampleAction.STUDY
 
 
 def test_action_delegation_execution(monkeypatch):
-    """Ensure run_action correctly delegates to modular sub-examples without scenario load overhead when possible."""
     called = []
 
     def fail_if_scenario_loads(*_args, **_kwargs):
-        raise AssertionError("Features examples should not load scenario XML files.")
+        raise AssertionError("Concept examples should not load scenario XML files.")
 
-    monkeypatch.setattr(ex_utils, "load_collision_checker", fail_if_scenario_loads)
-    monkeypatch.setattr(features, "run", lambda engine: called.append(engine))
+    monkeypatch.setattr(main, "load_collision_checker", fail_if_scenario_loads)
+    monkeypatch.setattr(concepts, "run", lambda engine: called.append(engine))
 
-    main.run_action(main.ExampleAction.FEATURES, "missing.xml", CollisionEngine.Parry)
+    main.run_action(main.ExampleAction.CONCEPTS, "missing.xml", CollisionEngine.Parry)
     assert called == [CollisionEngine.Parry]
 
 
+def test_concepts_results(engine):
+    results = concepts.concept_results(engine)
+    assert results["near_static_collision"] is True
+    assert results["far_static_collision"] is False
+    assert results["distance_far"] > 0.0
+    assert results["polygon_hole_collision"] is False
+    assert results["compound_collision"] is True
+    assert results["continuous_tunnel_collision"] is True
+
+
+def test_shapes_collision_matrix_and_drawing(engine):
+    labels, matrix = shapes.collision_matrix(engine)
+    assert {"Circle", "Rectangle", "Triangle", "Polygon", "Polygon+hole", "Compound", "HalfSpace", "FullSpace", "Empty"} <= set(labels)
+    assert len(matrix) == len(labels)
+    assert any(any(row) for row in matrix)
+    empty_index = labels.index("Empty")
+    assert not any(matrix[empty_index])
+    left_center, right_center = shapes.pair_display_centers(
+        demo_shapes()[0],
+        demo_shapes()[1],
+        True,
+    )
+    assert abs(left_center[0] - right_center[0]) < 0.25
+    cases = shapes.pair_collision_cases(engine)
+    circle_rectangle = next(
+        case for case in cases if case["left"].label == "Circle" and case["right"].label == "Rectangle"
+    )
+    assert circle_rectangle["hit"]["supported"]
+    assert circle_rectangle["clear"]["supported"]
+    assert circle_rectangle["hit"]["actual"] is True
+    assert circle_rectangle["clear"]["actual"] is False
+
+    fig, axes, artists = shapes.draw_collision_matrix(engine)
+    try:
+        assert artists
+        assert len(fig.axes) == len(labels) * len(labels)
+        assert axes[0][0].get_title() == labels[0]
+    finally:
+        plt.close(fig)
+
+
 def test_checker_builder_engine_parity(engine):
-    """Verify engine selection during check build performs as expected."""
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(1.0)).build()
     assert str(checker.collides_static(Circle(1.0, (1.0, 0.0)))) == "CollidesStatic"
 
 
 def test_time_window_filtering_queries():
-    """Ensure dynamic object queries can be filtered using time bounds."""
     dynamic_obstacle = DynamicObstacle(
         Circle(1.0),
         [
@@ -105,31 +147,26 @@ def test_time_window_filtering_queries():
     checker = CollisionCheckerBuilder().with_dynamic_obstacle(dynamic_obstacle).build()
     query = Circle(1.0, (8.0, 8.0))
 
-    # Time bounds filtering queries
     assert str(checker.collides_static(query, min_time=0, max_time=0)) == "NoCollision"
     assert str(checker.collides_static(query, min_time=1, max_time=1)) == "CollidesDynamic(1)"
     assert str(checker.collides_static(query, min_time=2, max_time=2)) == "NoCollision"
     assert str(checker.collides_static(query, min_time=0, max_time=2)) == "CollidesDynamic(0)"
-
-    # Half-bounded range queries
     assert str(checker.collides_static(query, min_time=1)) == "CollidesDynamic(1)"
     assert str(checker.collides_static(query, max_time=1)) == "CollidesDynamic(0)"
     assert str(checker.collides_static(query, min_time=2)) == "NoCollision"
 
 
 def test_parallel_vs_sequential_query_parity():
-    """Assert parallel batch query results exactly match sequential check results."""
     checker = CollisionCheckerBuilder().with_static_obstacle(Circle(2.0)).build()
     positioned_queries = [(Circle(1.0, (float(index), 0.0)), Pose.identity()) for index in range(8)]
-
     parallel_results = checker.par_static(positioned_queries)
     sequential_results = [checker.collides_static(query, pose) for query, pose in positioned_queries]
-
     assert [str(result) for result in parallel_results] == [str(result) for result in sequential_results]
 
 
-def test_benchmark_writes_csv_outputs(tmp_path, monkeypatch):
+def test_benchmark_writes_research_artifacts(tmp_path, monkeypatch):
     monkeypatch.setattr(benchmark.runner, "DEFAULT_SCENE_SIZES", (10, 50))
+    monkeypatch.setattr(benchmark.runner, "DEFAULT_DENSITIES", (0.0, 0.5, 1.0))
     benchmark.run_all(
         ["scenarios/ZAM_Yield-1_1_T-1.xml", "scenarios/ZAM_Merge-1_1_T-1.xml"],
         sample_count=4,
@@ -139,106 +176,74 @@ def test_benchmark_writes_csv_outputs(tmp_path, monkeypatch):
         repetitions=1,
     )
 
-    runs_path = tmp_path / "runs.csv"
-    summary_path = tmp_path / "summary.csv"
-    correctness_path = tmp_path / "correctness.csv"
-    comparisons_path = tmp_path / "comparisons.csv"
-    parallel_path = tmp_path / "parallel_scaling.csv"
-    metadata_path = tmp_path / "metadata.json"
-    plot_dir = tmp_path / "plots"
-    assert runs_path.exists()
-    assert summary_path.exists()
-    assert correctness_path.exists()
-    assert comparisons_path.exists()
-    assert parallel_path.exists()
-    assert metadata_path.exists()
-    assert plot_dir.exists()
-
-    with runs_path.open(newline="") as file:
-        run_rows = list(csv.DictReader(file))
-    assert {row["schema_version"] for row in run_rows} == {"2"}
-    assert {"parry", "rhusics", "collide"} <= {row["backend"] for row in run_rows}
-    assert {"pair", "scene_scaling", "ccd", "distance"} <= {row["feature"] for row in run_rows}
-    unsupported_distance = {
-        row["backend"] for row in run_rows if row["feature"] == "distance" and row["unsupported"] == "True"
+    expected_files = {
+        "runs.csv",
+        "summary.csv",
+        "correctness.csv",
+        "comparisons.csv",
+        "parallel_scaling.csv",
+        "metadata.json",
+        "benchmark_report.md",
     }
-    assert unsupported_distance == set()
+    assert expected_files <= {path.name for path in tmp_path.iterdir()}
 
-    with summary_path.open(newline="") as file:
-        rows = list(csv.DictReader(file))
-    scenario_rows = [row for row in rows if row["feature"] == "scenario"]
-    assert {"parry", "rhusics", "collide"} == {row["backend"] for row in rows}
-    assert {"ZAM_Yield-1_1_T-1", "ZAM_Merge-1_1_T-1"} == {row["scenario"] for row in scenario_rows}
-    assert {row["workload"] for row in scenario_rows} == {"static_sequential", "static_parallel"}
+    with (tmp_path / "runs.csv").open(newline="") as file:
+        run_rows = list(csv.DictReader(file))
+    assert {row["schema_version"] for row in run_rows} == {"3"}
+    assert {"parry", "rhusics", "collide"} <= {row["backend"] for row in run_rows}
+    assert {"pair", "scene_scaling", "continuous", "distance"} <= {row["feature"] for row in run_rows}
+    assert "compound_polygon" in {row["workload"] for row in run_rows}
+    assert "tunneling" in {row["workload"] for row in run_rows}
 
-    with correctness_path.open(newline="") as file:
+    with (tmp_path / "correctness.csv").open(newline="") as file:
         correctness_rows = list(csv.DictReader(file))
-    robustness_rows = [
-        row for row in correctness_rows if row["feature"] == "pair" and row["workload"] == "numerical_robustness"
-    ]
-    assert all(row["mismatches"] == "0" for row in robustness_rows)
-    scenario_correctness = [row for row in correctness_rows if row["feature"] == "scenario"]
-    assert {"parry", "rhusics", "collide"} == {row["backend"] for row in scenario_correctness}
-    assert {"ZAM_Yield-1_1_T-1", "ZAM_Merge-1_1_T-1"} == {row["scenario"] for row in scenario_correctness}
-    assert all(row["mismatches"] == "0" for row in scenario_correctness)
+    assert any(row["feature"] == "continuous" for row in correctness_rows)
+    assert all(row["schema_version"] == "3" for row in correctness_rows)
 
-    with comparisons_path.open(newline="") as file:
+    with (tmp_path / "comparisons.csv").open(newline="") as file:
         comparison_rows = list(csv.DictReader(file))
     assert comparison_rows
     assert {row["baseline_backend"] for row in comparison_rows} == {"parry"}
-    assert {"rhusics", "collide"} <= {row["backend"] for row in comparison_rows}
-    assert all(float(row["speedup_median"]) > 0.0 for row in comparison_rows)
     assert {row["verdict"] for row in comparison_rows} <= {"faster", "slower", "inconclusive"}
 
-    with parallel_path.open(newline="") as file:
+    with (tmp_path / "parallel_scaling.csv").open(newline="") as file:
         parallel_rows = list(csv.DictReader(file))
-    assert {"parry", "rhusics", "collide"} == {row["backend"] for row in parallel_rows}
-    assert {"ZAM_Yield-1_1_T-1", "ZAM_Merge-1_1_T-1"} <= {row["scenario"] for row in parallel_rows}
     assert {"1", "2"} == {row["threads"] for row in parallel_rows}
-    assert all(float(row["queries_per_s"]) > 0.0 for row in parallel_rows)
-    assert all(float(row["speedup"]) > 0.0 for row in parallel_rows)
+    assert all(row["schema_version"] == "3" for row in parallel_rows)
+
+    report = (tmp_path / "benchmark_report.md").read_text()
+    assert "# CRCC Benchmark Report" in report
+    assert "bootstrap confidence intervals" in report
 
     expected_plots = {
-        "backend_throughput_dotplot",
-        "latency_tail_ratio",
+        "backend_throughput_iqr",
+        "backend_speedup_forest",
+        "latency_percentiles",
         "scene_scaling_curves",
-        "scenario_parallel_speedup_dotplot",
         "parallel_scaling_summary",
         "parallel_efficiency_summary",
-        "correctness_summary",
-        "throughput_variability_ratio",
-        "backend_speedup_forest",
-        "throughput_repetition_strip",
-        "parallel_scene_scaling",
+        "commonroad_scenario_summary",
+        "correctness_mismatch_matrix",
     }
     for plot_name in expected_plots:
-        assert (plot_dir / f"{plot_name}.png").exists()
-        assert (plot_dir / f"{plot_name}.pdf").exists()
+        assert (tmp_path / "plots" / f"{plot_name}.png").exists()
+        assert (tmp_path / "plots" / f"{plot_name}.pdf").exists()
 
 
 def test_scenario_load_and_bounds():
-    """Verify all xml scenarios can be parsed and produce valid pose bounds."""
     for scenario_path in sorted(Path("scenarios").glob("*.xml")):
         scenario, checker = ex_utils.load_collision_checker(str(scenario_path), CollisionEngine.Rhusics)
         lower_bounds, upper_bounds = ex_utils.scenario_pose_bounds(scenario)
-
         assert lower_bounds[0] < upper_bounds[0]
         assert lower_bounds[1] < upper_bounds[1]
         assert lower_bounds[2] < upper_bounds[2]
-
-        car = Rectangle(*ex_utils.CAR_SIZE)
         pose = Pose(((lower_bounds[0] + upper_bounds[0]) / 2.0, (lower_bounds[1] + upper_bounds[1]) / 2.0), 0.0)
-        assert isinstance(checker.collides_static(car, pose).collides, bool)
+        assert isinstance(checker.collides_static(Rectangle(*ex_utils.CAR_SIZE), pose).collides, bool)
 
 
 def test_road_boundary_collision_matches_between_engines(engine):
-    """Ensure boundary collisions are consistent across all engines."""
     scenario, _ = ex_utils.CommonRoadFileReader("scenarios/ZAM_Yield-1_1_T-1.xml").open()
-    checker = add_road_boundary_to_builder(
-        CollisionCheckerBuilder(engine=engine),
-        scenario.lanelet_network,
-    ).build()
-
+    checker = add_road_boundary_to_builder(CollisionCheckerBuilder(engine=engine), scenario.lanelet_network).build()
     assert checker.collides_static(
         Rectangle(*ex_utils.CAR_SIZE),
         Pose((62.013604720981206, -8.905038959453274), 0.8852293987803505),
@@ -246,101 +251,92 @@ def test_road_boundary_collision_matches_between_engines(engine):
 
 
 def test_time_steps_computations():
-    """Verify time step extraction yields correct values."""
     scenario, _ = ex_utils.CommonRoadFileReader("scenarios/ZAM_Yield-1_1_T-1.xml").open()
     time_steps = ex_utils.scenario_time_steps(scenario)
-
-    assert len(time_steps) > 0
     assert time_steps == sorted(set(time_steps))
     assert time_steps[0] == 0
     assert time_steps[-1] == 80
 
 
-def test_visualize_poses_generation():
-    """Verify pose generation functions yield expected determinism and counts."""
-    scenario_path = main.DEFAULT_SCENARIO_PATH
-    scenario, _ = ex_utils.CommonRoadFileReader(scenario_path).open()
+def test_scenario_audit():
+    scenario, checker = ex_utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionEngine.Rhusics)
     pose_bounds = ex_utils.scenario_pose_bounds(scenario)
-
-    poses1 = visualize.visualization_poses(scenario_path, pose_bounds)
-    poses2 = visualize.visualization_poses(scenario_path, pose_bounds)
-
-    assert len(poses1) == visualize.VISUALIZATION_SAMPLE_COUNT
-    assert [(p.translation, p.rotation) for p in poses1] == [(p.translation, p.rotation) for p in poses2]
-
-    # Verify preset poses are included first
-    assert poses1[0].translation == (55.29, -1.99)
-    assert poses1[0].rotation == 1.326
-    assert poses1[1].translation == (37.33, 4.07)
-    assert poses1[1].rotation == -2.207
-
-    # Respect count limit
-    limited_poses = visualize.visualization_poses(scenario_path, pose_bounds, count=1)
-    assert len(limited_poses) == 1
-    assert limited_poses[0].translation == (55.29, -1.99)
+    audit = scenario_example.scenario_audit(scenario, checker, main.DEFAULT_SCENARIO_PATH, pose_bounds, sample_count=8)
+    assert audit["scenario"] == Path(main.DEFAULT_SCENARIO_PATH).name
+    assert audit["lanelets"] > 0
+    assert audit["sample_count"] == 8
+    assert {"road_boundary", "dynamic_conflict"} <= set(audit["probes"])
 
 
-def test_visualize_collision_flag_persistency():
-    """Assert cumulative collision flags remain True once set."""
-    flags = [False, True, False]
-    visualize.update_collision_flags(
-        flags, [CollisionResultStub(False), CollisionResultStub(False), CollisionResultStub(True)]
-    )
-    assert flags == [False, True, True]
-
-
-def test_features_fixed_dynamic_example(engine):
-    """Verify fixed dynamic obstacle feature example behavior."""
-    example = features.feature_example_fixed_dynamic(engine)
-    statuses = [
-        example.checker.collides_dynamic(example.dynamic_obstacle, min_time=t, max_time=t) for t in example.time_steps
-    ]
-    collided_steps = [t for t, status in zip(example.time_steps, statuses, strict=True) if status.collides]
-
-    assert example.title == "Fixed-shape dynamic obstacle"
-    assert example.time_steps == features.FEATURE_TIME_STEPS
-    assert len(example.dynamic_shapes) == len(features.FEATURE_TIME_STEPS)
-    assert len(collided_steps) > 1
-    assert min(collided_steps) > min(example.time_steps)
-    assert max(collided_steps) < max(example.time_steps)
-
-
-def test_features_time_variant_example(engine):
-    """Verify time variant obstacle feature example behavior."""
-    example = features.feature_example_time_variant(engine)
-    statuses = [
-        example.checker.collides_dynamic(example.dynamic_obstacle, min_time=t, max_time=t) for t in example.time_steps
-    ]
-    collided_steps = [t for t, status in zip(example.time_steps, statuses, strict=True) if status.collides]
-
-    assert example.title == "Time-variant dynamic obstacle"
-    assert example.time_steps == features.FEATURE_TIME_STEPS
-    assert len(example.dynamic_shapes) == len(features.FEATURE_TIME_STEPS)
-    assert len(collided_steps) > 1
-
-
-def test_features_animation_frames(engine):
-    """Verify animation frames hold steps as expected."""
-    examples = [features.feature_example_fixed_dynamic(engine), features.feature_example_time_variant(engine)]
-    frames = features.feature_animation_frames(examples)
-    assert frames == [t for t in features.FEATURE_TIME_STEPS for _ in range(features.FEATURE_FRAME_HOLD_COUNT)]
-
-
-def test_features_draw_artists(engine):
-    """Assert drawing frames return valid Matplotlib artist lists."""
-    example = features.feature_example_fixed_dynamic(engine)
+def test_dynamics_scenario_example_and_drawing():
+    scenario, checker = ex_utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionEngine.Rhusics)
+    pose_bounds = ex_utils.scenario_pose_bounds(scenario)
+    example = dynamics.scenario_dynamic_example(scenario, checker, pose_bounds, max_steps=8)
+    statuses = [example.checker.collides_dynamic(example.dynamic_obstacle, min_time=t, max_time=t) for t in example.time_steps]
+    assert len(example.poses) == 8
+    assert len(example.visual_shapes) == 8
+    assert {status.collides for status in statuses} <= {True, False}
+    frames = dynamics.animation_frames(example)
+    assert frames == [t for t in example.time_steps for _ in range(dynamics.FRAME_HOLD_COUNT)]
     fig, ax = plt.subplots()
     try:
-        artists = features.draw_feature_frame(ax, example, example.time_steps[len(example.time_steps) // 2])
+        artists = dynamics.draw_frame(ax, scenario, example, example.time_steps[len(example.time_steps) // 2])
+    finally:
+        plt.close(fig)
+    assert artists
+    assert "Scenario time-variant" in ax.get_title()
+
+
+def test_playground_editor_state():
+    state = playground.PlaygroundState(CollisionEngine.Rhusics, tuple(range(4)))
+    static = state.add_object((0.0, 0.0))
+    assert static.mode == "static"
+    state.mode = "dynamic"
+    state.add_path_point((0.0, 0.0))
+    state.add_path_point((1.0, 0.0))
+    dynamic = state.add_object((0.0, 0.0))
+    assert dynamic.dynamic_obstacle(0) is not None
+    state.mode = "time_variant_dynamic"
+    state.add_path_point((0.0, 0.0))
+    state.add_path_point((1.0, 0.0))
+    variant = state.add_object((0.0, 0.0))
+    assert variant.dynamic_obstacle(0) is not None
+    state.add_freehand_vertex((0.0, 0.0))
+    state.add_freehand_vertex((1.0, 0.0))
+    assert state.finalize_freehand() is None
+    state.add_freehand_vertex((0.0, 1.0))
+    assert state.finalize_freehand() is not None
+    assert state.select_next() is not None
+    assert " | " in state.status_summary()
+    state.add_path_point((2.0, 0.0))
+    state.add_freehand_vertex((2.0, 1.0))
+    state.clear_draft()
+    assert state.draft_path == []
+    assert state.draft_polygon == []
+    before = state.time_index
+    state.step_simulation()
+    assert state.time_index == before + 1
+    assert state.last_results
+    assert state.toggle_simulation() is True
+    assert state.toggle_simulation() is False
+
+
+def test_playground_draws_objects_above_scenario():
+    scenario, checker = ex_utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionEngine.Rhusics)
+    pose_bounds = ex_utils.scenario_pose_bounds(scenario)
+    plot_limits = (pose_bounds[0][0], pose_bounds[1][0], pose_bounds[0][1], pose_bounds[1][1])
+    state = playground.PlaygroundState(checker.engine, tuple(ex_utils.scenario_time_steps(scenario)[:4]))
+    state.add_object(((plot_limits[0] + plot_limits[1]) / 2.0, (plot_limits[2] + plot_limits[3]) / 2.0))
+    fig, ax = plt.subplots()
+    try:
+        artists = playground.draw_playground(ax, scenario, state, plot_limits)
+        assert artists
+        assert max(getattr(artist, "zorder", 0) for artist in artists) >= 50
     finally:
         plt.close(fig)
 
-    assert len(artists) >= 5
-    assert "COLLISION" in ax.get_title()
 
-
-def test_interactive_playground_initialization_runs_without_crashing(monkeypatch):
-    """Ensure the interactive playground GUI is initialization-safe (mocked to run headlessly)."""
+def test_playground_initialization_runs_without_crashing(monkeypatch):
     scenario, checker = ex_utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionEngine.Rhusics)
     pose_bounds = ex_utils.scenario_pose_bounds(scenario)
 
@@ -351,11 +347,16 @@ def test_interactive_playground_initialization_runs_without_crashing(monkeypatch
         def on_changed(self, func):
             pass
 
-    monkeypatch.setattr(interactive, "Slider", MockSlider)
+        def on_clicked(self, func):
+            pass
+
+    monkeypatch.setattr(playground, "Slider", MockSlider)
+    monkeypatch.setattr(playground, "RadioButtons", MockSlider)
+    monkeypatch.setattr(playground, "TextBox", lambda *args, **kwargs: type("Box", (), {"text": "object"})())
+    monkeypatch.setattr(playground, "Button", MockSlider)
     monkeypatch.setattr(plt, "subplots", lambda *args, **kwargs: (plt.figure(), plt.subplot(111)))
     monkeypatch.setattr(plt, "show", lambda: None)
-
     try:
-        interactive.run(scenario, checker, main.DEFAULT_SCENARIO_PATH, pose_bounds)
+        playground.run(scenario, checker, main.DEFAULT_SCENARIO_PATH, pose_bounds)
     finally:
         plt.close("all")

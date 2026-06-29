@@ -8,11 +8,12 @@ from .config import (
     DEFAULT_DENSITIES,
     DEFAULT_SCENE_SIZES,
     MIN_RECOMMENDED_SAMPLE_COUNT,
+    SCHEMA_VERSION,
     WARMUP_QUERY_COUNT,
     BenchmarkConfig,
     selected_engine_items,
 )
-from .io import write_artifacts
+from .io import write_artifacts, write_report_from_artifacts
 from .plots import write_plots
 from .results import CorrectnessResult, RunResult, counts, update_counts
 from .workloads import scenario_workload, scene_workload, synthetic_workloads
@@ -47,6 +48,7 @@ def run_all(
         print(f"Wrote benchmark CSV files to {config.output_dir}")
     if config.step in {"plot", "all"}:
         write_plots(config.output_dir)
+        write_report_from_artifacts(config.output_dir)
         print(f"Wrote benchmark plots to {config.output_dir / 'plots'}")
 
 
@@ -252,7 +254,7 @@ def _measure_scene_parallel_scaling(backend, checker, workload, thread_counts, r
         speedup = baseline_ns / total_ns if baseline_ns and total_ns else 0.0
         rows.append(
             {
-                "schema_version": "2",
+                "schema_version": SCHEMA_VERSION,
                 "scenario": f"scene_scaling_objects_{workload.objects}_density_{workload.density:.2f}",
                 "backend": backend,
                 "threads": threads,
@@ -359,7 +361,7 @@ def _measure_parallel_scaling(backend, checker, workload, thread_counts, repetit
         speedup = baseline_ns / total_ns if baseline_ns and total_ns else 0.0
         rows.append(
             {
-                "schema_version": "2",
+                "schema_version": SCHEMA_VERSION,
                 "scenario": workload.name,
                 "backend": backend,
                 "threads": threads,
@@ -404,16 +406,13 @@ def _execute_pair_query(engine, operation, query):
         return query.left.collides(query.right, query.left_pose, query.right_pose, engine)
     if operation == "distance":
         return query.left.distance(query.right, query.left_pose, query.right_pose, engine)
-    if operation == "ccd":
+    if operation == "continuous":
         return query.left.collides_continuous(
             query.left_pose,
-            type(query.left_pose)(
-                (query.left_pose.translation[0] + 8.0, query.left_pose.translation[1]),
-                query.left_pose.rotation,
-            ),
+            query.left_end_pose,
             query.right,
             query.right_pose,
-            query.right_pose,
+            query.right_end_pose,
             engine,
         )
     raise ValueError(f"unknown benchmark operation: {operation}")

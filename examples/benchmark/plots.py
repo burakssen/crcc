@@ -31,17 +31,14 @@ plt.rcParams.update(
 BACKEND_COLORS = {"parry": "#3b82f6", "rhusics": "#f43f5e", "collide": "#10b981"}
 BACKEND_MARKERS = {"parry": "o", "rhusics": "s", "collide": "^"}
 PLOT_NAMES = {
-    "backend_throughput_dotplot",
-    "latency_tail_ratio",
+    "backend_throughput_iqr",
+    "backend_speedup_forest",
+    "latency_percentiles",
     "scene_scaling_curves",
-    "scenario_parallel_speedup_dotplot",
     "parallel_scaling_summary",
     "parallel_efficiency_summary",
-    "correctness_summary",
-    "throughput_variability_ratio",
-    "backend_speedup_forest",
-    "throughput_repetition_strip",
-    "parallel_scene_scaling",
+    "commonroad_scenario_summary",
+    "correctness_mismatch_matrix",
 }
 
 
@@ -51,25 +48,20 @@ def write_plots(output_dir: Path):
     plot_dir.mkdir(parents=True, exist_ok=True)
     _clean_plot_dir(plot_dir)
 
-    runs = _read_optional(output_dir / "runs.csv")
     summary = _read_optional(output_dir / "summary.csv")
     comparisons = _read_optional(output_dir / "comparisons.csv")
     correctness = _read_optional(output_dir / "correctness.csv")
     parallel = _read_optional(output_dir / "parallel_scaling.csv")
 
     plottable_summary = [row for row in summary if not _is_true(row.get("unsupported"))]
-    plottable_runs = [row for row in runs if not _is_true(row.get("unsupported"))]
-    _plot_backend_throughput_dotplot(plot_dir / "backend_throughput_dotplot", plottable_summary)
-    _plot_latency_tail_ratio(plot_dir / "latency_tail_ratio", plottable_summary)
+    _plot_backend_throughput_dotplot(plot_dir / "backend_throughput_iqr", plottable_summary)
+    _plot_latency_tail_ratio(plot_dir / "latency_percentiles", plottable_summary)
     _plot_scene_scaling_curves(plot_dir / "scene_scaling_curves", plottable_summary)
-    _plot_scenario_parallel_speedup_dotplot(plot_dir / "scenario_parallel_speedup_dotplot", plottable_summary)
     _plot_parallel_summary(plot_dir / "parallel_scaling_summary", parallel, "speedup", "speedup vs 1 thread")
     _plot_parallel_summary(plot_dir / "parallel_efficiency_summary", parallel, "efficiency", "parallel efficiency")
-    _plot_correctness_summary(plot_dir / "correctness_summary", correctness)
-    _plot_throughput_variability_ratio(plot_dir / "throughput_variability_ratio", plottable_runs)
+    _plot_scenario_parallel_speedup_dotplot(plot_dir / "commonroad_scenario_summary", plottable_summary)
+    _plot_correctness_summary(plot_dir / "correctness_mismatch_matrix", correctness)
     _plot_backend_speedup_forest(plot_dir / "backend_speedup_forest", comparisons)
-    _plot_throughput_repetition_strip(plot_dir / "throughput_repetition_strip", plottable_runs)
-    _plot_parallel_scene_scaling(plot_dir / "parallel_scene_scaling", parallel)
 
 
 def _plot_backend_throughput_dotplot(path_base: Path, rows):
@@ -554,7 +546,7 @@ def _median_iqr(values):
 
 
 def _ordered_workload_labels(rows):
-    order = {"pair": 0, "ccd": 1, "distance": 2}
+    order = {"pair": 0, "continuous": 1, "distance": 2}
     return sorted(
         {_row_workload_label(row) for row in rows}, key=lambda label: (order.get(label.split(":")[0], 99), label)
     )

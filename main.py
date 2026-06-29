@@ -3,7 +3,7 @@ from enum import Enum
 
 from crcc.collision_checker import CollisionEngine
 
-from examples import benchmark, features, geometry, interactive, smoke, visualize
+from examples import benchmark, concepts, dynamics, playground, scenario as scenario_example, shapes
 from examples.utils import load_collision_checker, scenario_pose_bounds
 
 DEFAULT_SCENARIO_PATH = "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
@@ -11,13 +11,13 @@ DEFAULT_ENGINE = CollisionEngine.Rhusics
 
 
 class ExampleAction(Enum):
-    GEOMETRY = "geometry"
-    FEATURES = "features"
-    SMOKE = "smoke"
-    BENCHMARK = "benchmark"
-    PLOT = "plot"
-    VISUALIZE = "visualize"
-    INTERACTIVE = "interactive"
+    CONCEPTS = "concepts"
+    SHAPES = "shapes"
+    DYNAMICS = "dynamics"
+    SCENARIO = "scenario"
+    PLAYGROUND = "playground"
+    STUDY = "study"
+    REPORT = "report"
     ALL = "all"
 
 
@@ -30,7 +30,7 @@ ACTION_CHOICES = {action.value: action for action in ExampleAction}
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Run structured CommonRoad collision checker examples.")
+    parser = argparse.ArgumentParser(description="Run research-oriented CommonRoad collision checker examples.")
     parser.add_argument(
         "action",
         nargs="?",
@@ -136,13 +136,13 @@ def run_action(
     benchmark_engines: list[str] | None = None,
     benchmark_step: str = "all",
 ):
-    if action == ExampleAction.GEOMETRY:
-        geometry.run()
+    if action == ExampleAction.CONCEPTS:
+        concepts.run(engine)
         return
-    if action == ExampleAction.FEATURES:
-        features.run(engine)
+    if action == ExampleAction.SHAPES:
+        shapes.run(engine)
         return
-    if action == ExampleAction.BENCHMARK:
+    if action == ExampleAction.STUDY:
         benchmark.run_all(
             benchmark_scenario_paths(benchmark_scenarios),
             sample_count=benchmark_samples,
@@ -154,7 +154,7 @@ def run_action(
             step=benchmark_step,
         )
         return
-    if action == ExampleAction.PLOT:
+    if action == ExampleAction.REPORT:
         benchmark.run_all(
             benchmark_scenario_paths(benchmark_scenarios),
             sample_count=benchmark_samples,
@@ -170,16 +170,17 @@ def run_action(
     scenario, checker = load_collision_checker(scenario_path, engine)
     pose_bounds = scenario_pose_bounds(scenario)
 
-    if action == ExampleAction.SMOKE:
-        smoke.run(scenario, checker, scenario_path, pose_bounds)
-    elif action == ExampleAction.VISUALIZE:
-        visualize.run(scenario, checker, scenario_path, pose_bounds)
-    elif action == ExampleAction.INTERACTIVE:
-        interactive.run(scenario, checker, scenario_path, pose_bounds)
+    if action == ExampleAction.SCENARIO:
+        scenario_example.run(scenario, checker, scenario_path, pose_bounds)
+    elif action == ExampleAction.DYNAMICS:
+        dynamics.run(scenario, checker, scenario_path, pose_bounds)
+    elif action == ExampleAction.PLAYGROUND:
+        playground.run(scenario, checker, scenario_path, pose_bounds)
     elif action == ExampleAction.ALL:
-        smoke.run(scenario, checker, scenario_path, pose_bounds)
-        geometry.run()
-        features.run(engine)
+        scenario_example.run(scenario, checker, scenario_path, pose_bounds)
+        concepts.run(engine)
+        shapes.run(engine)
+        dynamics.run(scenario, checker, scenario_path, pose_bounds)
         benchmark.run_all(
             benchmark_scenario_paths(benchmark_scenarios or [scenario_path]),
             sample_count=benchmark_samples,
@@ -190,8 +191,7 @@ def run_action(
             engines=benchmark_engines,
             step=benchmark_step,
         )
-        visualize.run(scenario, checker, scenario_path, pose_bounds)
-        interactive.run(scenario, checker, scenario_path, pose_bounds)
+        playground.run(scenario, checker, scenario_path, pose_bounds)
     else:
         raise ValueError(f"Unsupported example action: {action}")
 

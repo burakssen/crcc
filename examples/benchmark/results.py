@@ -323,7 +323,7 @@ def bootstrap_ci(values: list[float], confidence: float = 0.95, samples: int = 1
     if len(values) < 2:
         value = float(values[0]) if values else 0.0
         return value, value
-    # ponytail: deterministic bootstrap is enough for benchmark reporting; no scipy dependency.
+    # deterministic bootstrap is enough for benchmark reporting; no scipy dependency.
     rng = random.Random(20_260_621)
     medians = []
     for _ in range(samples):

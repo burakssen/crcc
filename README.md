@@ -35,28 +35,36 @@ uv run main.py
 
 Run specific examples directly:
 ```bash
-# Smoke test on a yield scenario using the Parry engine
-uv run main.py smoke --scenario scenarios/ZAM_Yield-1_1_T-1.xml --engine parry
+# Core collision concepts: poses, distance, compounds, and continuous checks
+uv run main.py concepts --engine parry
 
-# Run parallel check benchmarks comparing sequential vs Rayon execution
-uv run main.py benchmark
+# Visual matrix showing all supported shape categories colliding with each other
+uv run main.py shapes --engine parry
 
-# Run visual scenario animations showing cumulative ego-vehicle collisions
-uv run main.py visualize
+# Scenario-backed time-variant dynamic obstacle animation
+uv run main.py dynamics --scenario scenarios/ZAM_Yield-1_1_T-1.xml --engine rhusics
+
+# Audit a CommonRoad scenario with deterministic collision probes
+uv run main.py scenario --scenario scenarios/ZAM_Yield-1_1_T-1.xml --engine parry
+
+# Run the reproducible benchmark study and generate CSV, plots, and Markdown report
+uv run main.py study
 
 # Run the interactive ego vehicle playground
-uv run main.py interactive
+uv run main.py playground
 ```
 
 ---
 
-## Interactive Playground
+## Examples
 
-The `interactive` example opens a Matplotlib-based GUI that queries the Rust collision checker in real-time as you move the ego vehicle:
-- **Move Mouse**: Translates the ego vehicle across the scenario.
-- **Scroll Mouse Wheel**: Rotates the ego vehicle by $5^\circ$ per scroll tick.
-- **Slider**: Selects the active time step $t$ (re-rendering other dynamic obstacles at that step).
-- **Feedback**: The vehicle is colored **GREEN** when the pose is clear, and **RED** when a collision is detected.
+- `concepts`: deterministic console walkthrough of static collision, transforms, distance, compounds, and CCD.
+- `shapes`: visual collision matrix covering finite primitives, compound shapes, and symbolic infinite/empty shapes.
+- `dynamics`: scenario-backed animation of a time-variant dynamic query moving across the map.
+- `scenario`: CommonRoad audit with scenario counts, time range, sampling bounds, and deterministic probes.
+- `playground`: Matplotlib scene editor for adding static, dynamic, time-variant, and freehand polygon objects.
+- `study`: exhaustive benchmark run with CSV artifacts, PNG/PDF plots, and `benchmark_report.md`.
+- `report`: regenerate plots and report from existing benchmark CSV artifacts.
 
 ---
 
