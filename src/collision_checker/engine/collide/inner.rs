@@ -61,7 +61,7 @@ impl CollideCollisionObjectInner {
         }
     }
 
-    pub fn collides_sweep(
+    pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -78,7 +78,7 @@ impl CollideCollisionObjectInner {
             (
                 CollideCollisionObjectInner::NonTrivial(slf),
                 CollideCollisionObjectInner::NonTrivial(other),
-            ) => Ok(slf.collides_sweep(
+            ) => Ok(slf.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 other,
@@ -114,7 +114,7 @@ impl NonTrivial {
         false
     }
 
-    pub fn collides_sweep(
+    pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -124,7 +124,7 @@ impl NonTrivial {
     ) -> bool {
         for component_self in &self.components {
             for component_other in &other.components {
-                if components_hit_sweep(
+                if components_hit_continuous(
                     component_self,
                     start_pos_self,
                     end_pos_self,
@@ -233,7 +233,7 @@ fn components_collide(
     }
 }
 
-fn components_hit_sweep(
+fn components_hit_continuous(
     left: &CollideCollisionComponent,
     left_start_pose: DPose2,
     left_end_pose: DPose2,

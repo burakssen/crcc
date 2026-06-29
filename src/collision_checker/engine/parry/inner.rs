@@ -43,7 +43,7 @@ impl ParryCollisionObjectInner {
         }
     }
 
-    pub fn collides_sweep(
+    pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -60,7 +60,7 @@ impl ParryCollisionObjectInner {
             (
                 ParryCollisionObjectInner::NonTrivial(slf),
                 ParryCollisionObjectInner::NonTrivial(other),
-            ) => slf.collides_sweep(
+            ) => slf.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 other,
@@ -112,7 +112,7 @@ impl NonTrivial {
         Ok(false)
     }
 
-    pub fn collides_sweep(
+    pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,

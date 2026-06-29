@@ -405,7 +405,7 @@ def _execute_pair_query(engine, operation, query):
     if operation == "distance":
         return query.left.distance(query.right, query.left_pose, query.right_pose, engine)
     if operation == "ccd":
-        return query.left.collides_sweep(
+        return query.left.collides_continuous(
             query.left_pose,
             type(query.left_pose)(
                 (query.left_pose.translation[0] + 8.0, query.left_pose.translation[1]),

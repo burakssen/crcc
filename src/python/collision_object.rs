@@ -32,7 +32,7 @@ impl CollisionObject {
     }
 
     #[pyo3(signature = (start_pos_self, end_pos_self, other, start_pos_other, end_pos_other, engine = CollisionEngine::Parry))]
-    pub fn collides_sweep(
+    pub fn collides_continuous(
         &self,
         start_pos_self: Pose,
         end_pos_self: Pose,
@@ -41,7 +41,7 @@ impl CollisionObject {
         end_pos_other: Pose,
         engine: CollisionEngine,
     ) -> PyResult<bool> {
-        Ok(crate::collision_checker::engine::collides_sweep(
+        Ok(crate::collision_checker::engine::collides_continuous(
             self.as_ref(),
             start_pos_self.0,
             end_pos_self.0,

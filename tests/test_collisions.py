@@ -109,8 +109,8 @@ def test_pose_composition_and_multiplication():
     assert math.isclose(composed.rotation, math.pi / 2.0, abs_tol=1e-7)
 
 
-def test_collides_sweep(engine):
-    """Test continuous collision detection (CCD) / rigid shape casting sweeps."""
+def test_collides_continuous(engine):
+    """Test continuous collision detection (CCD) / rigid shape casting."""
     circle = Circle(1.0)
     obstacle = Circle(1.0)
 
@@ -118,7 +118,7 @@ def test_collides_sweep(engine):
     end_pos_self = Pose((3.0, 0.0), 0.0)
     pos_other = Pose((0.0, 0.0), 0.0)
 
-    assert circle.collides_sweep(
+    assert circle.collides_continuous(
         start_pos_self,
         end_pos_self,
         obstacle,

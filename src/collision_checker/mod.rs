@@ -217,7 +217,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
                     obstacle_ccd_collider.convex_hull_position,
                     ccd_collider.convex_hull,
                     ccd_collider.convex_hull_position,
-                )? && E::collides_sweep(
+                )? && E::collides_continuous(
                     // Narrow-phase check with CCD
                     obstacle_ccd_collider.shape,
                     obstacle_ccd_collider.position,

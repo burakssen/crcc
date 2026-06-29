@@ -68,7 +68,7 @@ impl RhusicsCoreCollisionObjectInner {
         }
     }
 
-    pub fn collides_sweep(
+    pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -84,7 +84,7 @@ impl RhusicsCoreCollisionObjectInner {
             (
                 RhusicsCoreCollisionObjectInner::NonTrivial(slf),
                 RhusicsCoreCollisionObjectInner::NonTrivial(other),
-            ) => slf.collides_sweep(
+            ) => slf.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 other,
@@ -114,7 +114,7 @@ impl NonTrivial {
         Ok(false)
     }
 
-    pub fn collides_sweep(
+    pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -126,7 +126,7 @@ impl NonTrivial {
 
         for component_self in &self.components {
             for component_other in &other.components {
-                if components_hit_sweep(
+                if components_hit_continuous(
                     &gjk,
                     component_self,
                     start_pos_self,
@@ -170,7 +170,7 @@ fn components_collide(
     }
 }
 
-fn components_hit_sweep(
+fn components_hit_continuous(
     gjk: &GJK2<f64>,
     left: &RhusicsCoreCollisionComponent,
     left_start_pose: DPose2,
@@ -183,7 +183,7 @@ fn components_hit_sweep(
         (
             RhusicsCoreCollisionComponent::Finite(left),
             RhusicsCoreCollisionComponent::Finite(right),
-        ) => finite_hit_sweep(
+        ) => finite_hit_continuous(
             gjk,
             left,
             left_start_pose,
@@ -335,7 +335,7 @@ fn project_vertices(vertices: &[DVec2], axis: DVec2) -> (f64, f64) {
     )
 }
 
-fn finite_hit_sweep(
+fn finite_hit_continuous(
     gjk: &GJK2<f64>,
     left: &FiniteShape,
     left_start_pose: DPose2,

@@ -13,7 +13,7 @@ class CollisionObject:
         pos_other: Pose = Pose.identity(),
         engine: CollisionEngine = CollisionEngine.Parry,
     ) -> bool: ...
-    def collides_sweep(
+    def collides_continuous(
         self,
         start_pos_self: Pose,
         end_pos_self: Pose,

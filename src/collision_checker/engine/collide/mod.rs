@@ -25,7 +25,7 @@ impl EngineCollisionObject for CollideCollisionObject {
             .collides(pos_self, other.as_ref(), pos_other)?)
     }
 
-    fn collides_sweep(
+    fn collides_continuous(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -33,7 +33,7 @@ impl EngineCollisionObject for CollideCollisionObject {
         start_pos_other: DPose2,
         end_pos_other: DPose2,
     ) -> Result<bool, CrccError> {
-        Ok(self.as_ref().collides_sweep(
+        Ok(self.as_ref().collides_continuous(
             start_pos_self,
             end_pos_self,
             other.as_ref(),

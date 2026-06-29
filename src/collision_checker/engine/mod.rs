@@ -21,7 +21,7 @@ pub trait EngineCollisionObject: From<CollisionObject> {
         pos_other: DPose2,
     ) -> Result<bool, CrccError>;
 
-    fn collides_sweep(
+    fn collides_continuous(
         &self,
         start_pos_self: DPose2,
         end_pos_self: DPose2,
@@ -81,7 +81,7 @@ pub fn collides(
     }
 }
 
-pub fn collides_sweep(
+pub fn collides_continuous(
     slf: &CollisionObject,
     start_pos_self: DPose2,
     end_pos_self: DPose2,
@@ -106,7 +106,7 @@ pub fn collides_sweep(
             use parry::ParryCollisionObject;
             let slf = ParryCollisionObject::from(slf.clone());
             let other = ParryCollisionObject::from(other.clone());
-            slf.collides_sweep(
+            slf.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 &other,
@@ -121,7 +121,7 @@ pub fn collides_sweep(
             use rhusics::RhusicsCoreCollisionObject;
             let slf = RhusicsCoreCollisionObject::from(slf.clone());
             let other = RhusicsCoreCollisionObject::from(other.clone());
-            slf.collides_sweep(
+            slf.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 &other,
@@ -136,7 +136,7 @@ pub fn collides_sweep(
             use collide::CollideCollisionObject;
             let slf = CollideCollisionObject::from(slf.clone());
             let other = CollideCollisionObject::from(other.clone());
-            slf.collides_sweep(
+            slf.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 &other,
@@ -226,7 +226,7 @@ fn default_collision_engine() -> CollisionEngine {
 
 #[cfg(all(test, feature = "parry", feature = "rhusics", feature = "collide"))]
 mod tests {
-    use super::{CollisionEngine, collides, collides_sweep, distance};
+    use super::{CollisionEngine, collides, collides_continuous, distance};
     use crate::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
     use crate::collision_object::CollisionObject;
     use crate::collision_object::simple::SimpleCollisionObject;
@@ -583,7 +583,7 @@ mod tests {
             CollisionEngine::Collide,
         ] {
             assert!(
-                collides_sweep(
+                collides_continuous(
                     &moving,
                     DPose2::translation(-5.0, 0.0),
                     DPose2::translation(5.0, 0.0),
@@ -604,7 +604,7 @@ mod tests {
 
         for engine in [CollisionEngine::Rhusics, CollisionEngine::Collide] {
             assert!(
-                collides_sweep(
+                collides_continuous(
                     &moving,
                     DPose2::translation(5.0, 0.0),
                     DPose2::translation(-5.0, 0.0),
@@ -625,7 +625,7 @@ mod tests {
 
         for engine in [CollisionEngine::Rhusics, CollisionEngine::Collide] {
             assert!(
-                collides_sweep(
+                collides_continuous(
                     &moving,
                     DPose2::new((1.2, 0.0).into(), FRAC_PI_2),
                     DPose2::new((1.2, 0.0).into(), -FRAC_PI_2),
@@ -645,7 +645,7 @@ mod tests {
         let fixed = CollisionObject::circle((0.0, 4.0), 0.5).unwrap();
 
         assert!(
-            !collides_sweep(
+            !collides_continuous(
                 &moving,
                 DPose2::new((0.0, 0.0).into(), PI - 0.1),
                 DPose2::new((0.0, 0.0).into(), -PI + 0.1),
