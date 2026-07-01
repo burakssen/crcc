@@ -351,8 +351,12 @@ class PlaygroundState:
         if self.selected is None or not self.objects:
             return "no selected object"
         obj = self.objects[self.selected]
-        status = self.last_results.get(self.selected) or self.selected_status()
-        colliding = sum(1 for result in self.last_results.values() if result and result.collides)
+        status = self.last_results.get(self.selected)
+        if status is None:
+            status = self.selected_status()
+        colliding = sum(
+            1 for result in self.last_results.values() if result is not None and result.collides
+        )
         state = "running" if self.simulating else "paused"
         return f"{state} | {obj.name} | {obj.mode} | {obj.shape.label} | {status} | colliding={colliding}"
 
@@ -440,14 +444,13 @@ def draw_playground(ax, scenario, state: PlaygroundState, plot_limits):
 
     artists = []
     num_steps = len(state.time_steps)
-    if not state.last_results:
-        state.last_results = state.object_statuses()
+    state.last_results = state.object_statuses()
     for index, obj in enumerate(state.objects):
         shape, pose = obj.object_at(state.time_index, num_steps)
         state.selected = state.selected if state.selected is not None else index
         color = COLOR_SELECTED if index == state.selected else COLOR_CLEAR
         status = state.last_results.get(index)
-        if status and status.collides:
+        if status is not None and status.collides:
             color = COLOR_COLLIDED
         elif index == state.selected:
             color = COLOR_SELECTED

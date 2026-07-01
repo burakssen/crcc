@@ -160,8 +160,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     ) -> Result<bool, CrccError> {
         if next_step_active && let Some(ccd_collider) = dynamic_obstacle.ccd_collider_at(time_step)
         {
-            return Ok(self
-                .check_collision_static_static(ccd_collider.convex_hull, DPose2::IDENTITY)?
+            return Ok(self.check_collision_static_ccd(&ccd_collider)?
                 || (self.active_times.contains(time_step)
                     && self.check_collision_dynamic_ccd(&ccd_collider, time_step)?));
         }
@@ -202,6 +201,22 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
             }
         }
         Ok(false)
+    }
+
+    fn check_collision_static_ccd(&self, ccd_collider: &CCDCollider<E>) -> Result<bool, CrccError> {
+        Ok(E::collides_at(
+            &self.static_obstacle,
+            DPose2::IDENTITY,
+            ccd_collider.convex_hull,
+            ccd_collider.convex_hull_position,
+        )? && E::collides_continuous(
+            &self.static_obstacle,
+            DPose2::IDENTITY,
+            DPose2::IDENTITY,
+            ccd_collider.shape,
+            ccd_collider.position,
+            ccd_collider.next_position,
+        )?)
     }
 
     fn check_collision_dynamic_ccd(
@@ -357,6 +372,69 @@ mod tests {
             checker.collides_dynamic(&moving_query).unwrap(),
             CollisionStatus::NoCollision
         );
+    }
+
+    #[cfg(feature = "parry")]
+    #[test]
+    fn dynamic_query_uses_static_ccd_narrow_phase() {
+        let checker = CollisionCheckerBuilder::new()
+            .with_static_obstacle(SimpleCollisionObject::circle((-1.9, 0.3), 0.1).unwrap())
+            .build::<ParryCollisionObject>();
+        let moving_query = DynamicObstacle::new(
+            SimpleCollisionObject::rectangle(Rect::new((-2.0, -0.1), (2.0, 0.1)), 0.0)
+                .unwrap()
+                .into(),
+            vec![DPose2::IDENTITY, DPose2::new((0.0, 0.0).into(), FRAC_PI_2)],
+            TimeStep(0),
+        )
+        .convert_repr();
+
+        assert_eq!(
+            checker.collides_dynamic(&moving_query).unwrap(),
+            CollisionStatus::NoCollision
+        );
+    }
+
+    #[cfg(feature = "parry")]
+    #[test]
+    fn dynamic_compound_query_matches_expanded_children() {
+        let static_compound = CollisionObject::merge_all([
+            CollisionObject::from(SimpleCollisionObject::circle((0.0, 0.0), 0.5).unwrap()),
+            CollisionObject::from(
+                SimpleCollisionObject::rectangle(Rect::new((4.0, -0.5), (5.0, 0.5)), 0.0).unwrap(),
+            ),
+        ]);
+        let checker = CollisionCheckerBuilder::new()
+            .with_static_obstacle(static_compound)
+            .build::<ParryCollisionObject>();
+        let query_parts = vec![
+            CollisionObject::from(SimpleCollisionObject::circle((-0.75, 0.0), 0.25).unwrap()),
+            CollisionObject::from(
+                SimpleCollisionObject::rectangle(Rect::new((0.5, -0.2), (1.0, 0.2)), 0.0).unwrap(),
+            ),
+        ];
+        let positions = vec![
+            DPose2::translation(-3.0, 0.0),
+            DPose2::translation(1.0, 0.0),
+            DPose2::translation(8.0, 0.0),
+        ];
+        let compound = DynamicObstacle::new(
+            CollisionObject::merge_all(query_parts.clone()),
+            positions.clone(),
+            TimeStep(0),
+        )
+        .convert_repr();
+        let expanded = query_parts
+            .into_iter()
+            .map(|part| {
+                let obstacle =
+                    DynamicObstacle::new(part, positions.clone(), TimeStep(0)).convert_repr();
+                checker.collides_dynamic(&obstacle).unwrap()
+            })
+            .find(|status| status.collides())
+            .unwrap_or(CollisionStatus::NoCollision);
+
+        assert_eq!(checker.collides_dynamic(&compound).unwrap(), expanded);
     }
 
     #[cfg(feature = "parry")]

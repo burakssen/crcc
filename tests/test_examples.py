@@ -9,6 +9,7 @@ from crcc.commonroad import add_road_boundary_to_builder
 from crcc.dynamic_obstacle import DynamicObstacle
 from crcc.pose import Pose
 from matplotlib import pyplot as plt
+from matplotlib.colors import to_rgba
 
 import main
 from examples import benchmark, concepts, dynamics, playground, scenario as scenario_example, shapes, utils as ex_utils
@@ -332,6 +333,53 @@ def test_playground_draws_objects_above_scenario():
         artists = playground.draw_playground(ax, scenario, state, plot_limits)
         assert artists
         assert max(getattr(artist, "zorder", 0) for artist in artists) >= 50
+    finally:
+        plt.close(fig)
+
+
+def test_playground_road_boundary_status_for_triangle_and_compound():
+    scenario, checker = ex_utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionEngine.Rhusics)
+    pose_bounds = ex_utils.scenario_pose_bounds(scenario)
+    plot_limits = (pose_bounds[0][0], pose_bounds[1][0], pose_bounds[0][1], pose_bounds[1][1])
+    time_steps = tuple(ex_utils.scenario_time_steps(scenario)[:4])
+    state = playground.PlaygroundState(checker.engine, time_steps)
+    state.set_scenario(scenario)
+    lanelet_vertices = list(scenario.lanelet_network.lanelets[0].polygon.vertices)
+    inside_lanelet = (
+        sum(vertex[0] for vertex in lanelet_vertices) / len(lanelet_vertices),
+        sum(vertex[1] for vertex in lanelet_vertices) / len(lanelet_vertices),
+    )
+    outside_road = (pose_bounds[1][0] + 1000.0, pose_bounds[1][1] + 1000.0)
+
+    for shape_kind in ["triangle", "compound"]:
+        state.objects.clear()
+        state.selected = None
+        state.shape_kind = shape_kind
+        state.add_object(inside_lanelet)
+        assert not state.selected_status().collides
+        assert not state.object_statuses()[state.selected].collides
+
+        state.objects.clear()
+        state.selected = None
+        state.shape_kind = shape_kind
+        state.add_object(outside_road)
+        assert state.selected_status().collides
+        assert state.object_statuses()[state.selected].collides
+
+    state.last_results = {state.selected: CollisionResultStub(False)}
+    fig, ax = plt.subplots()
+    try:
+        artists = playground.draw_playground(ax, scenario, state, plot_limits)
+        collided_rgba = to_rgba(playground.COLOR_COLLIDED, 0.68)
+        collided_edge = to_rgba(playground.COLOR_COLLIDED)
+        assert state.last_results[state.selected].collides
+        assert "colliding=1" in state.status_summary()
+        assert any(
+            getattr(artist, "get_facecolor", lambda: None)() == collided_rgba
+            or getattr(artist, "get_edgecolor", lambda: None)() == collided_edge
+            or getattr(artist, "get_color", lambda: None)() == playground.COLOR_COLLIDED
+            for artist in artists
+        )
     finally:
         plt.close(fig)
 

@@ -535,6 +535,105 @@ mod tests {
     }
 
     #[test]
+    fn compound_collision_matches_expanded_child_pairs() {
+        let left_parts = vec![
+            CollisionObject::circle((-1.0, 0.0), 0.5).unwrap(),
+            CollisionObject::rectangle(Rect::new((0.0, -0.4), (1.0, 0.4)), 0.25).unwrap(),
+            CollisionObject::from(
+                SimpleCollisionObject::triangle(Triangle::new(
+                    (1.5, -0.5).into(),
+                    (2.3, 0.0).into(),
+                    (1.7, 0.8).into(),
+                ))
+                .unwrap(),
+            ),
+        ];
+        let right_parts = vec![
+            CollisionObject::circle((0.0, 0.0), 0.35).unwrap(),
+            CollisionObject::polygon(Polygon::new(
+                vec![
+                    (-0.5, -0.5),
+                    (0.7, -0.4),
+                    (0.8, 0.5),
+                    (-0.3, 0.7),
+                    (-0.5, -0.5),
+                ]
+                .into(),
+                vec![],
+            ))
+            .unwrap(),
+        ];
+        let left = CollisionObject::merge_all(left_parts.clone());
+        let right = CollisionObject::merge_all(right_parts.clone());
+        let pos_left = DPose2::new((0.4, -0.2).into(), 0.35);
+        let pos_right = DPose2::new((1.6, 0.1).into(), -0.2);
+
+        for engine in [
+            CollisionEngine::Parry,
+            CollisionEngine::Rhusics,
+            CollisionEngine::Collide,
+        ] {
+            let compound = collides(&left, pos_left, &right, pos_right, engine).unwrap();
+            let expanded = left_parts.iter().any(|left_part| {
+                right_parts.iter().any(|right_part| {
+                    collides(left_part, pos_left, right_part, pos_right, engine).unwrap()
+                })
+            });
+            assert_eq!(compound, expanded, "{engine:?}");
+        }
+    }
+
+    #[test]
+    fn continuous_compound_collision_matches_expanded_child_pairs() {
+        let left_parts = vec![
+            CollisionObject::circle((-2.0, 0.0), 0.5).unwrap(),
+            CollisionObject::rectangle(Rect::new((-0.5, -0.4), (0.5, 0.4)), 0.0).unwrap(),
+        ];
+        let right_parts = vec![
+            CollisionObject::circle((0.0, 0.0), 0.4).unwrap(),
+            CollisionObject::rectangle(Rect::new((2.0, -0.2), (3.0, 0.2)), 0.1).unwrap(),
+        ];
+        let left = CollisionObject::merge_all(left_parts.clone());
+        let right = CollisionObject::merge_all(right_parts.clone());
+        let left_start = DPose2::translation(-4.0, 0.0);
+        let left_end = DPose2::translation(4.0, 0.0);
+        let right_start = DPose2::IDENTITY;
+        let right_end = DPose2::IDENTITY;
+
+        for engine in [
+            CollisionEngine::Parry,
+            CollisionEngine::Rhusics,
+            CollisionEngine::Collide,
+        ] {
+            let compound = collides_continuous(
+                &left,
+                left_start,
+                left_end,
+                &right,
+                right_start,
+                right_end,
+                engine,
+            )
+            .unwrap();
+            let expanded = left_parts.iter().any(|left_part| {
+                right_parts.iter().any(|right_part| {
+                    collides_continuous(
+                        left_part,
+                        left_start,
+                        left_end,
+                        right_part,
+                        right_start,
+                        right_end,
+                        engine,
+                    )
+                    .unwrap()
+                })
+            });
+            assert_eq!(compound, expanded, "{engine:?}");
+        }
+    }
+
+    #[test]
     fn non_parry_backends_handle_half_space_pairs_exactly() {
         let x_le_zero = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
         let x_ge_minus_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, 1.0);
@@ -595,6 +694,25 @@ mod tests {
                 .unwrap()
             );
         }
+    }
+
+    #[test]
+    fn rhusics_continuous_finite_checks_include_endpoints() {
+        let moving = CollisionObject::rectangle(Rect::new((-2.0, -0.1), (2.0, 0.1)), 0.0).unwrap();
+        let fixed = CollisionObject::circle((0.0, 0.0), 0.2).unwrap();
+
+        assert!(
+            collides_continuous(
+                &moving,
+                DPose2::IDENTITY,
+                DPose2::new((0.0, 0.0).into(), PI),
+                &fixed,
+                DPose2::IDENTITY,
+                DPose2::IDENTITY,
+                CollisionEngine::Rhusics,
+            )
+            .unwrap()
+        );
     }
 
     #[test]

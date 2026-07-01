@@ -344,6 +344,12 @@ fn finite_hit_continuous(
     right_start_pose: DPose2,
     right_end_pose: DPose2,
 ) -> bool {
+    if finite_shapes_collide(gjk, left, left_start_pose, right, right_start_pose)
+        || finite_shapes_collide(gjk, left, left_end_pose, right, right_end_pose)
+    {
+        return true;
+    }
+
     let left_start_global_pose = left_start_pose * left.position;
     let left_end_global_pose = left_end_pose * left.position;
     let right_start_global_pose = right_start_pose * right.position;
