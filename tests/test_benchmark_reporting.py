@@ -14,7 +14,14 @@ from tools.benchmark.io import (
     load_artifacts,
     write_report_from_artifacts,
 )
-from tools.benchmark.plots import PLOT_NAMES, _backend_handles, _plot_api_batch_amortization, _plot_memory_growth
+from tools.benchmark.plots import (
+    PLOT_NAMES,
+    _backend_handles,
+    _execution_mode,
+    _plot_api_batch_amortization,
+    _plot_execution_layer_cost,
+    _plot_memory_growth,
+)
 from tools.benchmark.results import RunResult, compare_layers, compare_modes, compare_runs, summarize_runs
 from tools.benchmark.workloads import (
     coverage_matrix_workloads,
@@ -125,7 +132,7 @@ def test_research_report_contains_provenance_correctness_and_plot_links(tmp_path
     assert "## Correctness" in report
     assert "circle\\|overlap" in report
     assert "## Parallel Scaling" in report
-    assert "plots/parallel_scaling_summary.png" in report
+    assert "plots/rayon_scaling_summary.png" in report
     assert "## Threats To Validity" in report
 
     for name in PLOT_NAMES:
@@ -141,7 +148,29 @@ def test_research_report_contains_provenance_correctness_and_plot_links(tmp_path
 
 def test_report_interpretation_uses_artifact_observation():
     observation = "Parry records 1.25x speedup."
-    assert _plot_interpretation("parallel_scaling_summary", [observation]) == f"Artifact-derived result: {observation}"
+    assert _plot_interpretation("rayon_scaling_summary", [observation]) == f"Artifact-derived result: {observation}"
+
+
+def test_plot_names_exclude_mixed_sequential_rayon_views():
+    assert {
+        "parallel_scaling_summary",
+        "parallel_efficiency_summary",
+        "commonroad_scenario_summary",
+        "api_batch_amortization",
+        "api_batch_speedup",
+        "dynamic_batch_amortization",
+        "dynamic_time_window_scaling",
+        "time_variant_query_scaling",
+    }.isdisjoint(PLOT_NAMES)
+
+
+def test_execution_mode_classifies_rayon_threshold():
+    assert _execution_mode({"api_mode": "scalar", "batch_size": "32"}) == "sequential"
+    assert _execution_mode({"api_mode": "batch_global", "batch_size": "31"}) == "sequential"
+    assert _execution_mode({"api_mode": "batch_global", "batch_size": "32"}) == "rayon"
+    assert _execution_mode({"api_mode": "batch_global", "batch_size": "33"}) == "rayon"
+    assert _execution_mode({"workload": "static_sequential"}) == "sequential"
+    assert _execution_mode({"workload": "static_parallel"}) == "rayon"
 
 
 def test_report_default_output_is_repository_relative():
@@ -221,6 +250,8 @@ def test_faceted_api_and_incremental_memory_plots_are_written(tmp_path):
             "backend": backend,
             "workload": workload,
             "queries": str(queries),
+            "batch_size": str(queries),
+            "api_mode": "scalar" if workload == "python_scalar" else "batch_global",
             "ns_per_query_median": str(value),
         }
         for backend in ("parry", "rhusics", "collide")
@@ -239,12 +270,37 @@ def test_faceted_api_and_incremental_memory_plots_are_written(tmp_path):
         for _ in range(3)
     ]
 
-    _plot_api_batch_amortization(tmp_path / "api", api_rows)
+    _plot_api_batch_amortization(tmp_path / "api_sequential", api_rows, "sequential")
+    _plot_api_batch_amortization(tmp_path / "api_rayon", api_rows, "rayon")
     _plot_memory_growth(tmp_path / "memory", memory_rows)
 
-    for name in ("api", "memory"):
+    for name in ("api_sequential", "api_rayon", "memory"):
         assert (tmp_path / f"{name}.png").is_file()
         assert (tmp_path / f"{name}.pdf").is_file()
+
+
+def test_execution_layer_plot_compares_python_with_native_rust(tmp_path):
+    rows = [
+        {
+            "feature": "native_layers",
+            "backend": backend,
+            "workload": workload,
+            "execution_layer": layer,
+            "ns_per_query_median": str(cost),
+        }
+        for backend in ("parry", "rhusics", "collide")
+        for workload in ("circle_clear", "compound_clear")
+        for layer, cost in (
+            ("engine_native", 40),
+            ("rust_public_convert_and_query", 400),
+            ("python_end_to_end", 800),
+        )
+    ]
+
+    _plot_execution_layer_cost(tmp_path / "execution_layer", rows)
+
+    assert (tmp_path / "execution_layer.png").is_file()
+    assert (tmp_path / "execution_layer.pdf").is_file()
 
 
 def test_mode_comparisons_pair_repetitions_and_preserve_dimensions():

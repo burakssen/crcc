@@ -426,20 +426,25 @@ PLOT_GUIDANCE = {
         "Rows represent static/static, moving/static, and moving/moving scenes; columns represent shape families. Both axes are logarithmic, and higher throughput is better.",
         "CRCC builds one immutable static compound, so these curves do not represent a mutable broad-phase world.",
     ),
-    "parallel_scaling_summary": (
-        "Summarize throughput speedup as worker count increases.",
-        "Lines show median speedup over scenarios with IQR bands; the dashed diagonal is ideal linear scaling. Higher is better.",
+    "rayon_scaling_summary": (
+        "Summarize throughput speedup as the Rayon worker count increases.",
+        "Lines show median speedup relative to one Rayon worker with IQR bands; the dashed diagonal is ideal linear scaling.",
         "Superlinear points can arise from cache, scheduling, and measurement effects and should not be interpreted as guaranteed scaling.",
     ),
-    "parallel_efficiency_summary": (
-        "Show how effectively each backend converts additional workers into speedup.",
+    "rayon_efficiency_summary": (
+        "Show how effectively each backend converts additional Rayon workers into speedup.",
         "Efficiency is speedup divided by thread count. The dashed line at 1 is ideal; declining curves indicate diminishing returns.",
         "Efficiency aggregates heterogeneous scenarios and can hide scenario-specific contention or workload-size effects.",
     ),
-    "commonroad_scenario_summary": (
-        "Compare parallel versus sequential throughput on each CommonRoad scenario.",
-        "Bars show the parallel/sequential throughput ratio by scenario and backend. Values above 1 indicate a parallel gain.",
-        "Scenario geometry and query distributions differ, so ratios should not be treated as intrinsic backend constants.",
+    "commonroad_scenario_sequential": (
+        "Show sequential throughput on each CommonRoad scenario.",
+        "Bars report absolute sequential queries per second by scenario and backend; higher is better.",
+        "Scenario geometry and query distributions differ, so throughput should be compared within each scenario.",
+    ),
+    "commonroad_scenario_rayon": (
+        "Show Rayon batch throughput on each CommonRoad scenario.",
+        "Bars report absolute Rayon-backed batch queries per second by scenario and backend; higher is better.",
+        "This view includes Python-call amortization as well as Rayon execution and is not a kernel-only measurement.",
     ),
     "correctness_mismatch_matrix": (
         "Surface backend/workload groups with observed correctness mismatches.",
@@ -466,34 +471,49 @@ PLOT_GUIDANCE = {
         "The left panel shows median RSS delta in MiB; the right divides that delta by object count. Bands show the IQR across fresh-process repetitions.",
         "RSS is page-granular and includes allocator effects, Python wrappers, input objects, and checker construction; it is not an exact Rust allocation count.",
     ),
-    "api_batch_amortization": (
-        "Show how scalar, global-pool batch, and fresh-pool batch cost per query changes with batch size for each backend.",
-        "Each panel fixes a backend. Dashed lines are repeated scalar calls, solid lines use the global Rayon pool, and dotted lines create a one-thread pool per call; lower is better.",
-        "The global batch path changes dispatch behavior at the 32-query threshold, while the fresh-pool path includes pool construction. These are end-to-end API costs, not kernel-only collision times.",
+    "api_batch_amortization_sequential": (
+        "Show Python scalar and below-threshold batch cost without Rayon dispatch.",
+        "Each panel fixes a backend and reports median nanoseconds per query; lower is better.",
+        "Scalar calls cover every recorded size, while batch lines stop below the 32-query Rayon threshold.",
     ),
-    "api_batch_speedup": (
-        "Summarize the relative cost of scalar and batch APIs by batch size.",
-        "The ratio is scalar ns/query divided by global-pool batch ns/query. Values above 1 favor batching; values below 1 mean scalar calls remain cheaper.",
-        "The global pool can execute in parallel at and above the dispatch threshold, so the ratio combines Python-call amortization with scheduling and parallel-execution effects.",
+    "api_batch_amortization_rayon": (
+        "Show Python batch cost after Rayon dispatch begins.",
+        "Each panel fixes a backend; solid lines use the global pool and dotted lines create a one-thread pool per call.",
+        "Fresh-pool rows include pool construction and should not be treated as steady-state worker throughput.",
     ),
-    "dynamic_batch_amortization": (
-        "Compare scalar and batched dynamic-obstacle query cost as batch size and trajectory length increase.",
-        "Panels fix trajectory length; dashed curves are scalar calls and solid curves are `collides_dynamic_batch` batches. Lower ns/query is better.",
+    "dynamic_batch_amortization_sequential": (
+        "Show sequential dynamic-obstacle query cost as batch size and trajectory length increase.",
+        "Panels fix trajectory length and report median nanoseconds per query without Rayon-dispatched rows.",
         "The synthetic trajectories use circles, translation, and a 50% hit mix; other shapes and hit positions may scale differently.",
     ),
-    "dynamic_time_window_scaling": (
-        "Isolate how the requested dynamic-query time range affects scalar and batched query cost.",
-        "The x-axis is the number of trajectory steps searched; dashed curves are scalar calls and solid curves are batches. Lower is better.",
+    "dynamic_batch_amortization_rayon": (
+        "Show Rayon dynamic-batch cost as batch size and trajectory length increase.",
+        "Panels fix trajectory length and contain only batches at or above the 32-query dispatch threshold.",
+        "The synthetic trajectories use circles, translation, and a 50% hit mix; other shapes and hit positions may scale differently.",
+    ),
+    "dynamic_time_window_scaling_sequential": (
+        "Isolate how the requested time range affects sequential dynamic-query cost.",
+        "The x-axis is the number of trajectory steps searched and the y-axis is median nanoseconds per query.",
         "All rows use 16-step source trajectories and vary only the inclusive query window beginning at step zero.",
     ),
-    "time_variant_query_scaling": (
-        "Measure query cost for dynamic obstacles whose shape changes over time.",
-        "Panels represent shape-variation classes; x is trajectory steps and y is median ns/query. Lower curves are better.",
+    "dynamic_time_window_scaling_rayon": (
+        "Isolate how the requested time range affects Rayon dynamic-batch cost.",
+        "The x-axis is the number of trajectory steps searched and the y-axis is median batch nanoseconds per query.",
+        "All rows use a fixed 32-query batch, so this view does not characterize other Rayon batch sizes.",
+    ),
+    "time_variant_query_scaling_sequential": (
+        "Measure sequential query cost for dynamic obstacles whose shape changes over time.",
+        "Panels represent shape-variation classes; x is trajectory steps and y is median nanoseconds per query.",
+        "Construction cost is recorded separately in CSV fields and the plot focuses on warmed query execution.",
+    ),
+    "time_variant_query_scaling_rayon": (
+        "Measure Rayon batch cost for dynamic obstacles whose shape changes over time.",
+        "Panels represent shape-variation classes for the fixed 32-query Rayon batch.",
         "Construction cost is recorded separately in CSV fields and the plot focuses on warmed query execution.",
     ),
     "execution_layer_cost": (
-        "Quantify Rust public conversion overhead and Python binding overhead on identical workloads.",
-        "Solid bars show Rust public/native cost; hatched bars show Python/Rust-public cost. Values above 1 indicate overhead.",
+        "Compare native Rust, public Rust, and end-to-end Python binding cost on identical workloads.",
+        "The top row reports absolute median nanoseconds per query; the bottom row reports the direct Python/native Rust cost ratio. Both use logarithmic axes and lower is better.",
         "All three layers reuse deterministic inputs with construction outside timed regions.",
     ),
 }
@@ -552,8 +572,8 @@ def _plot_observations(name, summary, comparisons, correctness, parallel, memory
         return [
             f"The largest observed p99/p50 ratio is {ratio:.2f} for {_md(row['backend'])} on {_md(row['feature'])}:{_md(row['workload'])}."
         ]
-    if name in {"parallel_scaling_summary", "parallel_efficiency_summary"}:
-        metric = "speedup" if name == "parallel_scaling_summary" else "efficiency"
+    if name in {"rayon_scaling_summary", "rayon_efficiency_summary"}:
+        metric = "speedup" if name == "rayon_scaling_summary" else "efficiency"
         observations = []
         for backend in sorted({row["backend"] for row in parallel}):
             backend_rows = [row for row in parallel if row["backend"] == backend]
@@ -562,17 +582,31 @@ def _plot_observations(name, summary, comparisons, correctness, parallel, memory
                 f"{backend.title()} reaches a maximum recorded {metric} of {_float(best[metric]):.2f} at {_int(best['threads'])} threads."
             )
         return observations or ["No parallel-scaling rows are available."]
-    if name == "commonroad_scenario_summary":
-        return _scenario_parallel_observations(summary)
-    if name in {"api_batch_amortization", "api_batch_speedup"}:
-        return _api_observations(summary)
-    if name == "dynamic_batch_amortization":
-        return _mode_ratio_observations(summary, "dynamic_batch")
-    if name == "dynamic_time_window_scaling":
+    if name in {"commonroad_scenario_sequential", "commonroad_scenario_rayon"}:
+        workload = "static_sequential" if name.endswith("sequential") else "static_parallel"
+        return _throughput_observations(
+            [row for row in summary if row["feature"] == "scenario" and row["workload"] == workload]
+        )
+    if name in {"api_batch_amortization_sequential", "api_batch_amortization_rayon"}:
+        workload = "python_scalar" if name.endswith("sequential") else "python_batch"
+        rows = [row for row in summary if row["feature"] == "api_overhead" and row["workload"] == workload]
+        if name.endswith("rayon"):
+            rows = [row for row in rows if _int(row["batch_size"]) >= 32]
+        return _cost_observations(rows, "batch_size")
+    if name in {"dynamic_batch_amortization_sequential", "dynamic_batch_amortization_rayon"}:
+        workload = "dynamic_scalar" if name.endswith("sequential") else "dynamic_batch"
+        rows = [row for row in summary if row["feature"] == "dynamic_batch" and row["workload"] == workload]
+        if name.endswith("rayon"):
+            rows = [row for row in rows if _int(row["batch_size"]) >= 32]
+        return _cost_observations(rows, "batch_size")
+    if name in {"dynamic_time_window_scaling_sequential", "dynamic_time_window_scaling_rayon"}:
         rows = [row for row in summary if row.get("scene_kind") == "dynamic_time_window"]
-        return _range_observations(rows, "time_window_steps")
-    if name == "time_variant_query_scaling":
-        return _time_variant_observations(summary)
+        mode = "scalar" if name.endswith("sequential") else "batch_global"
+        return _cost_observations([row for row in rows if row["api_mode"] == mode], "time_window_steps")
+    if name in {"time_variant_query_scaling_sequential", "time_variant_query_scaling_rayon"}:
+        mode = "scalar" if name.endswith("sequential") else "batch_global"
+        rows = [row for row in summary if row["feature"] == "time_variant" and row["api_mode"] == mode]
+        return _cost_observations(rows, "trajectory_steps")
     if name == "execution_layer_cost":
         return _layer_observations(summary)
     if name == "memory_growth":
@@ -627,80 +661,29 @@ def _group_winner_observations(summary, feature, group_field, metric, lower=Fals
     return observations or ["No plottable rows are available."]
 
 
-def _scenario_parallel_observations(summary):
-    rows = [row for row in summary if row["feature"] == "scenario"]
-    ratios = []
-    for scenario in {row["scenario"] for row in rows}:
-        for backend in {row["backend"] for row in rows}:
-            sequential = next(
-                (
-                    row
-                    for row in rows
-                    if row["scenario"] == scenario
-                    and row["backend"] == backend
-                    and row["workload"] == "static_sequential"
-                ),
-                None,
-            )
-            parallel = next(
-                (
-                    row
-                    for row in rows
-                    if row["scenario"] == scenario
-                    and row["backend"] == backend
-                    and row["workload"] == "static_parallel"
-                ),
-                None,
-            )
-            if sequential and parallel:
-                ratios.append(
-                    (_float(parallel["throughput_median"]) / _float(sequential["throughput_median"]), backend, scenario)
-                )
-    if not ratios:
-        return ["No paired scenario rows are available."]
-    best = max(ratios)
-    return [
-        f"The largest parallel/sequential throughput ratio is {best[0]:.2f} for {best[1].title()} on {_md(best[2])}."
-    ]
-
-
-def _api_observations(summary):
-    rows = [row for row in summary if row["feature"] == "api_overhead"]
-    if not rows:
-        return ["No API-overhead rows are available."]
+def _throughput_observations(rows):
     observations = []
     for backend in sorted({row["backend"] for row in rows}):
-        ratios = {}
-        for batch_size in (31, 32, 1_024):
-            scalar = next(
-                (
-                    row
-                    for row in rows
-                    if row["backend"] == backend
-                    and row["workload"] == "python_scalar"
-                    and _int(row["queries"]) == batch_size
-                ),
-                None,
-            )
-            batch = next(
-                (
-                    row
-                    for row in rows
-                    if row["backend"] == backend
-                    and row["workload"] == "python_batch"
-                    and _int(row["queries"]) == batch_size
-                ),
-                None,
-            )
-            if scalar and batch:
-                ratios[batch_size] = _float(scalar["ns_per_query_median"]) / _float(batch["ns_per_query_median"])
-        if ratios:
-            observations.append(
-                f"{backend.title()} scalar/global-batch ratios are "
-                + ", ".join(f"{ratio:.2f} at {size:,}" for size, ratio in ratios.items())
-                + "; the sharp change at 32 marks the parallel-dispatch threshold."
-            )
-    return observations
+        values = [_float(row["throughput_median"]) for row in rows if row["backend"] == backend]
+        observations.append(
+            f"{backend.title()} records a median of {median(values):,.1f} queries/s across the plotted scenarios."
+        )
+    return observations or ["No throughput rows are available."]
+
+
+def _cost_observations(rows, x_field):
+    observations = []
+    largest = max((_int(row[x_field]) for row in rows), default=0)
+    for backend in sorted({row["backend"] for row in rows}):
+        values = [
+            _float(row["ns_per_query_median"])
+            for row in rows
+            if row["backend"] == backend and _int(row[x_field]) == largest
+        ]
+        observations.append(
+            f"At {largest} {x_field.replace('_', ' ')}, {backend.title()} records a median cost of {median(values):,.1f} ns/query."
+        )
+    return observations or ["No cost rows are available."]
 
 
 def _memory_observations(memory):
@@ -720,82 +703,9 @@ def _memory_observations(memory):
     return observations
 
 
-def _mode_ratio_observations(summary, feature):
-    rows = [row for row in summary if row["feature"] == feature]
-    observations = []
-    for backend in sorted({row["backend"] for row in rows}):
-        backend_rows = [row for row in rows if row["backend"] == backend]
-        largest_steps = max((_int(row["trajectory_steps"]) for row in backend_rows), default=0)
-        ratios = {}
-        for batch_size in (31, 32, 128):
-            scalar = next(
-                (
-                    row
-                    for row in backend_rows
-                    if row["api_mode"] == "scalar"
-                    and _int(row["batch_size"]) == batch_size
-                    and _int(row["trajectory_steps"]) == largest_steps
-                    and not _int(row["time_window_steps"])
-                ),
-                None,
-            )
-            batch = next(
-                (
-                    row
-                    for row in backend_rows
-                    if row["api_mode"] == "batch_global"
-                    and _int(row["batch_size"]) == batch_size
-                    and _int(row["trajectory_steps"]) == largest_steps
-                    and not _int(row["time_window_steps"])
-                ),
-                None,
-            )
-            if scalar and batch:
-                ratios[batch_size] = _float(scalar["ns_per_query_median"]) / _float(batch["ns_per_query_median"])
-        if ratios:
-            observations.append(
-                f"For {backend.title()} at {largest_steps} trajectory steps, scalar/batch ratios are "
-                + ", ".join(f"{ratio:.2f} at batch {size}" for size, ratio in ratios.items())
-                + "."
-            )
-    return observations or ["No paired scalar and batch rows are available."]
-
-
-def _range_observations(rows, field):
-    observations = []
-    for backend in sorted({row["backend"] for row in rows}):
-        selected = [row for row in rows if row["backend"] == backend and row["api_mode"] == "batch_global"]
-        if not selected:
-            continue
-        smallest = min(selected, key=lambda row: _int(row[field]))
-        largest = max(selected, key=lambda row: _int(row[field]))
-        ratio = _float(largest["ns_per_query_median"]) / max(_float(smallest["ns_per_query_median"]), 1e-12)
-        observations.append(
-            f"For {backend.title()}, increasing {field.replace('_', ' ')} from {smallest[field]} to {largest[field]} changes batch cost by {ratio:.2f}x."
-        )
-    return observations or ["No time-window scaling rows are available."]
-
-
-def _time_variant_observations(summary):
-    rows = [row for row in summary if row["feature"] == "time_variant"]
-    observations = []
-    for backend in sorted({row["backend"] for row in rows}):
-        selected = [row for row in rows if row["backend"] == backend and row["api_mode"] == "scalar"]
-        smallest = [row for row in selected if _int(row["trajectory_steps"]) == 1]
-        largest = [row for row in selected if _int(row["trajectory_steps"]) == 16]
-        if smallest and largest:
-            start = median([_float(row["ns_per_query_median"]) for row in smallest])
-            end = median([_float(row["ns_per_query_median"]) for row in largest])
-            observations.append(
-                f"{backend.title()} scalar cost rises {end / start:.1f}x from 1 to 16 trajectory steps after taking the median across shape-variation classes."
-            )
-    return observations or ["No time-variant rows are available."]
-
-
 def _layer_observations(summary):
     rows = [row for row in summary if row["feature"] == "native_layers"]
-    public_ratios = []
-    python_ratios = []
+    python_native_ratios = []
     for backend in {row["backend"] for row in rows}:
         for workload in {row["workload"] for row in rows}:
             native = next(
@@ -805,16 +715,6 @@ def _layer_observations(summary):
                     if row["backend"] == backend
                     and row["workload"] == workload
                     and row["execution_layer"] == "engine_native"
-                ),
-                None,
-            )
-            public = next(
-                (
-                    row
-                    for row in rows
-                    if row["backend"] == backend
-                    and row["workload"] == workload
-                    and row["execution_layer"] == "rust_public_convert_and_query"
                 ),
                 None,
             )
@@ -828,26 +728,16 @@ def _layer_observations(summary):
                 ),
                 None,
             )
-            if native and public:
-                public_ratios.append(
-                    (_float(public["ns_per_query_median"]) / _float(native["ns_per_query_median"]), backend, workload)
+            if native and python:
+                python_native_ratios.append(
+                    (_float(python["ns_per_query_median"]) / _float(native["ns_per_query_median"]), backend, workload)
                 )
-            if python and public:
-                python_ratios.append(
-                    (_float(python["ns_per_query_median"]) / _float(public["ns_per_query_median"]), backend, workload)
-                )
-    if not public_ratios:
+    if not python_native_ratios:
         return ["No matched three-layer rows are available."]
-    largest = max(public_ratios)
-    observations = [
-        f"The largest public/native cost ratio is {largest[0]:.2f} for {largest[1].title()} on {largest[2].replace('_', ' ')}."
+    largest = max(python_native_ratios)
+    return [
+        f"The largest direct Python/native Rust cost ratio is {largest[0]:.2f} for {largest[1].title()} on {largest[2].replace('_', ' ')}."
     ]
-    if python_ratios:
-        largest_python = max(python_ratios)
-        observations.append(
-            f"The largest Python/public cost ratio is {largest_python[0]:.2f} for {largest_python[1].title()} on {largest_python[2].replace('_', ' ')}."
-        )
-    return observations
 
 
 def _plot_interpretation(name, observations):
