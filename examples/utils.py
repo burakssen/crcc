@@ -4,7 +4,7 @@ from typing import Any
 import numpy as np
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad.prediction.prediction import TrajectoryPrediction
-from crcc.collision_checker import CollisionCheckerBuilder, CollisionEngine
+from crcc import CollisionCheckerBuilder, CollisionEngine
 from crcc.commonroad import create_collision_checker_from_scenario
 
 CAR_SIZE = (4.5, 2.0)
@@ -22,6 +22,8 @@ def load_collision_checker(scenario_path: str, engine: CollisionEngine):
 
 def scenario_pose_bounds(scenario):
     """Compute pose sampling bounds based on the scenario's lanelet network vertices."""
+    if not scenario.lanelet_network.lanelets:
+        raise ValueError("scenario has no lanelets from which to derive pose bounds")
     vertices = np.concatenate([lanelet.polygon.vertices for lanelet in scenario.lanelet_network.lanelets])
     min_xy = vertices.min(axis=0) - POSE_BOUNDS_PADDING
     max_xy = vertices.max(axis=0) + POSE_BOUNDS_PADDING
@@ -40,7 +42,7 @@ def format_pose_bounds(pose_bounds):
 
 def sample_poses(count, pose_bounds, rng: Any = np.random):
     """Sample random 2D Poses within the given bounds."""
-    from crcc.pose import Pose
+    from crcc import Pose
 
     lower_bounds, upper_bounds = pose_bounds
     return [Pose((x, y), rotation) for x, y, rotation in rng.uniform(lower_bounds, upper_bounds, (count, 3))]

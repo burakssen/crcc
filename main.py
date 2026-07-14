@@ -1,24 +1,28 @@
 import argparse
 from enum import Enum
+from pathlib import Path
 
-from crcc.collision_checker import CollisionEngine
+from crcc import CollisionEngine
 
-from examples import benchmark, concepts, dynamics, playground, scenario as scenario_example, shapes
-from examples.utils import load_collision_checker, scenario_pose_bounds
+from tools import benchmark
 
-DEFAULT_SCENARIO_PATH = "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
+ROOT = Path(__file__).resolve().parent
+DEFAULT_SCENARIO_PATH = str(ROOT / "scenarios/DEU_MerzenichRather-2_870_T-149.xml")
 DEFAULT_ENGINE = CollisionEngine.Rhusics
 
 
 class ExampleAction(Enum):
+    BASIC = "basic"
+    CONTINUOUS = "continuous"
+    COMMONROAD = "commonroad"
     CONCEPTS = "concepts"
     SHAPES = "shapes"
     DYNAMICS = "dynamics"
     SCENARIO = "scenario"
+    ALL = "all"
     PLAYGROUND = "playground"
     STUDY = "study"
     REPORT = "report"
-    ALL = "all"
 
 
 ENGINE_CHOICES = {
@@ -30,197 +34,110 @@ ACTION_CHOICES = {action.value: action for action in ExampleAction}
 
 
 def parse_args(argv=None):
-    parser = argparse.ArgumentParser(description="Run research-oriented CommonRoad collision checker examples.")
+    parser = argparse.ArgumentParser(description="Run deterministic CRCC tutorials and research benchmarks.")
+    parser.add_argument("action", nargs="?", choices=sorted(ACTION_CHOICES), help="tutorial or research action")
+    parser.add_argument("--engine", choices=sorted(ENGINE_CHOICES), default="rhusics", type=str.lower)
+    parser.add_argument("--scenario", default=DEFAULT_SCENARIO_PATH)
+    parser.add_argument("--benchmark-samples", type=int, default=benchmark.BENCHMARK_SAMPLE_COUNT)
+    parser.add_argument("--benchmark-output", default=str(ROOT / benchmark.DEFAULT_OUTPUT_DIR))
+    parser.add_argument("--benchmark-scenarios", nargs="+", default=["all"])
+    parser.add_argument("--benchmark-thread-counts", nargs="+", type=int, default=None)
+    parser.add_argument("--benchmark-repetitions", type=int, default=5)
+    parser.add_argument("--benchmark-seed", type=int, default=2026)
     parser.add_argument(
-        "action",
-        nargs="?",
-        choices=sorted(ACTION_CHOICES),
-        help="example to run; omit to choose from an interactive menu",
+        "--benchmark-engines", nargs="+", choices=sorted(name for name, _ in benchmark.ENGINE_ITEMS), default=None
     )
-    parser.add_argument(
-        "--scenario",
-        default=DEFAULT_SCENARIO_PATH,
-        help=f"CommonRoad scenario XML path (default: {DEFAULT_SCENARIO_PATH})",
-    )
-    parser.add_argument(
-        "--engine",
-        choices=sorted(ENGINE_CHOICES),
-        default="rhusics",
-        type=str.lower,
-        help="collision engine to use for non-benchmark scenario examples",
-    )
-    parser.add_argument(
-        "--benchmark-samples",
-        type=int,
-        default=benchmark.BENCHMARK_SAMPLE_COUNT,
-        help=f"number of benchmark queries to generate (default: {benchmark.BENCHMARK_SAMPLE_COUNT})",
-    )
-    parser.add_argument(
-        "--benchmark-output",
-        default=str(benchmark.DEFAULT_OUTPUT_DIR),
-        help=f"benchmark CSV output directory (default: {benchmark.DEFAULT_OUTPUT_DIR})",
-    )
-    parser.add_argument(
-        "--benchmark-scenarios",
-        nargs="+",
-        default=["all"],
-        help="benchmark scenario XML paths, or 'all' for every bundled scenario (default: all)",
-    )
-    parser.add_argument(
-        "--benchmark-thread-counts",
-        nargs="+",
-        type=int,
-        default=None,
-        help="thread counts for parallel scaling benchmarks (default: 1 2 4 8 16 capped by CPU count)",
-    )
-    parser.add_argument(
-        "--benchmark-repetitions",
-        type=int,
-        default=benchmark.BenchmarkConfig.__dataclass_fields__["repetitions"].default,
-        help="number of repeated measurements per workload/backend (default: 5)",
-    )
-    parser.add_argument(
-        "--benchmark-seed",
-        type=int,
-        default=2026,
-        help="deterministic workload seed (default: 2026)",
-    )
-    parser.add_argument(
-        "--benchmark-engines",
-        nargs="+",
-        choices=sorted(name for name, _ in benchmark.ENGINE_ITEMS),
-        default=None,
-        help="collision engines to include in benchmark runs (default: all)",
-    )
-    parser.add_argument(
-        "--benchmark-step",
-        choices=["run", "plot", "all"],
-        default="all",
-        help="benchmark phase to execute (default: all)",
-    )
+    parser.add_argument("--benchmark-step", choices=["run", "plot", "all"], default="all")
+    parser.add_argument("--benchmark-profile", choices=["smoke", "spec"], default="smoke")
+    parser.add_argument("--benchmark-suite", nargs="+", choices=["all", *benchmark.BENCHMARK_SUITES], default=["all"])
+    parser.add_argument("--benchmark-include-stress", action="store_true")
     args = parser.parse_args(argv)
-    if args.action is not None:
-        args.action = ACTION_CHOICES[args.action]
+    args.action = ACTION_CHOICES[args.action] if args.action else None
     args.engine = ENGINE_CHOICES[args.engine]
     return args
 
 
 def prompt_for_action(prompt=input):
     actions = list(ExampleAction)
-    print("Select an example:")
+    print("Select an action:")
     for index, action in enumerate(actions, start=1):
         print(f"{index}. {action.value}")
-
     while True:
         selection = prompt("Choice: ").strip().lower()
-        if selection.isdigit():
-            index = int(selection)
-            if 1 <= index <= len(actions):
-                return actions[index - 1]
-        for action in actions:
-            if selection == action.value:
-                return action
-        print(f"Enter a number from 1 to {len(actions)} or one of: {', '.join(action.value for action in actions)}")
+        if selection.isdigit() and 1 <= int(selection) <= len(actions):
+            return actions[int(selection) - 1]
+        if selection in ACTION_CHOICES:
+            return ACTION_CHOICES[selection]
+        print(f"Choose 1-{len(actions)} or: {', '.join(ACTION_CHOICES)}")
 
 
-def run_action(
-    action,
-    scenario_path: str,
-    engine: CollisionEngine,
-    benchmark_samples: int = benchmark.BENCHMARK_SAMPLE_COUNT,
-    benchmark_output: str = str(benchmark.DEFAULT_OUTPUT_DIR),
-    benchmark_scenarios: list[str] | None = None,
-    benchmark_thread_counts: list[int] | None = None,
-    benchmark_repetitions: int = benchmark.BenchmarkConfig.__dataclass_fields__["repetitions"].default,
-    benchmark_seed: int = 2026,
-    benchmark_engines: list[str] | None = None,
-    benchmark_step: str = "all",
-):
-    if action == ExampleAction.CONCEPTS:
-        concepts.run(engine)
-        return
-    if action == ExampleAction.SHAPES:
-        shapes.run(engine)
-        return
-    if action == ExampleAction.STUDY:
-        benchmark.run_all(
-            benchmark_scenario_paths(benchmark_scenarios),
-            sample_count=benchmark_samples,
-            output_dir=benchmark_output,
-            thread_counts=benchmark_thread_counts,
-            repetitions=benchmark_repetitions,
-            seed=benchmark_seed,
-            engines=benchmark_engines,
-            step=benchmark_step,
-        )
-        return
-    if action == ExampleAction.REPORT:
-        benchmark.run_all(
-            benchmark_scenario_paths(benchmark_scenarios),
-            sample_count=benchmark_samples,
-            output_dir=benchmark_output,
-            thread_counts=benchmark_thread_counts,
-            repetitions=benchmark_repetitions,
-            seed=benchmark_seed,
-            engines=benchmark_engines,
-            step="plot",
-        )
-        return
+def benchmark_scenario_paths(selection):
+    if not selection or "all" in selection:
+        return benchmark.discover_scenario_paths()
+    return selection
 
-    scenario, checker = load_collision_checker(scenario_path, engine)
-    pose_bounds = scenario_pose_bounds(scenario)
 
-    if action == ExampleAction.SCENARIO:
-        scenario_example.run(scenario, checker, scenario_path, pose_bounds)
-    elif action == ExampleAction.DYNAMICS:
-        dynamics.run(scenario, checker, scenario_path, pose_bounds)
-    elif action == ExampleAction.PLAYGROUND:
-        playground.run(scenario, checker, scenario_path, pose_bounds)
-    elif action == ExampleAction.ALL:
-        scenario_example.run(scenario, checker, scenario_path, pose_bounds)
-        concepts.run(engine)
-        shapes.run(engine)
-        dynamics.run(scenario, checker, scenario_path, pose_bounds)
-        benchmark.run_all(
-            benchmark_scenario_paths(benchmark_scenarios or [scenario_path]),
-            sample_count=benchmark_samples,
-            output_dir=benchmark_output,
-            thread_counts=benchmark_thread_counts,
-            repetitions=benchmark_repetitions,
-            seed=benchmark_seed,
-            engines=benchmark_engines,
-            step=benchmark_step,
-        )
-        playground.run(scenario, checker, scenario_path, pose_bounds)
-    else:
-        raise ValueError(f"Unsupported example action: {action}")
+def run_action(action, scenario_path: str, engine: CollisionEngine, **benchmark_options):
+    if action in {ExampleAction.BASIC, ExampleAction.CONCEPTS, ExampleAction.SHAPES}:
+        from examples.basic import run
+
+        return run(engine)
+    if action in {ExampleAction.CONTINUOUS, ExampleAction.DYNAMICS}:
+        from examples.continuous import run
+
+        return run(engine)
+    if action == ExampleAction.PLAYGROUND:
+        from examples.utils import load_collision_checker, scenario_pose_bounds
+        from tools.playground import run
+
+        scenario, checker = load_collision_checker(scenario_path, engine)
+        return run(scenario, checker, scenario_path, scenario_pose_bounds(scenario))
+    if action in {ExampleAction.COMMONROAD, ExampleAction.SCENARIO}:
+        from examples.commonroad import run
+        from examples.utils import load_collision_checker, scenario_pose_bounds
+
+        scenario, checker = load_collision_checker(scenario_path, engine)
+        return run(scenario, checker, scenario_path, scenario_pose_bounds(scenario))
+    if action == ExampleAction.ALL:
+        from examples.basic import run as run_basic
+        from examples.commonroad import run as run_commonroad
+        from examples.continuous import run as run_continuous
+        from examples.utils import load_collision_checker, scenario_pose_bounds
+
+        run_basic(engine)
+        run_continuous(engine)
+        scenario, checker = load_collision_checker(scenario_path, engine)
+        return run_commonroad(scenario, checker, scenario_path, scenario_pose_bounds(scenario))
+    if action in {ExampleAction.STUDY, ExampleAction.REPORT}:
+        options = dict(benchmark_options)
+        options["scenario_paths"] = benchmark_scenario_paths(options.pop("benchmark_scenarios", None))
+        options["sample_count"] = options.pop("benchmark_samples", benchmark.BENCHMARK_SAMPLE_COUNT)
+        options["output_dir"] = options.pop("benchmark_output", str(benchmark.DEFAULT_OUTPUT_DIR))
+        options["thread_counts"] = options.pop("benchmark_thread_counts", None)
+        options["repetitions"] = options.pop("benchmark_repetitions", 5)
+        options["seed"] = options.pop("benchmark_seed", 2026)
+        options["engines"] = options.pop("benchmark_engines", None)
+        requested_step = options.pop("benchmark_step", "all")
+        options["step"] = "plot" if action == ExampleAction.REPORT else requested_step
+        options["profile"] = options.pop("benchmark_profile", "smoke")
+        options["suites"] = options.pop("benchmark_suite", ["all"])
+        options["include_stress"] = options.pop("benchmark_include_stress", False)
+        return benchmark.run_all(**options)
+    raise ValueError(f"Unsupported action: {action}")
 
 
 def main(argv=None):
     args = parse_args(argv)
     action = args.action or prompt_for_action()
-    run_action(
-        action,
-        args.scenario,
-        args.engine,
-        args.benchmark_samples,
-        args.benchmark_output,
-        args.benchmark_scenarios,
-        args.benchmark_thread_counts,
-        args.benchmark_repetitions,
-        args.benchmark_seed,
-        args.benchmark_engines,
-        args.benchmark_step,
-    )
-
-
-def benchmark_scenario_paths(selection: list[str] | None):
-    if not selection or selection == ["all"]:
-        return benchmark.discover_scenario_paths()
-    if "all" in selection:
-        return benchmark.discover_scenario_paths()
-    return selection
+    values = vars(args)
+    values.pop("action")
+    scenario_path = values.pop("scenario")
+    engine = values.pop("engine")
+    return run_action(action, scenario_path, engine, **values)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except benchmark.ArtifactError as error:
+        raise SystemExit(str(error)) from error
