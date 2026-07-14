@@ -5,7 +5,7 @@ use geo::{AffineOps, Distance, Euclidean, Point, Polygon, Rotate};
 use glamx::{DPose2, DVec2};
 
 #[derive(Debug)]
-pub enum GeoRepresentation {
+pub(crate) enum GeoRepresentation {
     Circle { center: Point<f64>, radius: f64 },
     Polygon(Polygon<f64>),
     HalfSpace { outward_normal: DVec2, offset: f64 },
@@ -13,7 +13,7 @@ pub enum GeoRepresentation {
     FullSpace,
 }
 
-pub fn to_geo(obj: &SimpleCollisionObject, pose: DPose2) -> GeoRepresentation {
+pub(crate) fn to_geo(obj: &SimpleCollisionObject, pose: DPose2) -> GeoRepresentation {
     let affine = pose_to_affine(pose);
     match obj {
         SimpleCollisionObject::Empty(..) => GeoRepresentation::Empty,
@@ -54,7 +54,10 @@ pub fn to_geo(obj: &SimpleCollisionObject, pose: DPose2) -> GeoRepresentation {
     }
 }
 
-pub fn distance_geo(g1: &GeoRepresentation, g2: &GeoRepresentation) -> Result<f64, CrccError> {
+pub(crate) fn distance_geo(
+    g1: &GeoRepresentation,
+    g2: &GeoRepresentation,
+) -> Result<f64, CrccError> {
     match (g1, g2) {
         (GeoRepresentation::Empty, _) | (_, GeoRepresentation::Empty) => {
             Err(CrccError::Unsupported)
@@ -145,19 +148,30 @@ pub fn distance_geo(g1: &GeoRepresentation, g2: &GeoRepresentation) -> Result<f6
 }
 
 impl CollisionObject {
-    pub fn distance(
+    pub(crate) fn distance_at(
         &self,
         pos_self: DPose2,
         other: &Self,
         pos_other: DPose2,
     ) -> Result<f64, CrccError> {
+        let left: Vec<_> = self
+            .collision_objects
+            .iter()
+            .map(|object| to_geo(object, pos_self))
+            .collect();
+        let right: Vec<_> = other
+            .collision_objects
+            .iter()
+            .map(|object| to_geo(object, pos_other))
+            .collect();
         let mut min_distance = f64::INFINITY;
-        for obj_self in &self.collision_objects {
-            let geo_self = to_geo(obj_self, pos_self);
-            for obj_other in &other.collision_objects {
-                let geo_other = to_geo(obj_other, pos_other);
-                let d = distance_geo(&geo_self, &geo_other)?;
-                min_distance = min_distance.min(d);
+        for geo_self in &left {
+            for geo_other in &right {
+                min_distance = min_distance.min(distance_geo(geo_self, geo_other)?);
+                // ponytail: exact zero cannot improve, so skip the remaining pairs.
+                if min_distance == 0.0 {
+                    return Ok(0.0);
+                }
             }
         }
         if min_distance.is_finite() {

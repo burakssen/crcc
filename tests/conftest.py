@@ -1,5 +1,5 @@
 import pytest
-from crcc.collision_checker import CollisionEngine
+from crcc import CollisionEngine
 
 ENGINES = [CollisionEngine.Parry, CollisionEngine.Rhusics, CollisionEngine.Collide]
 

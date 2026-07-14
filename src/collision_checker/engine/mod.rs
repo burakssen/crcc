@@ -170,21 +170,11 @@ pub fn distance(
         #[cfg(not(feature = "parry"))]
         CollisionEngine::Parry => Err(CrccError::Unsupported),
         #[cfg(feature = "rhusics")]
-        CollisionEngine::Rhusics => {
-            use rhusics::RhusicsCoreCollisionObject;
-            let slf = RhusicsCoreCollisionObject::from(slf.clone());
-            let other = RhusicsCoreCollisionObject::from(other.clone());
-            slf.distance_at(pos_self, &other, pos_other)
-        }
+        CollisionEngine::Rhusics => slf.distance_at(pos_self, other, pos_other),
         #[cfg(not(feature = "rhusics"))]
         CollisionEngine::Rhusics => Err(CrccError::Unsupported),
         #[cfg(feature = "collide")]
-        CollisionEngine::Collide => {
-            use collide::CollideCollisionObject;
-            let slf = CollideCollisionObject::from(slf.clone());
-            let other = CollideCollisionObject::from(other.clone());
-            slf.distance_at(pos_self, &other, pos_other)
-        }
+        CollisionEngine::Collide => slf.distance_at(pos_self, other, pos_other),
         #[cfg(not(feature = "collide"))]
         CollisionEngine::Collide => Err(CrccError::Unsupported),
     }
@@ -192,9 +182,16 @@ pub fn distance(
 
 #[cfg_attr(feature = "python_bindings", pyo3::pyclass(eq, eq_int))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// A runtime-selectable collision backend.
+///
+/// Selecting an engine whose Cargo feature is disabled causes queries and
+/// checker construction to return [`CrccError::Unsupported`].
 pub enum CollisionEngine {
+    /// The Parry backend; the default whenever the `parry` feature is enabled.
     Parry,
+    /// The Rhusics backend.
     Rhusics,
+    /// The Collide backend.
     Collide,
 }
 
@@ -333,12 +330,36 @@ mod tests {
         assert_engine_parity(&empty, &full, false);
         assert_engine_parity(&full, &distant_circle, true);
         assert_engine_parity(&circle, &distant_circle, false);
-        assert_engine_parity_at(
-            &circle,
-            DPose2::IDENTITY,
-            &distant_circle,
-            DPose2::translation(-3.0, 0.0),
-            true,
+        // Rhusics uses native GJK semantics, which exclude exact tangency.
+        assert!(
+            collides(
+                &circle,
+                DPose2::IDENTITY,
+                &distant_circle,
+                DPose2::translation(-3.0, 0.0),
+                CollisionEngine::Parry,
+            )
+            .unwrap()
+        );
+        assert!(
+            !collides(
+                &circle,
+                DPose2::IDENTITY,
+                &distant_circle,
+                DPose2::translation(-3.0, 0.0),
+                CollisionEngine::Rhusics,
+            )
+            .unwrap()
+        );
+        assert!(
+            collides(
+                &circle,
+                DPose2::IDENTITY,
+                &distant_circle,
+                DPose2::translation(-3.0, 0.0),
+                CollisionEngine::Collide,
+            )
+            .unwrap()
         );
         assert_engine_parity_at(
             &circle,
@@ -418,7 +439,7 @@ mod tests {
 
     #[test]
     fn discrete_engines_match_for_half_spaces() {
-        let x_le_zero = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
+        let x_le_zero = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap();
         let far_inside_circle = CollisionObject::circle((-2_000_000.0, 0.0), 1.0).unwrap();
         let far_outside_circle = CollisionObject::circle((2_000_000.0, 0.0), 1.0).unwrap();
         let outside_old_tangent_extent = CollisionObject::circle((-1.0, 2_000_000.0), 1.0).unwrap();
@@ -635,11 +656,11 @@ mod tests {
 
     #[test]
     fn non_parry_backends_handle_half_space_pairs_exactly() {
-        let x_le_zero = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
-        let x_ge_minus_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, 1.0);
-        let x_ge_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, -1.0);
-        let x_le_two = CollisionObject::half_space_from_coeffs(1.0, 0.0, 2.0);
-        let y_le_zero = CollisionObject::half_space_from_coeffs(0.0, 1.0, 0.0);
+        let x_le_zero = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap();
+        let x_ge_minus_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, 1.0).unwrap();
+        let x_ge_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, -1.0).unwrap();
+        let x_le_two = CollisionObject::half_space_from_coeffs(1.0, 0.0, 2.0).unwrap();
+        let y_le_zero = CollisionObject::half_space_from_coeffs(0.0, 1.0, 0.0).unwrap();
 
         assert_rhusics_and_collide_collision(
             &x_le_zero,
@@ -718,7 +739,7 @@ mod tests {
     #[test]
     fn engines_detect_continuous_half_space_endpoint_crossing() {
         let moving = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
-        let half_space = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
+        let half_space = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap();
 
         for engine in [CollisionEngine::Rhusics, CollisionEngine::Collide] {
             assert!(
@@ -739,7 +760,7 @@ mod tests {
     #[test]
     fn non_parry_backends_detect_continuous_half_space_between_endpoints() {
         let moving = CollisionObject::rectangle(Rect::new((-2.0, -0.1), (2.0, 0.1)), 0.0).unwrap();
-        let half_space = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
+        let half_space = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap();
 
         for engine in [CollisionEngine::Rhusics, CollisionEngine::Collide] {
             assert!(
@@ -777,6 +798,84 @@ mod tests {
     }
 
     #[test]
+    fn non_parry_rotational_ccd_is_conservative() {
+        let moving = CollisionObject::rectangle(Rect::new((-5.0, -0.1), (5.0, 0.1)), 0.0).unwrap();
+        let fixed = CollisionObject::circle((0.0, 4.0), 0.5).unwrap();
+
+        for engine in [CollisionEngine::Rhusics, CollisionEngine::Collide] {
+            assert!(
+                collides_continuous(
+                    &moving,
+                    DPose2::IDENTITY,
+                    DPose2::new((0.0, 0.0).into(), PI),
+                    &fixed,
+                    DPose2::IDENTITY,
+                    DPose2::IDENTITY,
+                    engine,
+                )
+                .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn non_parry_rotational_ccd_rejects_disjoint_motion_bounds() {
+        let moving = CollisionObject::rectangle(Rect::new((-5.0, -0.1), (5.0, 0.1)), 0.0).unwrap();
+        let fixed = CollisionObject::circle((100.0, 100.0), 0.5).unwrap();
+
+        for engine in [CollisionEngine::Rhusics, CollisionEngine::Collide] {
+            assert!(
+                !collides_continuous(
+                    &moving,
+                    DPose2::IDENTITY,
+                    DPose2::new((0.0, 0.0).into(), PI),
+                    &fixed,
+                    DPose2::IDENTITY,
+                    DPose2::IDENTITY,
+                    engine,
+                )
+                .unwrap(),
+                "{engine:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn full_space_distance_is_zero_for_every_engine() {
+        let full = CollisionObject::full_space();
+        let circle = CollisionObject::circle((100.0, 100.0), 1.0).unwrap();
+        for engine in [
+            CollisionEngine::Parry,
+            CollisionEngine::Rhusics,
+            CollisionEngine::Collide,
+        ] {
+            assert_eq!(
+                distance(&full, DPose2::IDENTITY, &circle, DPose2::IDENTITY, engine).unwrap(),
+                0.0
+            );
+        }
+    }
+
+    #[test]
+    fn parry_continuous_includes_endpoint_contact() {
+        let moving = CollisionObject::circle((0.0, 0.0), 0.5).unwrap();
+        let fixed = CollisionObject::circle((0.0, 0.0), 0.5).unwrap();
+
+        assert!(
+            collides_continuous(
+                &moving,
+                DPose2::translation(-3.0, 0.0),
+                DPose2::translation(0.0, 0.0),
+                &fixed,
+                DPose2::translation(1.0, 0.0),
+                DPose2::translation(1.0, 0.0),
+                CollisionEngine::Parry,
+            )
+            .unwrap()
+        )
+    }
+
+    #[test]
     fn builder_can_select_each_engine() {
         for engine in [
             CollisionEngine::Parry,
@@ -790,7 +889,9 @@ mod tests {
             let query = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
 
             assert_eq!(
-                checker.collides_static_at(&query, TimeStep(0)).unwrap(),
+                checker
+                    .collides_static_range(&query, DPose2::IDENTITY, TimeStep(0)..=TimeStep(0))
+                    .unwrap(),
                 CollisionStatus::CollidesStatic
             );
             assert_eq!(checker.engine(), engine);

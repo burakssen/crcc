@@ -3,10 +3,10 @@ use crate::collision_checker::engine::collide::simple::{
     FiniteShapeSupport, HalfSpaceComponent, vec2,
 };
 use crate::collision_object::CollisionObject;
+use crate::collision_object::simple::rotation_changed;
 use collide::{Collider, CollisionInfo, Transform, Transformable};
 use collide_convex::Convex as CollideConvex;
 use collide_sphere::Sphere as CollideSphere;
-use collision_detection::CollisionManager;
 use glamx::{DPose2, DVec2};
 use std::fmt;
 
@@ -146,38 +146,17 @@ fn finite_components_collide(
     right_components: &[CollideCollisionComponent],
     right_pose: DPose2,
 ) -> bool {
-    let Some(left) = finite_component_manager(left_components, left_pose) else {
-        return false;
-    };
-    let Some(right) = finite_component_manager(right_components, right_pose) else {
-        return false;
-    };
-
-    left
-        .compute_collisions_with(&right)
-        .values()
-        .any(|hits| !hits.is_empty())
-}
-
-fn finite_component_manager(
-    components: &[CollideCollisionComponent],
-    pose: DPose2,
-) -> Option<CollisionManager<ManagedFiniteShape, usize>> {
-    let finite_count = components
-        .iter()
-        .filter(|component| matches!(component, CollideCollisionComponent::Finite(_)))
-        .count();
-    if finite_count == 0 {
-        return None;
-    }
-
-    let mut manager = CollisionManager::with_capacity(finite_count);
-    for (index, component) in components.iter().enumerate() {
-        if let CollideCollisionComponent::Finite(finite) = component {
-            manager.insert_collider(ManagedFiniteShape::new(finite, pose), index);
-        }
-    }
-    Some(manager)
+    left_components.iter().any(|left| {
+        let CollideCollisionComponent::Finite(left) = left else {
+            return false;
+        };
+        right_components.iter().any(|right| {
+            let CollideCollisionComponent::Finite(right) = right else {
+                return false;
+            };
+            finite_shapes_collide(left, left_pose, right, right_pose)
+        })
+    })
 }
 
 #[derive(Clone)]
@@ -253,6 +232,9 @@ fn components_hit_continuous(
     if pair.collides_at(0.0) || pair.collides_at(1.0) {
         return true;
     }
+    if left_start_pose == left_end_pose && right_start_pose == right_end_pose {
+        return false;
+    }
     if !pair.interval_may_collide(0.0, 1.0) {
         return false;
     }
@@ -297,7 +279,8 @@ impl ContinuousPair<'_> {
         }
 
         if t1 - t0 <= TOI_TIME_TOLERANCE || depth >= TOI_MAX_DEPTH {
-            return false;
+            // The interval broad phase still overlaps, so absence is unproven.
+            return true;
         }
 
         (self.interval_may_collide(t0, mid) && self.interval_collides(t0, mid, depth + 1))
@@ -328,14 +311,9 @@ fn finite_shapes_collide(
     right: &FiniteShape,
     right_pose: DPose2,
 ) -> bool {
-    let mut left_manager = CollisionManager::with_capacity(1);
-    let mut right_manager = CollisionManager::with_capacity(1);
-    left_manager.insert_collider(ManagedFiniteShape::new(left, left_pose), 0);
-    right_manager.insert_collider(ManagedFiniteShape::new(right, right_pose), 0);
-    left_manager
-        .compute_collisions_with(&right_manager)
-        .values()
-        .any(|hits| !hits.is_empty())
+    let left = ManagedFiniteShape::new(left, left_pose);
+    let right = ManagedFiniteShape::new(right, right_pose);
+    left.check_collision(&right) && left.collision_info(&right).is_some()
 }
 
 fn transformed_convex_at_pose(finite: &FiniteShape, pose: DPose2) -> CollideConvex<CollideVec2> {
@@ -429,18 +407,24 @@ fn component_interval_aabb(
 ) -> Option<Aabb> {
     match component {
         CollideCollisionComponent::Finite(finite) => {
-            let mut aabb: Option<Aabb> = None;
-            // Endpoints plus interior points make rotating boxes/polygons rejectable while
-            // preserving a deterministic bounded solver.
-            for sample in [t0, (2.0 * t0 + t1) / 3.0, (t0 + 2.0 * t1) / 3.0, t1] {
-                let pose = lerp_pose(start_pose, end_pose, sample);
-                let sample_aabb = finite_aabb_at(finite, pose);
-                aabb = Some(match aabb {
-                    Some(existing) => existing.union(sample_aabb),
-                    None => sample_aabb,
-                });
+            let start = lerp_pose(start_pose, end_pose, t0);
+            let end = lerp_pose(start_pose, end_pose, t1);
+            if !rotation_changed(start, end) {
+                return Some(finite_aabb_at(finite, start).union(finite_aabb_at(finite, end)));
             }
-            aabb
+
+            let support_radius = match &finite.support {
+                FiniteShapeSupport::Circle { radius } => *radius,
+                FiniteShapeSupport::Vertices(vertices) => vertices
+                    .iter()
+                    .map(|vertex| vertex.length())
+                    .fold(0.0, f64::max),
+            };
+            let radius = finite.position.translation.length() + support_radius;
+            Some(Aabb {
+                min: start.translation.min(end.translation) - DVec2::splat(radius),
+                max: start.translation.max(end.translation) + DVec2::splat(radius),
+            })
         }
         CollideCollisionComponent::HalfSpace(_) => None,
     }

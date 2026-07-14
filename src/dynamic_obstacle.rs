@@ -22,21 +22,31 @@ pub(crate) enum DynamicObstacleTrajectory<E> {
     },
 }
 
-pub type DynamicObstacle = GenericDynamicObstacle<CollisionObject>;
+#[derive(Debug, Clone)]
+/// A discrete moving obstacle used by [`crate::CollisionChecker`].
+pub struct DynamicObstacle(GenericDynamicObstacle<CollisionObject>);
 
 impl DynamicObstacle {
+    /// Creates a fixed-shape trajectory.
+    ///
+    /// `positions[0]` is active at `time_offset`; later poses advance one time
+    /// step each. Motion between adjacent poses is checked conservatively.
     pub fn new(shape: CollisionObject, positions: Vec<DPose2>, time_offset: TimeStep) -> Self {
         let convex_hulls = shape.swept_areas(&positions);
-        Self {
+        Self(GenericDynamicObstacle {
             trajectory: DynamicObstacleTrajectory::FixedShape {
                 shape,
                 positions,
                 convex_hulls,
             },
             time_offset,
-        }
+        })
     }
 
+    /// Creates a trajectory whose shape may change at each step.
+    ///
+    /// `obstacles` and `positions` must have equal lengths. This constructor
+    /// panics when they differ.
     pub fn time_variant(
         obstacles: Vec<CollisionObject>,
         positions: Vec<DPose2>,
@@ -57,21 +67,30 @@ impl DynamicObstacle {
             let swept_t1 = shape_t1.swept_area(pos_t, pos_t1);
             convex_hulls.push(swept_t.merge(swept_t1));
         }
-        Self {
+        Self(GenericDynamicObstacle {
             trajectory: DynamicObstacleTrajectory::VaryingShape {
                 obstacles,
                 positions,
                 convex_hulls,
             },
             time_offset,
-        }
+        })
     }
 
     pub fn convert_repr<E: From<CollisionObject>>(self) -> GenericDynamicObstacle<E> {
         GenericDynamicObstacle {
-            trajectory: self.trajectory.convert_repr(),
-            time_offset: self.time_offset,
+            trajectory: self.0.trajectory.convert_repr(),
+            time_offset: self.0.time_offset,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn obstacle_at(&self, time_step: TimeStep) -> Option<(&CollisionObject, DPose2)> {
+        self.0.obstacle_at(time_step)
+    }
+
+    pub(crate) fn active_times(&self) -> TimeStepSet {
+        self.0.active_times()
     }
 }
 
@@ -136,7 +155,12 @@ impl<E> GenericDynamicObstacle<E> {
     }
 
     pub(crate) fn active_times(&self) -> TimeStepSet {
-        TimeStepSet::from(self.time_offset..self.time_offset.add_steps(self.len()))
+        match self.len().checked_sub(1) {
+            Some(last_index) => {
+                TimeStepSet::from(self.time_offset..=self.time_offset.add_steps(last_index))
+            }
+            None => TimeStepSet::default(),
+        }
     }
 
     fn len(&self) -> usize {
@@ -192,12 +216,13 @@ mod tests {
     }
 
     #[rstest]
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
     fn convex_hull_covers_interpolated_motion(dynamic_obstacle: DynamicObstacle) {
         let DynamicObstacleTrajectory::FixedShape {
             shape,
             positions,
             convex_hulls,
-        } = &dynamic_obstacle.trajectory
+        } = &dynamic_obstacle.0.trajectory
         else {
             panic!("fixture should be a fixed-shape dynamic obstacle");
         };
@@ -227,7 +252,7 @@ mod tests {
     #[rstest]
     fn convex_hulls_exist_between_positions_only(dynamic_obstacle: DynamicObstacle) {
         let DynamicObstacleTrajectory::FixedShape { convex_hulls, .. } =
-            &dynamic_obstacle.trajectory
+            &dynamic_obstacle.0.trajectory
         else {
             panic!("fixture should be a fixed-shape dynamic obstacle");
         };
@@ -244,10 +269,10 @@ mod tests {
             .convert_repr::<ParryCollisionObject>();
         assert_eq!(
             converted.trajectory.positions(),
-            dynamic_obstacle.trajectory.positions()
+            dynamic_obstacle.0.trajectory.positions()
         );
-        assert_eq!(converted.time_offset, dynamic_obstacle.time_offset);
-        match (&converted.trajectory, &dynamic_obstacle.trajectory) {
+        assert_eq!(converted.time_offset, dynamic_obstacle.0.time_offset);
+        match (&converted.trajectory, &dynamic_obstacle.0.trajectory) {
             (
                 DynamicObstacleTrajectory::FixedShape {
                     convex_hulls: converted_hulls,

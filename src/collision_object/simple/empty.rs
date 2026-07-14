@@ -2,6 +2,7 @@ use crate::collision_object::simple::{SimpleCollisionObject, SweptArea};
 use glamx::DPose2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Geometry representing the empty set.
 pub struct Empty;
 
 impl SweptArea for Empty {

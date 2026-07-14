@@ -2,8 +2,7 @@ import math
 
 import pytest
 from collision_helpers import assert_collides, axis_aligned_rectangle, oriented_rectangle
-from crcc.collision_object import Circle, Compound, Empty, FullSpace, Polygon, Rectangle, Triangle
-from crcc.pose import Pose
+from crcc import Circle, Compound, Empty, FullSpace, Polygon, Pose, Rectangle, Triangle
 
 
 @pytest.mark.parametrize(

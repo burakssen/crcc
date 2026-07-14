@@ -7,6 +7,11 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::sync::Arc;
 
+/// A discrete obstacle trajectory used by CollisionChecker.
+///
+/// `DynamicObstacle(shape, positions, time_offset)` keeps one shape and assigns
+/// successive poses to successive integer time steps. Adjacent poses are joined
+/// by conservative continuous collision checks.
 #[pyclass]
 #[derive(Clone)]
 pub struct DynamicObstacle(Arc<RustDynamicObstacle>);
@@ -20,6 +25,7 @@ impl AsRef<RustDynamicObstacle> for DynamicObstacle {
 #[pymethods]
 impl DynamicObstacle {
     #[new]
+    /// Creates a fixed-shape trajectory.
     pub fn new(shape: &CollisionObject, positions: Vec<Pose>, time_offset: TimeStepInner) -> Self {
         let dyn_obs = RustDynamicObstacle::new(
             shape.as_ref().clone(),
@@ -31,6 +37,10 @@ impl DynamicObstacle {
 
     #[staticmethod]
     #[pyo3(signature = (obstacles, time_offset = 0, positions = None))]
+    /// Creates a trajectory whose shape may vary at each time step.
+    ///
+    /// `positions` defaults to identity poses. Raises ValueError when the shape
+    /// and pose counts differ.
     pub fn from_time_variant(
         obstacles: Vec<CollisionObject>,
         time_offset: TimeStepInner,

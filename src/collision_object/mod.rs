@@ -1,3 +1,4 @@
+use crate::collision_checker::engine::{self, CollisionEngine};
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::collision_object::simple::SweptArea;
 use crate::error::CrccResult;
@@ -9,47 +10,109 @@ pub mod distance;
 pub mod simple;
 
 #[derive(Debug, Clone)]
+/// A shape or compound of shapes accepted by every public query.
+///
+/// Constructors validate geometry and decompose complex polygons internally.
+/// A merged object represents the union of its children.
 pub struct CollisionObject {
     collision_objects: Vec<SimpleCollisionObject>,
 }
 
 impl CollisionObject {
+    /// Performs a discrete pair collision query at two poses.
+    pub fn collides(
+        &self,
+        other: &Self,
+        pos_self: DPose2,
+        pos_other: DPose2,
+        engine: CollisionEngine,
+    ) -> CrccResult<bool> {
+        engine::collides(self, pos_self, other, pos_other, engine)
+    }
+
+    /// Checks two motions continuously between their start and end poses.
+    ///
+    /// `false` certifies separation over the interval; `true` can be a
+    /// conservative positive for rotations and complex shapes.
+    pub fn collides_continuous(
+        &self,
+        start_pos_self: DPose2,
+        end_pos_self: DPose2,
+        other: &Self,
+        start_pos_other: DPose2,
+        end_pos_other: DPose2,
+        engine: CollisionEngine,
+    ) -> CrccResult<bool> {
+        engine::collides_continuous(
+            self,
+            start_pos_self,
+            end_pos_self,
+            other,
+            start_pos_other,
+            end_pos_other,
+            engine,
+        )
+    }
+
+    /// Returns the non-negative separation distance at two poses.
+    ///
+    /// Returns [`crate::CrccError::Unsupported`] when the engine does not support
+    /// the requested shape combination.
+    pub fn distance(
+        &self,
+        other: &Self,
+        pos_self: DPose2,
+        pos_other: DPose2,
+        engine: CollisionEngine,
+    ) -> CrccResult<f64> {
+        engine::distance(self, pos_self, other, pos_other, engine)
+    }
+
     fn new(collision_objects: Vec<SimpleCollisionObject>) -> Self {
         Self { collision_objects }
     }
 
+    /// Creates an object that never collides.
     pub fn empty() -> Self {
         Self::new(Vec::new())
     }
 
+    /// Creates an object occupying the entire plane.
     pub fn full_space() -> Self {
         Self::new(vec![SimpleCollisionObject::full_space()])
     }
 
-    pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> Self {
-        SimpleCollisionObject::half_space(outward_normal, offset).into()
+    /// Creates the half-space `normal · point <= offset`.
+    pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> CrccResult<Self> {
+        Ok(SimpleCollisionObject::half_space(outward_normal, offset)?.into())
     }
 
-    pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> Self {
-        SimpleCollisionObject::half_space_from_points(p1, p2).into()
+    /// Creates the half-space to the right of the directed line `p1 -> p2`.
+    pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> CrccResult<Self> {
+        Ok(SimpleCollisionObject::half_space_from_points(p1, p2)?.into())
     }
 
-    pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> Self {
-        SimpleCollisionObject::half_space_from_coeffs(a, b, c).into()
+    /// Creates the half-space `a*x + b*y <= c`.
+    pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> CrccResult<Self> {
+        Ok(SimpleCollisionObject::half_space_from_coeffs(a, b, c)?.into())
     }
 
+    /// Creates a circle with a finite center and positive radius.
     pub fn circle(center: (f64, f64), radius: f64) -> CrccResult<Self> {
         Ok(SimpleCollisionObject::circle(center, radius)?.into())
     }
 
+    /// Creates an oriented rectangle from an axis-aligned base rectangle.
     pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> CrccResult<Self> {
         Ok(SimpleCollisionObject::rectangle(rect, orientation)?.into())
     }
 
+    /// Creates a non-degenerate triangle.
     pub fn triangle(triangle: impl Into<Triangle>) -> CrccResult<Self> {
         Ok(SimpleCollisionObject::triangle(triangle)?.into())
     }
 
+    /// Creates a polygon, including non-convex polygons and polygons with holes.
     pub fn polygon(polygon: impl Into<Polygon>) -> CrccResult<Self> {
         Ok(SimpleCollisionObject::polygon(polygon)?.into())
     }
@@ -62,18 +125,22 @@ impl CollisionObject {
         self.collision_objects
     }
 
+    /// Returns whether this object contains no geometry.
     pub fn is_empty(&self) -> bool {
         self.collision_objects.is_empty()
     }
 
+    /// Returns whether this object occupies the full plane.
     pub fn is_full_space(&self) -> bool {
         self.collision_objects.len() == 1 && self.collision_objects[0].is_full_space()
     }
 
+    /// Returns the union of this object and `other`.
     pub fn merge(self, other: Self) -> Self {
         Self::merge_all([self, other])
     }
 
+    /// Returns the union of all supplied objects.
     pub fn merge_all(objects: impl IntoIterator<Item = Self>) -> Self {
         objects.into_iter().flatten().collect()
     }

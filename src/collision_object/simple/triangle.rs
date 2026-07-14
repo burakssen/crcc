@@ -5,10 +5,20 @@ use glamx::DPose2;
 use std::ops::Deref;
 
 #[derive(Debug, Clone, PartialEq)]
+/// Non-degenerate triangle geometry accepted by [`crate::CollisionObject::from`].
 pub struct Triangle(pub(super) GeoTriangle);
 
 impl Triangle {
+    /// Creates a finite, non-empty triangle.
     pub fn new(triangle: GeoTriangle) -> CrccResult<Triangle> {
+        if [triangle.0, triangle.1, triangle.2]
+            .iter()
+            .any(|coord| !coord.x.is_finite() || !coord.y.is_finite())
+        {
+            return Err(CrccError::InvalidGeometry(
+                "triangle coordinates must be finite",
+            ));
+        }
         if triangle.is_empty() {
             return Err(CrccError::EmptyShape);
         }

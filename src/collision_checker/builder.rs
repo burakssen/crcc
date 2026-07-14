@@ -1,7 +1,7 @@
 use crate::collision_checker::CollisionChecker;
 use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::engine::EngineCollisionObject;
-use crate::collision_checker::selected::SelectedCollisionChecker;
+use crate::collision_checker::selected::{SelectedCollisionChecker, SelectedCollisionCheckerInner};
 use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::dynamic_obstacle::DynamicObstacle;
@@ -10,32 +10,40 @@ use crate::time::TimeStepSet;
 use geo::{Area, BooleanOps, ConvexHull, HasDimensions, Polygon, Simplify, Winding, unary_union};
 use itertools::{Itertools, chain};
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
+/// Builds an immutable [`CollisionChecker`] with runtime engine selection.
 pub struct CollisionCheckerBuilder {
     static_obstacles: Vec<CollisionObject>,
     dynamic_obstacles: Vec<DynamicObstacle>,
 }
 
 impl CollisionCheckerBuilder {
+    /// Creates an empty builder using [`CollisionEngine::default`].
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            static_obstacles: Vec::new(),
+            dynamic_obstacles: Vec::new(),
+        }
     }
 
+    /// Adds geometry to the checker's merged static obstacle.
     pub fn with_static_obstacle(mut self, collision_object: impl Into<CollisionObject>) -> Self {
         self.static_obstacles.push(collision_object.into());
         self
     }
 
+    /// Adds geometry representing the space outside `lanelets`.
     pub fn with_road_boundary(self, lanelets: &[Polygon]) -> Self {
-        let boundary = road_boundary(lanelets);
-        self.with_static_obstacle(boundary)
+        self.with_static_obstacle(road_boundary(lanelets))
     }
 
+    /// Adds a dynamic trajectory to the checker.
     pub fn with_dynamic_obstacle(mut self, dynamic_obstacle: DynamicObstacle) -> Self {
         self.dynamic_obstacles.push(dynamic_obstacle);
         self
     }
 
+    /// Builds a checker whose backend representation is selected by `E`.
     pub fn build<E: EngineCollisionObject>(self) -> CollisionChecker<E> {
         let active_times = self.active_times();
         CollisionChecker {
@@ -49,25 +57,28 @@ impl CollisionCheckerBuilder {
         }
     }
 
+    /// Builds a runtime-selected checker.
     pub fn build_with_engine(
         self,
         engine: CollisionEngine,
     ) -> Result<SelectedCollisionChecker, CrccError> {
         match engine {
             #[cfg(feature = "parry")]
-            CollisionEngine::Parry => Ok(SelectedCollisionChecker::Parry(Box::new(self.build()))),
+            CollisionEngine::Parry => Ok(SelectedCollisionChecker::new(
+                SelectedCollisionCheckerInner::Parry(Box::new(self.build())),
+            )),
             #[cfg(not(feature = "parry"))]
             CollisionEngine::Parry => Err(CrccError::Unsupported),
             #[cfg(feature = "rhusics")]
-            CollisionEngine::Rhusics => {
-                Ok(SelectedCollisionChecker::Rhusics(Box::new(self.build())))
-            }
+            CollisionEngine::Rhusics => Ok(SelectedCollisionChecker::new(
+                SelectedCollisionCheckerInner::Rhusics(Box::new(self.build())),
+            )),
             #[cfg(not(feature = "rhusics"))]
             CollisionEngine::Rhusics => Err(CrccError::Unsupported),
             #[cfg(feature = "collide")]
-            CollisionEngine::Collide => {
-                Ok(SelectedCollisionChecker::Collide(Box::new(self.build())))
-            }
+            CollisionEngine::Collide => Ok(SelectedCollisionChecker::new(
+                SelectedCollisionCheckerInner::Collide(Box::new(self.build())),
+            )),
             #[cfg(not(feature = "collide"))]
             CollisionEngine::Collide => Err(CrccError::Unsupported),
         }
@@ -79,6 +90,12 @@ impl CollisionCheckerBuilder {
             active_times.union(&dynamic_obstacle.active_times());
         }
         active_times
+    }
+}
+
+impl Default for CollisionCheckerBuilder {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -96,6 +113,7 @@ pub(crate) fn road_boundary(lanelets: &[Polygon]) -> CollisionObject {
         .tuple_windows()
         .map(|(start_point, end_point)| {
             SimpleCollisionObject::half_space_from_points(start_point.into(), end_point.into())
+                .expect("lanelet boundary segments contain distinct finite points")
         });
 
     // Determine holes in the convex hull of the road

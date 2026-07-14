@@ -10,7 +10,6 @@ mod simple;
 #[derive(Debug, Clone)]
 pub struct CollideCollisionObject {
     inner: CollideCollisionObjectInner,
-    original: CollisionObject,
 }
 
 impl EngineCollisionObject for CollideCollisionObject {
@@ -41,22 +40,12 @@ impl EngineCollisionObject for CollideCollisionObject {
             end_pos_other,
         )?)
     }
-
-    fn distance_at(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-    ) -> Result<f64, CrccError> {
-        self.original.distance(pos_self, &other.original, pos_other)
-    }
 }
 
 impl From<CollisionObject> for CollideCollisionObject {
     fn from(value: CollisionObject) -> Self {
         Self {
-            inner: value.clone().into(),
-            original: value,
+            inner: value.into(),
         }
     }
 }

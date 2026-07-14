@@ -1,8 +1,6 @@
 import random
 
-from crcc.collision_checker import CollisionEngine
-from crcc.collision_object import Circle, Compound, Rectangle, Triangle
-from crcc.pose import Pose
+from crcc import Circle, CollisionEngine, Compound, Pose, Rectangle, Triangle
 
 
 def random_shape(rng):

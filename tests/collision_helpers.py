@@ -1,5 +1,4 @@
-from crcc.collision_object import Rectangle
-from crcc.pose import Pose
+from crcc import Pose, Rectangle
 
 
 def assert_collides(left, right, expected, *, engine, pos_left=None, pos_right=None):

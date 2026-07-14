@@ -8,6 +8,10 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::sync::Arc;
 
+/// Base class for all queryable 2D geometry.
+///
+/// Pair methods accept an optional CollisionEngine and raise ValueError for
+/// invalid geometry or unsupported engine/operation combinations.
 #[pyclass(subclass)]
 #[derive(Clone)]
 pub struct CollisionObject(Arc<RustCollisionObject>);
@@ -15,6 +19,7 @@ pub struct CollisionObject(Arc<RustCollisionObject>);
 #[pymethods]
 impl CollisionObject {
     #[pyo3(signature = (other, pos_self = Pose::identity(), pos_other = Pose::identity(), engine = CollisionEngine::Parry))]
+    /// Returns whether two objects overlap at the supplied poses.
     pub fn collides(
         &self,
         other: &CollisionObject,
@@ -32,6 +37,9 @@ impl CollisionObject {
     }
 
     #[pyo3(signature = (start_pos_self, end_pos_self, other, start_pos_other, end_pos_other, engine = CollisionEngine::Parry))]
+    /// Conservatively checks two motions over one continuous interval.
+    ///
+    /// False certifies separation; True may be a conservative positive.
     pub fn collides_continuous(
         &self,
         start_pos_self: Pose,
@@ -53,6 +61,7 @@ impl CollisionObject {
     }
 
     #[pyo3(signature = (other, pos_self = Pose::identity(), pos_other = Pose::identity(), engine = CollisionEngine::Parry))]
+    /// Returns the non-negative separation distance between two objects.
     pub fn distance(
         &self,
         other: &CollisionObject,
@@ -69,6 +78,7 @@ impl CollisionObject {
         )?)
     }
 
+    /// Returns a compound containing this object and `other`.
     pub fn merge(&self, other: &CollisionObject) -> CollisionObject {
         CollisionObject::from(RustCollisionObject::merge(
             self.as_ref().clone(),
@@ -77,6 +87,7 @@ impl CollisionObject {
     }
 
     #[staticmethod]
+    /// Merges an iterable of objects into one compound.
     pub fn merge_all(collision_objects: Vec<CollisionObject>) -> CollisionObject {
         CollisionObject::from(RustCollisionObject::merge_all(
             collision_objects
@@ -104,6 +115,7 @@ impl AsRef<RustCollisionObject> for CollisionObject {
     }
 }
 
+/// A union of zero or more CollisionObject children.
 #[pyclass(extends = CollisionObject)]
 pub struct Compound;
 
@@ -126,6 +138,7 @@ impl Compound {
     }
 }
 
+/// A circle defined by a positive radius and optional local-space center.
 #[pyclass(extends = CollisionObject)]
 pub struct Circle;
 
@@ -141,6 +154,7 @@ impl Circle {
     }
 }
 
+/// Geometry that never collides.
 #[pyclass(extends = CollisionObject)]
 pub struct Empty;
 
@@ -152,6 +166,7 @@ impl Empty {
     }
 }
 
+/// Geometry occupying the entire plane.
 #[pyclass(extends = CollisionObject)]
 pub struct FullSpace;
 
@@ -163,6 +178,7 @@ impl FullSpace {
     }
 }
 
+/// The region `outward_normal dot point <= offset`.
 #[pyclass(extends = CollisionObject)]
 pub struct HalfSpace;
 
@@ -170,17 +186,17 @@ pub struct HalfSpace;
 impl HalfSpace {
     #[new]
     #[pyo3(signature = (outward_normal, offset = 0.0))]
-    pub fn new(outward_normal: (f64, f64), offset: f64) -> (Self, CollisionObject) {
-        (
+    pub fn new(outward_normal: (f64, f64), offset: f64) -> PyResult<(Self, CollisionObject)> {
+        Ok((
             Self,
-            SimpleCollisionObject::half_space(outward_normal, offset).into(),
-        )
+            SimpleCollisionObject::half_space(outward_normal, offset)?.into(),
+        ))
     }
 
     #[staticmethod]
     pub fn from_points(py: Python<'_>, p1: (f64, f64), p2: (f64, f64)) -> PyResult<Py<PyAny>> {
         let init = PyClassInitializer::from(CollisionObject::from(
-            SimpleCollisionObject::half_space_from_points(p1, p2),
+            SimpleCollisionObject::half_space_from_points(p1, p2)?,
         ))
         .add_subclass(Self);
         Ok(Py::new(py, init)?.into_any())
@@ -190,13 +206,17 @@ impl HalfSpace {
     #[pyo3(signature = (a, b, c = 0.0))]
     pub fn from_coeffs(py: Python<'_>, a: f64, b: f64, c: f64) -> PyResult<Py<PyAny>> {
         let init = PyClassInitializer::from(CollisionObject::from(
-            SimpleCollisionObject::half_space_from_coeffs(a, b, c),
+            SimpleCollisionObject::half_space_from_coeffs(a, b, c)?,
         ))
         .add_subclass(Self);
         Ok(Py::new(py, init)?.into_any())
     }
 }
 
+/// A polygon defined by an exterior ring and optional interior rings.
+///
+/// Rings are sequences of `(x, y)` pairs. Invalid or empty polygons raise
+/// ValueError.
 #[pyclass(extends = CollisionObject)]
 pub struct Polygon;
 
@@ -217,6 +237,7 @@ impl Polygon {
     }
 }
 
+/// An oriented rectangle defined by length, width, angle, and center.
 #[pyclass(extends = CollisionObject)]
 pub struct Rectangle;
 
@@ -243,6 +264,7 @@ impl Rectangle {
     }
 }
 
+/// A triangle defined by three finite `(x, y)` vertices.
 #[pyclass(extends = CollisionObject)]
 pub struct Triangle;
 

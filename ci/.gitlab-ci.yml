@@ -32,6 +32,16 @@ build-rust:
   script:
     - cargo build
     - cargo test
+    - cargo test --no-default-features --features rayon,rhusics
+    - cargo test --no-default-features --features rayon,collide
+  needs: [ ]
+
+test-python:
+  stage: build-and-test
+  script:
+    - pip install uv
+    - uv run maturin develop
+    - uv run pytest
   needs: [ ]
 
 build-sdist:

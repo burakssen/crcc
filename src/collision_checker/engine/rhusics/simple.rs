@@ -2,11 +2,12 @@ use crate::collision_object::simple::{
     Circle, ConvexPolygon, HalfSpace, NonConvexPolygon, PolygonWithHoles, Rectangle,
     SimpleCollisionObject, Triangle,
 };
-use cgmath::Point2;
+use cgmath::{Basis2, Point2, Rad, Rotation2, Transform};
 use collision::primitive::Primitive2;
 use geo::{TriangulateEarcut, Winding};
-use glamx::{DPose2, DVec2};
-use rhusics_core::collide2d::ConvexPolygon as RhusicsConvexPolygon;
+use glamx::DVec2;
+use rhusics_core::Pose;
+use rhusics_core::collide2d::{BodyPose2, ConvexPolygon as RhusicsConvexPolygon};
 
 pub enum RhusicsCoreSimpleCollisionObject {
     Empty,
@@ -28,15 +29,8 @@ pub enum RhusicsCoreCollisionComponent {
 #[derive(Clone)]
 pub struct FiniteShape {
     pub primitive: Primitive2<f64>,
-    pub position: DPose2,
-    pub support: FiniteShapeSupport,
-}
-
-/// Support point implementation data for finite shapes.
-#[derive(Clone)]
-pub enum FiniteShapeSupport {
-    Circle { radius: f64 },
-    Vertices(Vec<DVec2>),
+    pub position: BodyPose2<f64>,
+    pub motion_radius: f64,
 }
 
 /// Analytic representation of a half-space: outward_normal * p <= offset.
@@ -97,9 +91,7 @@ fn convert_circle(circle: Circle) -> RhusicsCoreSimpleCollisionObject {
         FiniteShape {
             primitive: rhusics_core::collide2d::Circle::new(circle.radius()).into(),
             position: make_pose(circle.center(), 0.0),
-            support: FiniteShapeSupport::Circle {
-                radius: circle.radius(),
-            },
+            motion_radius: DVec2::from(circle.center()).length() + circle.radius(),
         },
     ))
 }
@@ -116,12 +108,8 @@ fn convert_rectangle(rectangle: Rectangle) -> RhusicsCoreSimpleCollisionObject {
             )
             .into(),
             position: make_pose(rectangle.center(), rectangle.orientation()),
-            support: FiniteShapeSupport::Vertices(vec![
-                DVec2::new(-half_width, -half_height),
-                DVec2::new(half_width, -half_height),
-                DVec2::new(half_width, half_height),
-                DVec2::new(-half_width, half_height),
-            ]),
+            motion_radius: DVec2::from(rectangle.center()).length()
+                + DVec2::new(half_width, half_height).length(),
         },
     ))
 }
@@ -139,8 +127,11 @@ fn convert_triangle(triangle: Triangle) -> RhusicsCoreSimpleCollisionObject {
     RhusicsCoreSimpleCollisionObject::Component(RhusicsCoreCollisionComponent::Finite(
         FiniteShape {
             primitive: primitive.into(),
-            position: DPose2::IDENTITY,
-            support: FiniteShapeSupport::Vertices(vertices.into()),
+            position: BodyPose2::one(),
+            motion_radius: vertices
+                .iter()
+                .map(|vertex| vertex.length())
+                .fold(0.0, f64::max),
         },
     ))
 }
@@ -158,8 +149,11 @@ fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> RhusicsCoreSimpleCol
     RhusicsCoreSimpleCollisionObject::Component(RhusicsCoreCollisionComponent::Finite(
         FiniteShape {
             primitive: primitive.into(),
-            position: DPose2::IDENTITY,
-            support: FiniteShapeSupport::Vertices(vertices),
+            position: BodyPose2::one(),
+            motion_radius: vertices
+                .iter()
+                .map(|vertex| vertex.length())
+                .fold(0.0, f64::max),
         },
     ))
 }
@@ -198,8 +192,11 @@ fn triangle_to_component(triangle: geo::Triangle) -> RhusicsCoreCollisionCompone
     let primitive = RhusicsConvexPolygon::new(vertices.iter().copied().map(point).collect());
     RhusicsCoreCollisionComponent::Finite(FiniteShape {
         primitive: primitive.into(),
-        position: DPose2::IDENTITY,
-        support: FiniteShapeSupport::Vertices(vertices.into()),
+        position: BodyPose2::one(),
+        motion_radius: vertices
+            .iter()
+            .map(|vertex| vertex.length())
+            .fold(0.0, f64::max),
     })
 }
 
@@ -213,8 +210,12 @@ fn signed_area(vertices: &[DVec2; 3]) -> f64 {
     (vertices[1] - vertices[0]).perp_dot(vertices[2] - vertices[0]) / 2.0
 }
 
-fn make_pose(translation: impl Into<DVec2>, rotation: f64) -> DPose2 {
-    DPose2::new(translation.into(), rotation)
+fn make_pose(translation: impl Into<DVec2>, rotation: f64) -> BodyPose2<f64> {
+    let translation = translation.into();
+    BodyPose2::new(
+        Point2::new(translation.x, translation.y),
+        Basis2::from_angle(Rad(rotation)),
+    )
 }
 
 fn point(v: DVec2) -> Point2<f64> {

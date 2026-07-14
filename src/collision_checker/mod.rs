@@ -20,13 +20,18 @@ pub(crate) use builder::road_boundary;
 pub use selected::SelectedCollisionChecker;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The first collision found by a checker query.
 pub enum CollisionStatus {
+    /// No static or dynamic obstacle collides in the requested window.
     NoCollision,
+    /// The query collides with merged static geometry.
     CollidesStatic,
+    /// The query collides with dynamic geometry at the contained time step.
     CollidesDynamic(TimeStep),
 }
 
 impl CollisionStatus {
+    /// Returns whether this status represents any collision.
     pub fn collides(&self) -> bool {
         match self {
             CollisionStatus::NoCollision => false,
@@ -35,6 +40,7 @@ impl CollisionStatus {
     }
 }
 
+/// The result of a checker query.
 pub type CollisionResult = Result<CollisionStatus, CrccError>;
 
 pub struct CollisionChecker<E: EngineCollisionObject> {
@@ -295,31 +301,31 @@ mod tests {
 
         assert!(
             !checker
-                .collides_static_at(&query, TimeStep(0))
+                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(0)..=TimeStep(0))
                 .unwrap()
                 .collides()
         );
         assert!(
             checker
-                .collides_static_at(&query, TimeStep(1))
+                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(1)..=TimeStep(1))
                 .unwrap()
                 .collides()
         );
         assert!(
             !checker
-                .collides_static_at(&query, TimeStep(2))
+                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(2)..=TimeStep(2))
                 .unwrap()
                 .collides()
         );
         assert!(
             !checker
-                .collides_static_at(&query, TimeStep(3))
+                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(3)..=TimeStep(3))
                 .unwrap()
                 .collides()
         );
         assert!(
             !checker
-                .collides_static_at(&query, TimeStep(4))
+                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(4)..=TimeStep(4))
                 .unwrap()
                 .collides()
         );

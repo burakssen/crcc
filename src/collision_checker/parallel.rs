@@ -8,10 +8,10 @@ use std::ops::RangeBounds;
 
 /// A trait for parallel collision checking using Rayon.
 /// This trait is sealed.
-pub trait ParallelCollisionChecker: private::Sealed {
+pub(crate) trait ParallelCollisionChecker: private::Sealed {
     type ECollisionObject: EngineCollisionObject;
 
-    fn par_static<'a, I>(
+    fn collides_static_batch<'a, I>(
         &self,
         positioned_static_obstacles: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -20,7 +20,7 @@ pub trait ParallelCollisionChecker: private::Sealed {
         Self::ECollisionObject: 'a,
         I: IntoParallelIterator<Item = (&'a Self::ECollisionObject, DPose2)>;
 
-    fn par_dynamic<'a, I>(
+    fn collides_dynamic_batch<'a, I>(
         &self,
         dynamic_obstacles: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -33,7 +33,7 @@ pub trait ParallelCollisionChecker: private::Sealed {
 impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for CollisionChecker<E> {
     type ECollisionObject = E;
 
-    fn par_static<'a, I>(
+    fn collides_static_batch<'a, I>(
         &self,
         positioned_static_obstacles: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
@@ -50,7 +50,7 @@ impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for Collis
             .collect()
     }
 
-    fn par_dynamic<'a, I>(
+    fn collides_dynamic_batch<'a, I>(
         &self,
         dynamic_obstacles: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,

@@ -8,25 +8,36 @@ mod set;
 pub(crate) type TimeStepInner = i32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Add, Mul, Sub, Sum, From)]
+/// A discrete trajectory time step.
 pub struct TimeStep(pub TimeStepInner);
 
 impl TimeStep {
+    /// The smallest representable time step.
     pub const MIN: Self = Self(i32::MIN);
+    /// The largest representable time step.
     pub const MAX: Self = Self(i32::MAX);
+    /// Time step zero.
     pub const ZERO: Self = Self(0);
 
+    /// Returns the preceding step, saturating at [`TimeStep::MIN`].
     pub fn pred(&self) -> Self {
         Self(self.0.saturating_sub(1))
     }
 
+    /// Returns the following step, saturating at [`TimeStep::MAX`].
     pub fn succ(&self) -> Self {
         Self(self.0.saturating_add(1))
     }
 
+    /// Advances by `steps`, saturating at [`TimeStep::MAX`].
     pub fn add_steps(&self, steps: usize) -> Self {
-        Self(self.0.saturating_add(steps as i32))
+        let steps = i64::try_from(steps).unwrap_or(i64::MAX);
+        Self((i64::from(self.0) + steps).min(i64::from(i32::MAX)) as i32)
     }
 
+    /// Iterates over the discrete steps selected by a Rust range.
+    ///
+    /// Included and excluded bounds follow normal [`RangeBounds`] semantics.
     pub fn iter_range(range: impl RangeBounds<Self>) -> impl Iterator<Item = Self> {
         let start = match range.start_bound() {
             std::ops::Bound::Included(t) => *t,
@@ -88,5 +99,12 @@ mod tests {
                 TimeStep(TimeStepInner::MAX)
             ]
         );
+    }
+
+    #[test]
+    fn add_steps_saturates_without_wrapping() {
+        assert_eq!(TimeStep(0).add_steps(usize::MAX), TimeStep::MAX);
+        assert_eq!(TimeStep::MAX.add_steps(1), TimeStep::MAX);
+        assert_eq!(TimeStep::MIN.add_steps(i32::MAX as usize + 1), TimeStep(0));
     }
 }

@@ -77,10 +77,11 @@ impl ParryCollisionObjectInner {
         pos_other: DPose2,
     ) -> Result<f64, Unsupported> {
         match (self, other) {
-            (ParryCollisionObjectInner::Empty, _)
-            | (_, ParryCollisionObjectInner::Empty)
-            | (ParryCollisionObjectInner::FullSpace, _)
-            | (_, ParryCollisionObjectInner::FullSpace) => Err(Unsupported),
+            (ParryCollisionObjectInner::Empty, _) | (_, ParryCollisionObjectInner::Empty) => {
+                Err(Unsupported)
+            }
+            (ParryCollisionObjectInner::FullSpace, _)
+            | (_, ParryCollisionObjectInner::FullSpace) => Ok(0.0),
             (
                 ParryCollisionObjectInner::NonTrivial(slf),
                 ParryCollisionObjectInner::NonTrivial(other),
@@ -120,6 +121,12 @@ impl NonTrivial {
         start_pos_other: DPose2,
         end_pos_other: DPose2,
     ) -> Result<bool, Unsupported> {
+        if self.collides(start_pos_self, other, start_pos_other)?
+            || self.collides(end_pos_self, other, end_pos_other)?
+        {
+            return Ok(true);
+        }
+
         let motion_self = motion_from_start_end(start_pos_self, end_pos_self);
         let motion_other = motion_from_start_end(start_pos_other, end_pos_other);
         for comp_self in [&self.generic_compound, &self.tri_mesh_compound]
@@ -165,6 +172,9 @@ impl NonTrivial {
             {
                 min_distance =
                     min_distance.min(distance(&pos_self, comp_self, &pos_other, comp_other)?);
+                if min_distance == 0.0 {
+                    return Ok(0.0);
+                }
             }
         }
         if min_distance.is_finite() {
