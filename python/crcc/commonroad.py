@@ -9,16 +9,14 @@ from commonroad.geometry.occupancy.circle_occupancy import CircleOccupancy
 from commonroad.geometry.occupancy.occupancy import Occupancy
 from commonroad.geometry.occupancy.polygon_occupancy import PolygonOccupancy
 from commonroad.geometry.occupancy.rect_occupancy import RectOccupancy
-from commonroad.prediction.prediction import TrajectoryPrediction
+from commonroad.prediction.prediction import SetBasedPrediction, TrajectoryPrediction
 from commonroad.scenario.lanelet import LaneletNetwork
 from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import InitialState, TraceState
 from shapely.geometry import MultiPolygon, Polygon as ShapelyPolygon
+from shapely.geometry.base import BaseGeometry
 
-from crcc.collision_checker import CollisionCheckerBuilder
-from crcc.collision_object import Circle, CollisionObject, Compound, Polygon, Rectangle
-from crcc.dynamic_obstacle import DynamicObstacle
-from crcc.pose import Pose
+from crcc import Circle, CollisionCheckerBuilder, CollisionObject, Compound, DynamicObstacle, Polygon, Pose, Rectangle
 
 ROAD_BOUNDARY_SIMPLIFY_TOLERANCE = 0.01
 ROAD_BOUNDARY_MIN_HOLE_AREA = 0.001
@@ -55,17 +53,37 @@ def add_commonroad_dynamic_obstacle_to_builder(
     dynamic_obstacle: cr_obstacle.DynamicObstacle,
 ) -> CollisionCheckerBuilder:
     """Adds a CommonRoad dynamic obstacle to the builder."""
+    builder.with_dynamic_obstacle(commonroad_dynamic_obstacle(dynamic_obstacle))
+    return builder
+
+
+def commonroad_dynamic_obstacle(dynamic_obstacle: cr_obstacle.DynamicObstacle) -> DynamicObstacle:
+    """Converts a CommonRoad dynamic obstacle to a local crcc DynamicObstacle."""
     initial_time = dynamic_obstacle.initial_state.time_step
     if isinstance(dynamic_obstacle.prediction, TrajectoryPrediction):
         trajectory = dynamic_obstacle.prediction.trajectory
         states = [dynamic_obstacle.initial_state] + trajectory.state_list
         poses = [commonroad_state_to_pose(state) for state in states]
         shape = commonroad_shape(dynamic_obstacle.obstacle_shape)
-        collision_obstacle = DynamicObstacle(shape, poses, initial_time)
-        builder.with_dynamic_obstacle(collision_obstacle)
-    else:
-        raise NotImplementedError("Only TrajectoryPrediction is supported for dynamic obstacles.")
-    return builder
+        return DynamicObstacle(shape, poses, initial_time)
+    if isinstance(dynamic_obstacle.prediction, SetBasedPrediction):
+        prediction = dynamic_obstacle.prediction
+        time_steps = range(prediction.initial_time_step, _prediction_final_time_step(prediction) + 1)
+        obstacles = [
+            commonroad_occupancy(occupancy)
+            if (occupancy := prediction.occupancy_at_time_step(time_step))
+            else Compound([])
+            for time_step in time_steps
+        ]
+        return DynamicObstacle.from_time_variant(obstacles, prediction.initial_time_step)
+
+    prediction_type = type(dynamic_obstacle.prediction).__name__
+    raise NotImplementedError(f"Unsupported dynamic obstacle prediction type: {prediction_type}")
+
+
+def _prediction_final_time_step(prediction: SetBasedPrediction) -> int:
+    final_time_step = prediction.final_time_step
+    return final_time_step.end if hasattr(final_time_step, "end") else final_time_step
 
 
 def add_road_boundary_to_builder(
@@ -86,6 +104,7 @@ def road_boundary(lanelet_network: LaneletNetwork) -> CollisionObject:
 
 
 def commonroad_polygon(polygon: ShapelyPolygon) -> CollisionObject:
+    """Convert a Shapely polygon, including holes, to a collision object."""
     return Polygon(
         exterior=[tuple(v) for v in polygon.exterior.coords],
         interiors=[[tuple(v) for v in interior.coords] for interior in polygon.interiors],
@@ -121,7 +140,8 @@ def commonroad_occupancy(occupancy: Occupancy) -> CollisionObject:
     return shapely_geometry(occupancy.shapely_object)
 
 
-def shapely_geometry(geometry) -> CollisionObject:
+def shapely_geometry(geometry: BaseGeometry) -> CollisionObject:
+    """Convert an empty, Polygon, or MultiPolygon Shapely geometry."""
     if geometry.is_empty:
         return Compound([])
     if isinstance(geometry, ShapelyPolygon):

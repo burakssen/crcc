@@ -1,15 +1,22 @@
+from types import SimpleNamespace
+
+import commonroad.scenario.obstacle as cr_obstacle
+from commonroad.common.util import Interval
 from commonroad.geometry.obstacle_shapes.rect_obstacle_shape import RectObstacleShape
 from commonroad.geometry.occupancy.circle_occupancy import CircleOccupancy
 from commonroad.geometry.occupancy.occupancy_group import OccupancyGroup
 from commonroad.geometry.occupancy.polygon_occupancy import PolygonOccupancy
 from commonroad.geometry.occupancy.rect_occupancy import RectOccupancy
+from commonroad.prediction.prediction import SetBasedPrediction
 from commonroad.scenario.obstacle import ObstacleType, StaticObstacle
 from commonroad.scenario.state import InitialState
-from crcc.collision_checker import CollisionCheckerBuilder
-from crcc.collision_object import Circle, Rectangle
-from crcc.commonroad import add_commonroad_static_obstacle_to_builder, commonroad_occupancy
-from crcc.dynamic_obstacle import DynamicObstacle
-from crcc.pose import Pose
+from crcc import Circle, CollisionCheckerBuilder, DynamicObstacle, Pose, Rectangle
+from crcc.commonroad import (
+    add_commonroad_static_obstacle_to_builder,
+    commonroad_dynamic_obstacle,
+    commonroad_occupancy,
+    create_collision_checker_from_scenario,
+)
 from shapely.geometry import Point, Polygon as ShapelyPolygon
 
 
@@ -73,3 +80,45 @@ def test_static_obstacle_conversion():
 
     assert checker.collides_static(Rectangle(1.0, 1.0), Pose((10.0, 0.0), 0.0)).collides
     assert not checker.collides_static(Rectangle(1.0, 1.0), Pose((20.0, 0.0), 0.0)).collides
+
+
+def set_based_commonroad_obstacle():
+    prediction = SetBasedPrediction(
+        3,
+        {
+            3: CircleOccupancy(0.5, Point(10.0, 0.0)),
+            5: CircleOccupancy(0.5, Point(0.0, 0.0)),
+            Interval(7, 8): CircleOccupancy(0.5, Point(0.0, 0.0)),
+        },
+    )
+    return cr_obstacle.DynamicObstacle(
+        obstacle_id=2,
+        obstacle_type=ObstacleType.CAR,
+        obstacle_shape=RectObstacleShape(width=1.0, length=2.0),
+        initial_state=InitialState(time_step=0, position=(10.0, 0.0), orientation=0.0),
+        prediction=prediction,
+    )
+
+
+def test_set_based_prediction_dynamic_obstacle_conversion(engine):
+    """Set-based predictions map occupancies by timestep and keep gaps non-colliding."""
+    trajectory = commonroad_dynamic_obstacle(set_based_commonroad_obstacle())
+    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75)).build()
+
+    assert not checker.collides_dynamic(trajectory, min_time=3, max_time=3).collides
+    assert not checker.collides_dynamic(trajectory, min_time=4, max_time=4).collides
+    assert checker.collides_dynamic(trajectory, min_time=5, max_time=5).time_step == 5
+    assert checker.collides_dynamic(trajectory, min_time=7, max_time=7).time_step == 7
+    assert checker.collides_dynamic(trajectory, min_time=8, max_time=8).time_step == 8
+
+
+def test_scenario_builder_includes_set_based_dynamic_obstacles(engine):
+    scenario = SimpleNamespace(
+        lanelet_network=SimpleNamespace(lanelets=[]),
+        static_obstacles=[],
+        dynamic_obstacles=[set_based_commonroad_obstacle()],
+    )
+    checker = create_collision_checker_from_scenario(scenario, CollisionCheckerBuilder(engine=engine)).build()
+
+    assert checker.collides_static(Circle(0.75), min_time=5, max_time=5).time_step == 5
+    assert not checker.collides_static(Circle(0.75), min_time=4, max_time=4).collides

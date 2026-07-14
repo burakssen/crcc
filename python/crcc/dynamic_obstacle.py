@@ -1,5 +1,5 @@
-import crcc._core.dynamic_obstacle as core
+"""Dynamic obstacle trajectories."""
 
-# explicitly re-export classes to define the public API of this module
-# this enables us to add wrappers for the Rust objects later as a non-breaking change
-DynamicObstacle = core.DynamicObstacle
+from crcc._core.dynamic_obstacle import DynamicObstacle
+
+__all__ = ["DynamicObstacle"]

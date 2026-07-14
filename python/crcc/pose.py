@@ -1,5 +1,5 @@
-import crcc._core.pose as core
+"""Rigid 2D poses."""
 
-# explicitly re-export classes to define the public API of this module
-# this enables us to add wrappers for the Rust objects later as a non-breaking change
-Pose = core.Pose
+from crcc._core.pose import Pose
+
+__all__ = ["Pose"]

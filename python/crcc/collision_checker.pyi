@@ -1,62 +1,10 @@
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+from typing import Sequence, Tuple
 
-from crcc._core.collision_checker import (
-    CollisionChecker as _CollisionChecker,
-    CollisionEngine as _CollisionEngine,
-    CollisionStatus as _CollisionStatus,
-)
+from crcc._core.collision_checker import CollisionChecker, CollisionEngine, CollisionStatus
 from crcc.collision_object import CollisionObject
 from crcc.dynamic_obstacle import DynamicObstacle
-from crcc.pose import Pose
-
-class CollisionEngine(_CollisionEngine):
-    Parry: CollisionEngine
-    Rhusics: CollisionEngine
-    Collide: CollisionEngine
-
-class CollisionStatus(_CollisionStatus):
-    @property
-    def collides(self) -> bool: ...
-    @property
-    def time_step(self) -> Optional[int]: ...
-
-class CollisionChecker(_CollisionChecker):
-    @property
-    def engine(self) -> CollisionEngine: ...
-    def collides_static(
-        self,
-        query_shape: CollisionObject,
-        position: Optional[Pose] = None,
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> CollisionStatus: ...
-    def par_static(
-        self,
-        positioned_query_shapes: Sequence[Tuple[CollisionObject, Pose]],
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
-    def par_static_threads(
-        self,
-        positioned_query_shapes: Sequence[Tuple[CollisionObject, Pose]],
-        threads: int,
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
-    def collides_dynamic(
-        self,
-        dynamic_obstacle: DynamicObstacle,
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> CollisionStatus: ...
-    def par_dynamic(
-        self,
-        dynamic_obstacles: Sequence[DynamicObstacle],
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
 
 class CollisionCheckerBuilder:
     def __init__(self, engine: CollisionEngine = CollisionEngine.Parry) -> None: ...

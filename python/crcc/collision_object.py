@@ -1,13 +1,25 @@
-import crcc._core.collision_object as core
+"""Collision geometry classes."""
 
-# explicitly re-export classes to define the public API of this module
-# this enables us to add wrappers for the Rust objects later as a non-breaking change
-CollisionObject = core.CollisionObject
-Compound = core.Compound
-Circle = core.Circle
-Empty = core.Empty
-HalfSpace = core.HalfSpace
-FullSpace = core.FullSpace
-Polygon = core.Polygon
-Rectangle = core.Rectangle
-Triangle = core.Triangle
+from crcc._core.collision_object import (
+    Circle,
+    CollisionObject,
+    Compound,
+    Empty,
+    FullSpace,
+    HalfSpace,
+    Polygon,
+    Rectangle,
+    Triangle,
+)
+
+__all__ = [
+    "CollisionObject",
+    "Compound",
+    "Circle",
+    "Empty",
+    "HalfSpace",
+    "FullSpace",
+    "Polygon",
+    "Rectangle",
+    "Triangle",
+]
