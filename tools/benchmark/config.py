@@ -2,17 +2,44 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from crcc.collision_checker import CollisionEngine
+from crcc import CollisionEngine
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "7"
 BENCHMARK_SAMPLE_COUNT = 20_000
-BENCHMARK_REPETITIONS = 9
+BENCHMARK_REPETITIONS = 5
 WARMUP_QUERY_COUNT = 100
 MIN_RECOMMENDED_SAMPLE_COUNT = 100
 DEFAULT_OUTPUT_DIR = Path("target/crcc-python-bench")
-DEFAULT_DENSITIES = (0.0, 0.01, 0.10, 0.25, 0.50, 0.75, 1.0)
-DEFAULT_SCENE_SIZES = (100, 500, 1_000, 5_000, 10_000, 50_000, 100_000, 500_000)
-DEFAULT_THREAD_COUNTS = (1, 2, 4, 8, 16)
+DEFAULT_DENSITIES = (0.0, 0.50)
+DENSITY_STUDY_VALUES = (0.0, 0.10, 0.50, 1.0)
+DEFAULT_SCENE_SIZES = (100, 1_000)
+SPEC_SCENE_SIZES = (100, 1_000, 5_000, 10_000, 25_000, 50_000)
+STRESS_SCENE_SIZES = (100_000,)
+DEFAULT_SPEC_SHAPE_COUNTS = (16, 64, 256, 1_024)
+DEFAULT_COMPOUND_CHILD_COUNTS = (1, 4, 16, 64, 256)
+DEFAULT_UPDATE_TRANSFORMS = ("translation", "rotation", "translation_rotation", "randomized")
+DEFAULT_DENSITY_LABELS = ("clear", "medium", "dense", "worst_case")
+DEFAULT_THREAD_COUNTS = (1, 2, 4, 8)
+MATRIX_SHAPE_FAMILIES = ("circle", "rectangle", "polygon32", "compound16_polygon32")
+MATRIX_CCD_MODES = ("discrete", "stationary", "moving_static", "moving_moving")
+BENCHMARK_SUITES = (
+    "pair",
+    "continuous",
+    "distance",
+    "shape_complexity",
+    "coverage_matrix",
+    "scene_scaling",
+    "update_proxy",
+    "rebuild_update",
+    "api_overhead",
+    "dynamic_batch",
+    "time_variant",
+    "native_layers",
+    "parallel",
+    "density_scaling",
+    "dynamic_scene",
+    "scenario",
+)
 
 ENGINE_ITEMS = (
     ("parry", CollisionEngine.Parry),
@@ -32,6 +59,9 @@ class BenchmarkConfig:
     thread_counts: tuple[int, ...] = ()
     engines: tuple[str, ...] = tuple(name for name, _ in ENGINE_ITEMS)
     step: str = "all"
+    profile: str = "smoke"
+    suites: tuple[str, ...] = BENCHMARK_SUITES
+    include_stress: bool = False
 
     @classmethod
     def from_args(
@@ -45,6 +75,9 @@ class BenchmarkConfig:
         thread_counts=None,
         engines=None,
         step: str = "all",
+        profile: str = "smoke",
+        suites=None,
+        include_stress: bool = False,
     ):
         selected_scenarios = (
             discover_scenario_paths() if scenario_paths is None else tuple(Path(path) for path in scenario_paths)
@@ -55,6 +88,9 @@ class BenchmarkConfig:
             raise ValueError(f"unknown benchmark engine(s): {', '.join(unknown)}")
         if step not in {"run", "plot", "all"}:
             raise ValueError("benchmark step must be one of: run, plot, all")
+        if profile not in {"smoke", "spec"}:
+            raise ValueError("benchmark profile must be one of: smoke, spec")
+        selected_suites = normalize_suites(suites)
         return cls(
             scenario_paths=tuple(selected_scenarios),
             sample_count=max(1, int(sample_count)),
@@ -64,6 +100,9 @@ class BenchmarkConfig:
             thread_counts=normalize_thread_counts(thread_counts),
             engines=selected_engines,
             step=step,
+            profile=profile,
+            suites=selected_suites,
+            include_stress=bool(include_stress),
         )
 
 
@@ -72,13 +111,27 @@ def discover_scenario_paths(scenario_dir: str | Path = "scenarios"):
 
 
 def normalize_thread_counts(thread_counts):
+    cpu_count = os.cpu_count() or max(DEFAULT_THREAD_COUNTS)
     if thread_counts is None:
-        cpu_count = os.cpu_count() or max(DEFAULT_THREAD_COUNTS)
         counts = [threads for threads in DEFAULT_THREAD_COUNTS if threads <= cpu_count] or [1]
     else:
-        counts = thread_counts
+        counts = [threads for threads in thread_counts if int(threads) <= cpu_count] or [cpu_count]
     return tuple(sorted({max(1, int(threads)) for threads in counts}))
 
 
 def selected_engine_items(names: tuple[str, ...]):
     return tuple((name, ENGINE_BY_NAME[name]) for name in names)
+
+
+def normalize_suites(suites):
+    if isinstance(suites, str):
+        suites = (suites,)
+    if suites is None or suites == ["all"] or suites == ("all",):
+        return BENCHMARK_SUITES
+    selected = tuple(str(suite).lower() for suite in suites)
+    if "all" in selected:
+        return BENCHMARK_SUITES
+    unknown = sorted(set(selected) - set(BENCHMARK_SUITES))
+    if unknown:
+        raise ValueError(f"unknown benchmark suite(s): {', '.join(unknown)}")
+    return tuple(dict.fromkeys(selected))

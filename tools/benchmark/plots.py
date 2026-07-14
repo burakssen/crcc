@@ -1,4 +1,7 @@
+import math
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
@@ -6,9 +9,10 @@ os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 from .config import ENGINE_ITEMS
-from .io import read_dicts
+from .io import ArtifactBundle, load_artifacts
 
 # Apply a clean, modern design styling globally
 plt.rcParams.update(
@@ -39,20 +43,50 @@ PLOT_NAMES = {
     "parallel_efficiency_summary",
     "commonroad_scenario_summary",
     "correctness_mismatch_matrix",
+    "update_time_scaling",
+    "density_scaling_curves",
+    "shape_complexity_throughput",
+    "memory_growth",
+    "api_batch_amortization",
+    "api_batch_speedup",
+    "dynamic_batch_amortization",
+    "dynamic_time_window_scaling",
+    "time_variant_query_scaling",
+    "execution_layer_cost",
 }
 
 
-def write_plots(output_dir: Path):
+def write_plots(output_dir: Path, artifacts: ArtifactBundle | None = None):
     output_dir = Path(output_dir)
-    plot_dir = output_dir / "plots"
-    plot_dir.mkdir(parents=True, exist_ok=True)
-    _clean_plot_dir(plot_dir)
+    artifacts = artifacts or load_artifacts(output_dir)
+    summary = artifacts.get("summary.csv")
+    comparisons = artifacts.get("comparisons.csv")
+    correctness = artifacts.get("correctness.csv")
+    parallel = artifacts.get("parallel_scaling.csv")
+    memory = artifacts.get("memory.csv")
 
-    summary = _read_optional(output_dir / "summary.csv")
-    comparisons = _read_optional(output_dir / "comparisons.csv")
-    correctness = _read_optional(output_dir / "correctness.csv")
-    parallel = _read_optional(output_dir / "parallel_scaling.csv")
+    with tempfile.TemporaryDirectory(prefix="crcc-plots-", dir=output_dir) as temporary:
+        plot_dir = Path(temporary)
+        _write_plots(plot_dir, summary, comparisons, correctness, parallel, memory)
+        destination = output_dir / "plots"
+        backup = output_dir / ".plots-backup"
+        if backup.exists():
+            shutil.rmtree(backup)
+        if destination.exists():
+            destination.rename(backup)
+        try:
+            shutil.copytree(plot_dir, destination)
+        except Exception:
+            if destination.exists():
+                shutil.rmtree(destination)
+            if backup.exists():
+                backup.rename(destination)
+            raise
+        if backup.exists():
+            shutil.rmtree(backup)
 
+
+def _write_plots(plot_dir: Path, summary, comparisons, correctness, parallel, memory):
     plottable_summary = [row for row in summary if not _is_true(row.get("unsupported"))]
     _plot_backend_throughput_dotplot(plot_dir / "backend_throughput_iqr", plottable_summary)
     _plot_latency_tail_ratio(plot_dir / "latency_percentiles", plottable_summary)
@@ -62,6 +96,32 @@ def write_plots(output_dir: Path):
     _plot_scenario_parallel_speedup_dotplot(plot_dir / "commonroad_scenario_summary", plottable_summary)
     _plot_correctness_summary(plot_dir / "correctness_mismatch_matrix", correctness)
     _plot_backend_speedup_forest(plot_dir / "backend_speedup_forest", comparisons)
+    _plot_feature_scaling(
+        plot_dir / "update_time_scaling",
+        plottable_summary,
+        "update_proxy",
+        "objects",
+        "ns_per_query_median",
+        "Pose-query Proxy Time (not scene mutation)",
+        "ns/query",
+    )
+    _plot_feature_scaling(
+        plot_dir / "density_scaling_curves",
+        plottable_summary,
+        "density_scaling",
+        "objects",
+        "throughput_median",
+        "Density Scaling Throughput",
+        "queries/s",
+    )
+    _plot_shape_complexity(plot_dir / "shape_complexity_throughput", plottable_summary)
+    _plot_memory_growth(plot_dir / "memory_growth", memory)
+    _plot_api_batch_amortization(plot_dir / "api_batch_amortization", plottable_summary)
+    _plot_api_batch_speedup(plot_dir / "api_batch_speedup", plottable_summary)
+    _plot_dynamic_batch_amortization(plot_dir / "dynamic_batch_amortization", plottable_summary)
+    _plot_dynamic_time_window_scaling(plot_dir / "dynamic_time_window_scaling", plottable_summary)
+    _plot_time_variant_scaling(plot_dir / "time_variant_query_scaling", plottable_summary)
+    _plot_execution_layer_cost(plot_dir / "execution_layer_cost", plottable_summary)
 
 
 def _plot_backend_throughput_dotplot(path_base: Path, rows):
@@ -165,62 +225,68 @@ def _plot_latency_tail_ratio(path_base: Path, rows):
 
 
 def _plot_scene_scaling_curves(path_base: Path, rows):
-    scene_rows = [row for row in rows if row["feature"] == "scene_scaling"]
-    densities = sorted({_float(row["density"]) for row in scene_rows if row["density"] != ""})
-    if not densities:
+    scene_rows = [row for row in rows if row["feature"] in {"scene_scaling", "dynamic_scene"}]
+    families = sorted({row.get("shape_family") or row.get("shape") or "unspecified" for row in scene_rows})
+    modes = [
+        mode
+        for mode in ("static_static", "dynamic_static", "pure_dynamic")
+        if any(row.get("scene_mode") == mode for row in scene_rows)
+    ]
+    if not families or not modes:
         _plot_status(path_base, "Scene Scaling", "No scene scaling rows")
         return
 
     backends = _present_backends(scene_rows)
-    y_values = [_float(row["throughput_median"]) for row in scene_rows if _float(row["throughput_median"]) > 0]
     fig, axes = plt.subplots(
-        len(densities),
-        1,
-        figsize=(8.8, max(4.8, 2.25 * len(densities))),
+        len(modes),
+        len(families),
+        figsize=(3.4 * len(families), 3.0 * len(modes)),
         sharex=True,
         sharey=True,
         squeeze=False,
         layout="constrained",
     )
-    for ax, density in zip(axes.ravel(), densities, strict=True):
-        density_rows = [row for row in scene_rows if _float(row["density"]) == density]
-        for backend in backends:
-            backend_rows = sorted(
-                [row for row in density_rows if row["backend"] == backend],
-                key=lambda row: _int(row["objects"]),
-            )
-            if not backend_rows:
-                continue
-            ax.plot(
-                [_int(row["objects"]) for row in backend_rows],
-                [_float(row["throughput_median"]) for row in backend_rows],
-                marker=BACKEND_MARKERS.get(backend, "o"),
-                color=BACKEND_COLORS.get(backend),
-                label=backend,
-                linewidth=1.8,
-                markersize=5,
-            )
-        ax.set_title(
-            f"Collision density {density:.0%}", loc="left", fontsize=9.5, fontweight="semibold", color="#374151"
-        )
-        ax.set_ylabel("queries/s")
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        _style_axis(ax)
-    if y_values:
-        lower = min(y_values) * 0.8
-        upper = max(y_values) * 1.25
-        axes.ravel()[0].set_ylim(lower, upper)
-    axes.ravel()[-1].set_xlabel("static objects")
+    for row_index, mode in enumerate(modes):
+        for column_index, family in enumerate(families):
+            ax = axes[row_index, column_index]
+            selected = [
+                row
+                for row in scene_rows
+                if row.get("scene_mode") == mode and (row.get("shape_family") or row.get("shape")) == family
+            ]
+            densities = sorted({row.get("density", "") for row in selected}) or [""]
+            for backend in backends:
+                for density_index, density in enumerate(densities):
+                    backend_rows = sorted(
+                        [row for row in selected if row["backend"] == backend and row.get("density", "") == density],
+                        key=lambda row: _int(row["objects"]),
+                    )
+                    if backend_rows:
+                        ax.plot(
+                            [_int(row["objects"]) for row in backend_rows],
+                            [_float(row["throughput_median"]) for row in backend_rows],
+                            marker=BACKEND_MARKERS.get(backend, "o"),
+                            color=BACKEND_COLORS.get(backend),
+                            linestyle="-" if density_index == 0 else "--",
+                            linewidth=1.5,
+                        )
+            ax.set_title(f"{mode.replace('_', ' ')}\n{family.replace('_', ' ')}", loc="left", fontsize=8.8)
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            _style_axis(ax)
+            if column_index == 0:
+                ax.set_ylabel("queries/s")
+            if row_index == len(modes) - 1:
+                ax.set_xlabel("environment objects")
     fig.suptitle(
-        "Scene Scaling by Object Count and Collision Density",
+        "Scene Scaling by Mode and Shape Family",
         x=0.02,
         ha="left",
         fontsize=11.5,
         fontweight="bold",
         color="#111827",
     )
-    _legend_outside(fig, axes.ravel()[0], backends)
+    _legend_outside(fig, axes.ravel()[0], backends, style="line")
     _save_plot(fig, path_base)
 
 
@@ -332,6 +398,471 @@ def _plot_parallel_summary(path_base: Path, rows, metric: str, ylabel: str):
         fancybox=True,
     )
     legend.get_frame().set_linewidth(0.8)
+    _save_plot(fig, path_base)
+
+
+def _plot_feature_scaling(path_base: Path, rows, feature: str, x_field: str, y_field: str, title: str, ylabel: str):
+    feature_rows = [row for row in rows if row["feature"] == feature]
+    if not feature_rows:
+        _plot_status(path_base, title, f"No {feature} rows")
+        return
+
+    backends = _present_backends(feature_rows)
+    group_field = "transform_kind" if feature == "update_proxy" else "density_label"
+    present_groups = {row.get(group_field, "") for row in feature_rows}
+    preferred_order = (
+        ("translation", "rotation", "translation_rotation", "randomized")
+        if feature == "update_proxy"
+        else ("sparse", "medium", "dense", "worst_case")
+    )
+    groups = [group for group in preferred_order if group in present_groups]
+    groups.extend(sorted(present_groups - set(groups)))
+    columns = min(2, len(groups))
+    rows_count = math.ceil(len(groups) / columns)
+    fig, axes = plt.subplots(
+        rows_count,
+        columns,
+        figsize=(10.2, max(4.8, 4.1 * rows_count)),
+        sharex=True,
+        sharey=True,
+        squeeze=False,
+        layout="constrained",
+    )
+    for ax, group in zip(axes.ravel(), groups, strict=False):
+        for backend in backends:
+            backend_rows = sorted(
+                [row for row in feature_rows if row["backend"] == backend and row.get(group_field, "") == group],
+                key=lambda row: _int(row[x_field]),
+            )
+            if not backend_rows:
+                continue
+            ax.plot(
+                [_int(row[x_field]) for row in backend_rows],
+                [_float(row[y_field]) for row in backend_rows],
+                marker=BACKEND_MARKERS.get(backend, "o"),
+                color=BACKEND_COLORS.get(backend),
+                linewidth=1.5,
+                alpha=0.85,
+            )
+        ax.set_title(group.replace("_", " ").title(), loc="left", fontsize=9.5, color="#374151")
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        _style_axis(ax)
+
+    for ax in axes.ravel()[len(groups) :]:
+        ax.set_visible(False)
+    for ax in axes[-1, :]:
+        if ax.get_visible():
+            ax.set_xlabel(x_field.replace("_", " "))
+    for ax in axes[:, 0]:
+        if ax.get_visible():
+            ax.set_ylabel(ylabel)
+    fig.suptitle(title, x=0.02, ha="left", fontsize=11.5, fontweight="bold", color="#111827")
+    fig.legend(
+        handles=_backend_handles(backends, "line"),
+        title="Backend",
+        loc="upper right",
+        bbox_to_anchor=(0.99, 0.99),
+        frameon=True,
+        facecolor="#f9fafb",
+        edgecolor="#e5e7eb",
+    )
+    _save_plot(fig, path_base)
+
+
+def _plot_shape_complexity(path_base: Path, rows):
+    shape_rows = [row for row in rows if row["feature"] == "shape_complexity"]
+    if not shape_rows:
+        _plot_status(path_base, "Shape Complexity Throughput", "No shape complexity rows")
+        return
+    labels = _ordered_workload_labels(shape_rows)
+    backends = _present_backends(shape_rows)
+    x_base = np.arange(len(labels))
+    offsets = _offsets(backends, 0.24)
+    fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
+    for offset, backend in zip(offsets, backends, strict=True):
+        values = [_summary_value(shape_rows, label, backend, "throughput_median") for label in labels]
+        ax.bar(
+            x_base + offset,
+            [value if value > 0 else 0.1 for value in values],
+            width=0.22,
+            color=BACKEND_COLORS.get(backend),
+            label=backend,
+            edgecolor="none",
+            zorder=3,
+        )
+    ax.set_title("Shape Complexity Throughput", loc="left", pad=12)
+    ax.set_ylabel("median throughput (queries/s, log)")
+    ax.set_xticks(x_base)
+    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right")
+    ax.set_yscale("log")
+    _style_axis(ax, axis="y")
+    _legend_outside(fig, ax, backends)
+    _save_plot(fig, path_base)
+
+
+def _plot_memory_growth(path_base: Path, rows):
+    if not rows:
+        _plot_status(path_base, "Memory Growth", "No memory rows")
+        return
+    rows = [row for row in rows if row.get("measurement") == "isolated_rss_delta"]
+    if not rows:
+        _plot_status(path_base, "Incremental Memory Growth", "No isolated RSS delta rows")
+        return
+    backends = _present_backends(rows)
+    fig, axes = plt.subplots(1, 2, figsize=(11.2, 5.2), sharex=True, layout="constrained")
+    for backend in backends:
+        grouped = {}
+        for row in rows:
+            if row["backend"] == backend:
+                grouped.setdefault(_int(row["objects"]), []).append(_float(row["peak_bytes"]))
+        objects = sorted(grouped)
+        medians = []
+        lows = []
+        highs = []
+        for count in objects:
+            low, median, high = _median_iqr(grouped[count])
+            lows.append(low)
+            medians.append(median)
+            highs.append(high)
+        color = BACKEND_COLORS.get(backend)
+        for ax, divisor in zip(axes, (1024 * 1024, np.asarray(objects)), strict=True):
+            values = np.asarray(medians) / divisor
+            lower = np.asarray(lows) / divisor
+            upper = np.asarray(highs) / divisor
+            ax.plot(
+                objects,
+                values,
+                marker=BACKEND_MARKERS.get(backend, "o"),
+                color=color,
+                linewidth=1.8,
+            )
+            ax.fill_between(objects, lower, upper, color=color, alpha=0.12, linewidth=0)
+    axes[0].set_title("Incremental RSS", loc="left", pad=10)
+    axes[0].set_ylabel("median RSS delta (MiB)")
+    axes[1].set_title("Memory Cost per Object", loc="left", pad=10)
+    axes[1].set_ylabel("median incremental bytes/object")
+    for ax in axes:
+        ax.set_xlabel("static objects")
+        ax.set_xscale("log")
+        ax.set_ylim(bottom=0)
+        _style_axis(ax)
+    fig.suptitle("Isolated Static Checker Memory Growth", x=0.02, ha="left", fontsize=11.5, fontweight="bold")
+    fig.legend(
+        handles=_backend_handles(backends, "line"),
+        title="Backend",
+        loc="upper right",
+        bbox_to_anchor=(0.99, 0.99),
+        frameon=True,
+        facecolor="#f9fafb",
+        edgecolor="#e5e7eb",
+    )
+    _save_plot(fig, path_base)
+
+
+def _plot_api_batch_amortization(path_base: Path, rows):
+    api_rows = [row for row in rows if row["feature"] == "api_overhead"]
+    if not api_rows:
+        _plot_status(path_base, "Python API Batch Amortization", "No API overhead rows")
+        return
+    backends = _present_backends(api_rows)
+    fig, axes = plt.subplots(
+        1, len(backends), figsize=(12.4, 4.8), sharex=True, sharey=True, squeeze=False, layout="constrained"
+    )
+    mode_styles = {
+        "python_scalar": ("--", "scalar calls"),
+        "python_batch": ("-", "global-pool batch"),
+        "python_batch_fresh_pool_1t": (":", "fresh 1-thread pool"),
+    }
+    for ax, backend in zip(axes.ravel(), backends, strict=True):
+        for workload, (linestyle, _) in mode_styles.items():
+            selected = sorted(
+                [
+                    row
+                    for row in api_rows
+                    if row["backend"] == backend and row["workload"] == workload and _int(row["queries"]) > 0
+                ],
+                key=lambda row: _int(row["queries"]),
+            )
+            ax.plot(
+                [_int(row["queries"]) for row in selected],
+                [_float(row["ns_per_query_median"]) for row in selected],
+                color=BACKEND_COLORS.get(backend),
+                marker=BACKEND_MARKERS.get(backend, "o"),
+                linestyle=linestyle,
+            )
+        ax.set_title(backend.title(), loc="left", color=BACKEND_COLORS.get(backend))
+        ax.set_xlabel("queries per call")
+        ax.set_xscale("log", base=2)
+        ax.set_yscale("log")
+        _style_axis(ax)
+    axes[0, 0].set_ylabel("median ns/query")
+    fig.suptitle("Python API Call Amortization and Dispatch Cost", x=0.02, ha="left", fontsize=11.5, fontweight="bold")
+    fig.legend(
+        handles=[
+            *[
+                Line2D([0], [0], color="#4b5563", linestyle=linestyle, label=label)
+                for linestyle, label in mode_styles.values()
+            ],
+        ],
+        title="API mode",
+        loc="upper right",
+        bbox_to_anchor=(0.99, 0.99),
+        frameon=True,
+        facecolor="#f9fafb",
+        edgecolor="#e5e7eb",
+    )
+    _save_plot(fig, path_base)
+
+
+def _plot_api_batch_speedup(path_base: Path, rows):
+    api_rows = [row for row in rows if row["feature"] == "api_overhead" and _int(row["queries"]) > 0]
+    if not api_rows:
+        _plot_status(path_base, "Python Batch API Speedup", "No API overhead rows")
+        return
+
+    backends = _present_backends(api_rows)
+    fig, ax = plt.subplots(figsize=(8.8, 5.4), layout="constrained")
+    for backend in backends:
+        scalar = {
+            _int(row["queries"]): _float(row["ns_per_query_median"])
+            for row in api_rows
+            if row["backend"] == backend and row["workload"] == "python_scalar"
+        }
+        batch = {
+            _int(row["queries"]): _float(row["ns_per_query_median"])
+            for row in api_rows
+            if row["backend"] == backend and row["workload"] == "python_batch"
+        }
+        sizes = sorted(scalar.keys() & batch.keys())
+        ax.plot(
+            sizes,
+            [scalar[size] / batch[size] for size in sizes],
+            color=BACKEND_COLORS.get(backend),
+            marker=BACKEND_MARKERS.get(backend, "o"),
+            linewidth=1.8,
+            label=backend,
+        )
+    ax.axhline(1.0, color="#6b7280", linestyle="--", linewidth=1.0)
+    ax.set_title("Python Global-Pool Batch API Speedup", loc="left", pad=12)
+    ax.set_xlabel("queries per call")
+    ax.set_ylabel("scalar / batch ns per query")
+    ax.set_xscale("log", base=2)
+    _style_axis(ax)
+    _legend_outside(fig, ax, backends, style="line")
+    _save_plot(fig, path_base)
+
+
+def _plot_dynamic_batch_amortization(path_base: Path, rows):
+    dynamic_rows = [row for row in rows if row["feature"] == "dynamic_batch"]
+    steps = sorted({_int(row["trajectory_steps"]) for row in dynamic_rows})
+    if not steps:
+        _plot_status(path_base, "Dynamic Batch Amortization", "No dynamic batch rows")
+        return
+    backends = _present_backends(dynamic_rows)
+    fig, axes = plt.subplots(
+        1, len(steps), figsize=(12.8, 4.8), sharex=True, sharey=True, squeeze=False, layout="constrained"
+    )
+    for ax, trajectory_steps in zip(axes.ravel(), steps, strict=True):
+        for backend in backends:
+            for workload, linestyle in (("dynamic_scalar", "--"), ("dynamic_batch", "-")):
+                selected = sorted(
+                    [
+                        row
+                        for row in dynamic_rows
+                        if row["backend"] == backend
+                        and row["workload"] == workload
+                        and _int(row["trajectory_steps"]) == trajectory_steps
+                    ],
+                    key=lambda row: _int(row["batch_size"]),
+                )
+                ax.plot(
+                    [_int(row["batch_size"]) for row in selected],
+                    [_float(row["ns_per_query_median"]) for row in selected],
+                    color=BACKEND_COLORS.get(backend),
+                    marker=BACKEND_MARKERS.get(backend, "o"),
+                    linestyle=linestyle,
+                    linewidth=1.6,
+                )
+        ax.set_title(f"{trajectory_steps} trajectory steps", loc="left")
+        ax.set_xscale("log", base=2)
+        ax.set_yscale("log")
+        ax.set_xlabel("dynamic queries per call")
+        _style_axis(ax)
+    axes[0, 0].set_ylabel("median ns/query")
+    fig.suptitle("Dynamic Scalar vs Batch API Cost", x=0.02, ha="left", fontsize=11.5, fontweight="bold")
+    fig.legend(
+        handles=[
+            *_backend_handles(backends, "line"),
+            Line2D([0], [0], color="#4b5563", linestyle="--", label="scalar"),
+            Line2D([0], [0], color="#4b5563", linestyle="-", label="batch"),
+        ],
+        loc="upper right",
+        bbox_to_anchor=(0.99, 0.99),
+        frameon=True,
+    )
+    _save_plot(fig, path_base)
+
+
+def _plot_time_variant_scaling(path_base: Path, rows):
+    variant_rows = [row for row in rows if row["feature"] == "time_variant"]
+    variations = sorted({row["shape_variation"] for row in variant_rows})
+    if not variations:
+        _plot_status(path_base, "Time-Variant Query Scaling", "No time-variant rows")
+        return
+    backends = _present_backends(variant_rows)
+    fig, axes = plt.subplots(
+        1, len(variations), figsize=(12.8, 4.8), sharex=True, sharey=True, squeeze=False, layout="constrained"
+    )
+    for ax, variation in zip(axes.ravel(), variations, strict=True):
+        for backend in backends:
+            for workload, linestyle in (("time_variant_scalar", "--"), ("time_variant_batch", "-")):
+                selected = sorted(
+                    [
+                        row
+                        for row in variant_rows
+                        if row["backend"] == backend
+                        and row["workload"] == workload
+                        and row["shape_variation"] == variation
+                    ],
+                    key=lambda row: _int(row["trajectory_steps"]),
+                )
+                ax.plot(
+                    [_int(row["trajectory_steps"]) for row in selected],
+                    [_float(row["ns_per_query_median"]) for row in selected],
+                    color=BACKEND_COLORS.get(backend),
+                    marker=BACKEND_MARKERS.get(backend, "o"),
+                    linestyle=linestyle,
+                    linewidth=1.6,
+                )
+        ax.set_title(variation.replace("_", " ").title(), loc="left")
+        ax.set_xscale("log", base=2)
+        ax.set_yscale("log")
+        ax.set_xlabel("trajectory steps")
+        _style_axis(ax)
+    axes[0, 0].set_ylabel("median ns/query")
+    fig.suptitle("Time-Variant Shape Query Scaling", x=0.02, ha="left", fontsize=11.5, fontweight="bold")
+    fig.legend(
+        handles=[
+            *_backend_handles(backends, "line"),
+            Line2D([0], [0], color="#4b5563", linestyle="--", label="scalar"),
+            Line2D([0], [0], color="#4b5563", linestyle="-", label="batch"),
+        ],
+        loc="upper right",
+        frameon=True,
+    )
+    _save_plot(fig, path_base)
+
+
+def _plot_dynamic_time_window_scaling(path_base: Path, rows):
+    window_rows = [row for row in rows if row["scene_kind"] == "dynamic_time_window"]
+    if not window_rows:
+        _plot_status(path_base, "Dynamic Time-Window Scaling", "No time-window rows")
+        return
+    backends = _present_backends(window_rows)
+    fig, ax = plt.subplots(figsize=(8.8, 5.2), layout="constrained")
+    for backend in backends:
+        for mode, linestyle in (("scalar", "--"), ("batch_global", "-")):
+            selected = sorted(
+                [row for row in window_rows if row["backend"] == backend and row["api_mode"] == mode],
+                key=lambda row: _int(row["time_window_steps"]),
+            )
+            ax.plot(
+                [_int(row["time_window_steps"]) for row in selected],
+                [_float(row["ns_per_query_median"]) for row in selected],
+                color=BACKEND_COLORS.get(backend),
+                marker=BACKEND_MARKERS.get(backend, "o"),
+                linestyle=linestyle,
+                linewidth=1.7,
+            )
+    ax.set_title("Dynamic Query Cost by Requested Time Window", loc="left")
+    ax.set_xlabel("time steps searched")
+    ax.set_ylabel("median ns/query")
+    ax.set_xscale("log", base=2)
+    ax.set_yscale("log")
+    _style_axis(ax)
+    fig.legend(
+        handles=[
+            *_backend_handles(backends, "line"),
+            Line2D([0], [0], color="#4b5563", linestyle="--", label="scalar"),
+            Line2D([0], [0], color="#4b5563", linestyle="-", label="batch"),
+        ],
+        loc="upper right",
+        frameon=True,
+    )
+    _save_plot(fig, path_base)
+
+
+def _plot_execution_layer_cost(path_base: Path, rows):
+    layer_rows = [row for row in rows if row["feature"] == "native_layers"]
+    workloads = sorted({row["workload"] for row in layer_rows})
+    if not workloads:
+        _plot_status(path_base, "Execution Layer Cost", "No native-layer rows")
+        return
+    backends = _present_backends(layer_rows)
+    x = np.arange(len(workloads))
+    fig, ax = plt.subplots(figsize=(10.2, 5.5), layout="constrained")
+    offsets = _offsets(backends, 0.28)
+    for offset, backend in zip(offsets, backends, strict=True):
+        public_ratios = []
+        python_ratios = []
+        for workload in workloads:
+            native = next(
+                (
+                    row
+                    for row in layer_rows
+                    if row["backend"] == backend
+                    and row["workload"] == workload
+                    and row["execution_layer"] == "engine_native"
+                ),
+                None,
+            )
+            public = next(
+                (
+                    row
+                    for row in layer_rows
+                    if row["backend"] == backend
+                    and row["workload"] == workload
+                    and row["execution_layer"] == "rust_public_convert_and_query"
+                ),
+                None,
+            )
+            python = next(
+                (
+                    row
+                    for row in layer_rows
+                    if row["backend"] == backend
+                    and row["workload"] == workload
+                    and row["execution_layer"] == "python_end_to_end"
+                ),
+                None,
+            )
+            public_ratios.append(
+                _float(public["ns_per_query_median"]) / _float(native["ns_per_query_median"])
+                if native and public
+                else 0
+            )
+            python_ratios.append(
+                _float(python["ns_per_query_median"]) / _float(public["ns_per_query_median"])
+                if python and public
+                else 0
+            )
+        ax.bar(x + offset - 0.045, public_ratios, width=0.085, color=BACKEND_COLORS.get(backend), label=backend)
+        ax.bar(
+            x + offset + 0.045, python_ratios, width=0.085, color=BACKEND_COLORS.get(backend), alpha=0.45, hatch="//"
+        )
+    ax.axhline(1.0, color="#6b7280", linestyle="--", linewidth=1.0)
+    ax.set_title("Execution-Layer Overhead Ratios", loc="left")
+    ax.set_ylabel("cost ratio")
+    ax.set_xticks(x)
+    ax.set_xticklabels([workload.replace("_", " ") for workload in workloads], rotation=35, ha="right")
+    _style_axis(ax, axis="y")
+    handles = [
+        *_backend_handles(backends, "bar"),
+        Patch(facecolor="#6b7280", label="Rust public / native"),
+        Patch(facecolor="#6b7280", alpha=0.45, hatch="//", label="Python / Rust public"),
+    ]
+    fig.legend(handles=handles, loc="upper right", bbox_to_anchor=(0.99, 0.99), frameon=True)
     _save_plot(fig, path_base)
 
 
@@ -508,26 +1039,16 @@ def _plot_throughput_repetition_strip(path_base: Path, rows):
     ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right", rotation_mode="anchor")
     ax.set_yscale("log")
     _style_axis(ax, axis="y")
-    _legend_outside(fig, ax, backends)
+    _legend_outside(fig, ax, backends, style="marker")
     _save_plot(fig, path_base)
 
 
-def _clean_plot_dir(plot_dir: Path):
-    for path in plot_dir.iterdir():
-        if path.is_file() and path.suffix in {".png", ".pdf"}:
-            path.unlink()
-
-
-def _read_optional(path: Path):
-    return read_dicts(path) if path.exists() else []
-
-
 def _synthetic_summary_rows(rows):
-    return [row for row in rows if row["feature"] not in {"scenario", "scene_scaling"}]
+    return [row for row in rows if row["feature"] not in {"api_overhead", "scenario", "scene_scaling"}]
 
 
 def _synthetic_run_rows(rows):
-    return [row for row in rows if row["feature"] not in {"scenario", "scene_scaling"}]
+    return [row for row in rows if row["feature"] not in {"api_overhead", "scenario", "scene_scaling"}]
 
 
 def _group_metric_by_thread(rows, metric):
@@ -562,6 +1083,8 @@ def _comparison_label(row):
         base = f"{row['backend']} / {row['scenario']}:{row['workload']}"
     if row.get("objects"):
         base = f"{base} / n={row['objects']}, hit={_float(row['density']):.0%}"
+    if row["feature"] == "api_overhead":
+        base = f"{base} / batch={row['queries']}"
     return base
 
 
@@ -601,9 +1124,9 @@ def _figure_height(labels):
     return max(4.8, len(labels) * 0.52)
 
 
-def _legend_outside(fig, ax, backends):
+def _legend_outside(fig, ax, backends, *, style="bar"):
     legend = ax.legend(
-        handles=_backend_handles(backends),
+        handles=_backend_handles(backends, style),
         title="Backend",
         loc="center left",
         bbox_to_anchor=(1.02, 0.5),
@@ -617,7 +1140,9 @@ def _legend_outside(fig, ax, backends):
     legend.get_frame().set_linewidth(0.8)
 
 
-def _backend_handles(backends):
+def _backend_handles(backends, style):
+    if style == "bar":
+        return [Patch(facecolor=BACKEND_COLORS.get(backend), edgecolor="none", label=backend) for backend in backends]
     return [
         Line2D(
             [0],
@@ -625,7 +1150,7 @@ def _backend_handles(backends):
             marker=BACKEND_MARKERS.get(backend, "o"),
             color=BACKEND_COLORS.get(backend),
             label=backend,
-            linestyle="None",
+            linestyle="-" if style == "line" else "None",
             markersize=6,
         )
         for backend in backends
