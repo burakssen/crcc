@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Sequence, Tuple
+from collections.abc import Sequence
 
 from crcc._core.collision_checker import CollisionChecker, CollisionEngine, CollisionStatus
 from crcc.collision_object import CollisionObject
@@ -13,16 +13,16 @@ class CollisionCheckerBuilder:
     def with_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
     def with_road_boundary(
         self,
-        lanelets: Sequence[Sequence[Tuple[float, float]]],
+        lanelets: Sequence[Sequence[tuple[float, float]]],
     ) -> CollisionCheckerBuilder: ...
     def build(self) -> CollisionChecker: ...
 
-def road_boundary(lanelets: Sequence[Sequence[Tuple[float, float]]]) -> CollisionObject: ...
+def road_boundary(lanelets: Sequence[Sequence[tuple[float, float]]]) -> CollisionObject: ...
 
 __all__ = [
-    "CollisionStatus",
     "CollisionChecker",
-    "CollisionEngine",
     "CollisionCheckerBuilder",
+    "CollisionEngine",
+    "CollisionStatus",
     "road_boundary",
 ]

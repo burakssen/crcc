@@ -1,4 +1,4 @@
-from typing import Sequence
+from collections.abc import Sequence
 
 from .collision_object import CollisionObject
 from .pose import Pose

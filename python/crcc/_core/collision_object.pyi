@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 from .collision_checker import CollisionEngine
 from .pose import Pose
@@ -43,7 +43,7 @@ class Compound(CollisionObject):
 class Circle(CollisionObject):
     """Circle with a positive radius and optional local-space center."""
 
-    def __init__(self, radius: float, center: Tuple[float, float] = (0.0, 0.0)) -> None: ...
+    def __init__(self, radius: float, center: tuple[float, float] = (0.0, 0.0)) -> None: ...
 
 class Empty(CollisionObject):
     """Geometry that never collides."""
@@ -53,9 +53,9 @@ class Empty(CollisionObject):
 class HalfSpace(CollisionObject):
     """Region where outward_normal dot point is at most offset."""
 
-    def __init__(self, outward_normal: Tuple[float, float], offset: float = 0.0) -> None: ...
+    def __init__(self, outward_normal: tuple[float, float], offset: float = 0.0) -> None: ...
     @staticmethod
-    def from_points(p1: Tuple[float, float], p2: Tuple[float, float]) -> HalfSpace: ...
+    def from_points(p1: tuple[float, float], p2: tuple[float, float]) -> HalfSpace: ...
     @staticmethod
     def from_coeffs(a: float, b: float, c: float = 0.0) -> HalfSpace: ...
 
@@ -69,29 +69,29 @@ class Polygon(CollisionObject):
 
     def __init__(
         self,
-        exterior: Sequence[Tuple[float, float]],
-        interiors: Optional[Sequence[Sequence[Tuple[float, float]]]] = None,
+        exterior: Sequence[tuple[float, float]],
+        interiors: Sequence[Sequence[tuple[float, float]]] | None = None,
     ) -> None: ...
 
 class Rectangle(CollisionObject):
     """Oriented rectangle specified by length, width, angle, and center."""
 
     def __init__(
-        self, length: float, width: float, orientation: float = 0.0, center: Tuple[float, float] = (0.0, 0.0)
+        self, length: float, width: float, orientation: float = 0.0, center: tuple[float, float] = (0.0, 0.0)
     ) -> None: ...
 
 class Triangle(CollisionObject):
     """Triangle specified by three finite vertices."""
 
-    def __init__(self, a: Tuple[float, float], b: Tuple[float, float], c: Tuple[float, float]) -> None: ...
+    def __init__(self, a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> None: ...
 
 __all__ = [
+    "Circle",
     "CollisionObject",
     "Compound",
-    "Circle",
     "Empty",
-    "HalfSpace",
     "FullSpace",
+    "HalfSpace",
     "Polygon",
     "Rectangle",
     "Triangle",

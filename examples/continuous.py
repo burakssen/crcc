@@ -1,5 +1,5 @@
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from crcc import Circle, CollisionCheckerBuilder, CollisionEngine, DynamicObstacle, Pose, Rectangle
 
@@ -13,7 +13,7 @@ class Sweep:
     start: Pose
     end: Pose
     obstacle: object
-    obstacle_pose: Pose = Pose.identity()
+    obstacle_pose: Pose = field(default_factory=Pose.identity)
 
 
 def evaluate_sweep(sweep: Sweep, engine: CollisionEngine) -> tuple[ResultRow, ResultRow, ResultRow]:

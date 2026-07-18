@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Tuple
+from collections.abc import Sequence
 
 from .collision_object import CollisionObject
 from .dynamic_obstacle import DynamicObstacle
@@ -25,7 +25,7 @@ class CollisionStatus:
     @property
     def collides(self) -> bool: ...
     @property
-    def time_step(self) -> Optional[int]: ...
+    def time_step(self) -> int | None: ...
     def __str__(self) -> str: ...
 
 class CollisionChecker:
@@ -36,71 +36,71 @@ class CollisionChecker:
     def collides_static(
         self,
         static_obstacle: CollisionObject,
-        position: Optional[Pose] = None,
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
+        position: Pose | None = None,
+        min_time: int | None = None,
+        max_time: int | None = None,
     ) -> CollisionStatus: ...
     def collides_static_batch(
         self,
-        positioned_static_obstacle: Sequence[Tuple[CollisionObject, Pose]],
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
+        positioned_static_obstacle: Sequence[tuple[CollisionObject, Pose]],
+        min_time: int | None = None,
+        max_time: int | None = None,
+    ) -> list[CollisionStatus]: ...
     def par_static(
         self,
-        positioned_static_obstacle: Sequence[Tuple[CollisionObject, Pose]],
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
+        positioned_static_obstacle: Sequence[tuple[CollisionObject, Pose]],
+        min_time: int | None = None,
+        max_time: int | None = None,
+    ) -> list[CollisionStatus]: ...
     def _collides_static_batch_threads(
         self,
-        positioned_static_obstacle: Sequence[Tuple[CollisionObject, Pose]],
+        positioned_static_obstacle: Sequence[tuple[CollisionObject, Pose]],
         threads: int,
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
+        min_time: int | None = None,
+        max_time: int | None = None,
+    ) -> list[CollisionStatus]: ...
     def par_static_threads(
         self,
-        positioned_static_obstacle: Sequence[Tuple[CollisionObject, Pose]],
+        positioned_static_obstacle: Sequence[tuple[CollisionObject, Pose]],
         threads: int,
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
+        min_time: int | None = None,
+        max_time: int | None = None,
+    ) -> list[CollisionStatus]: ...
     def collides_dynamic(
         self,
         dynamic_obstacle: DynamicObstacle,
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
+        min_time: int | None = None,
+        max_time: int | None = None,
     ) -> CollisionStatus: ...
     def collides_dynamic_batch(
         self,
         dynamic_obstacles: Sequence[DynamicObstacle],
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
+        min_time: int | None = None,
+        max_time: int | None = None,
+    ) -> list[CollisionStatus]: ...
     def par_dynamic(
         self,
         dynamic_obstacles: Sequence[DynamicObstacle],
-        min_time: Optional[int] = None,
-        max_time: Optional[int] = None,
-    ) -> List[CollisionStatus]: ...
+        min_time: int | None = None,
+        max_time: int | None = None,
+    ) -> list[CollisionStatus]: ...
 
 class CollisionCheckerBuilder:
     """Fluent builder for an immutable CollisionChecker."""
 
-    def __init__(self, engine: Optional[CollisionEngine] = None) -> None: ...
+    def __init__(self, engine: CollisionEngine | None = None) -> None: ...
     def with_engine(self, engine: CollisionEngine) -> CollisionCheckerBuilder: ...
     def with_static_obstacle(self, collision_object: CollisionObject) -> CollisionCheckerBuilder: ...
     def with_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
-    def with_road_boundary(self, lanelets: Sequence[Sequence[Tuple[float, float]]]) -> CollisionCheckerBuilder: ...
-    def build(self, engine: Optional[CollisionEngine] = None) -> CollisionChecker: ...
+    def with_road_boundary(self, lanelets: Sequence[Sequence[tuple[float, float]]]) -> CollisionCheckerBuilder: ...
+    def build(self, engine: CollisionEngine | None = None) -> CollisionChecker: ...
 
-def road_boundary(lanelets: Sequence[Sequence[Tuple[float, float]]]) -> CollisionObject: ...
+def road_boundary(lanelets: Sequence[Sequence[tuple[float, float]]]) -> CollisionObject: ...
 
 __all__ = [
-    "CollisionEngine",
-    "CollisionStatus",
     "CollisionChecker",
     "CollisionCheckerBuilder",
+    "CollisionEngine",
+    "CollisionStatus",
     "road_boundary",
 ]

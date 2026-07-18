@@ -8,7 +8,7 @@ use glamx::{DPose2, DVec2};
 use itertools::Itertools;
 use std::ops::Deref;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 /// Geometry representing the empty set.
 pub struct Empty;
 
@@ -18,7 +18,7 @@ impl Empty {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 /// Geometry representing the entire plane.
 pub struct FullSpace;
 

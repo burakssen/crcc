@@ -14,8 +14,8 @@ __all__ = [
     "BENCHMARK_SUITES",
     "DEFAULT_OUTPUT_DIR",
     "ENGINE_ITEMS",
-    "BenchmarkConfig",
     "ArtifactError",
+    "BenchmarkConfig",
     "discover_scenario_paths",
     "run_all",
 ]

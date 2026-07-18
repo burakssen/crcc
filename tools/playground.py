@@ -1,6 +1,7 @@
 import math
 from dataclasses import dataclass, field
 from enum import Enum
+from itertools import pairwise
 
 import numpy as np
 from crcc import (
@@ -82,7 +83,7 @@ class SceneObject:
             return samples[0][1]
         if time_step >= samples[-1][0]:
             return samples[-1][1]
-        for (t0, p0), (t1, p1) in zip(samples, samples[1:], strict=False):
+        for (t0, p0), (t1, p1) in pairwise(samples):
             if t0 <= time_step <= t1:
                 weight = (time_step - t0) / (t1 - t0)
                 delta = (p1.rotation - p0.rotation + math.pi) % (2 * math.pi) - math.pi
@@ -309,7 +310,7 @@ class PlaygroundState:
             time_step = self.time_steps[0]
             for lanelet in self.scenario.lanelet_network.lanelets:
                 points = np.asarray(lanelet.center_vertices)
-                for start, end in zip(points, points[1:], strict=False):
+                for start, end in pairwise(points):
                     direction = end - start
                     length = np.linalg.norm(direction)
                     if not length:

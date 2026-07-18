@@ -11,12 +11,12 @@ from crcc._core.collision_object import (
 )
 
 __all__ = [
+    "Circle",
     "CollisionObject",
     "Compound",
-    "Circle",
     "Empty",
-    "HalfSpace",
     "FullSpace",
+    "HalfSpace",
     "Polygon",
     "Rectangle",
     "Triangle",

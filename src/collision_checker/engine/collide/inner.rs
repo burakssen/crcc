@@ -128,8 +128,7 @@ impl NonTrivial {
                     CollideCollisionComponent::Finite(shape_self),
                     CollideCollisionComponent::Finite(shape_other),
                 ) = (component_self, component_other)
-                {
-                    if let (
+                    && let (
                         FiniteShapeSupport::Circle {
                             radius: radius_self,
                         },
@@ -137,45 +136,43 @@ impl NonTrivial {
                             radius: radius_other,
                         },
                     ) = (&shape_self.support, &shape_other.support)
-                        && ((start_pos_self.rotation.angle() - end_pos_self.rotation.angle()).abs()
-                            <= 1e-12
-                            || shape_self.position.translation.length_squared() <= 1e-24)
-                        && ((start_pos_other.rotation.angle() - end_pos_other.rotation.angle())
-                            .abs()
-                            <= 1e-12
-                            || shape_other.position.translation.length_squared() <= 1e-24)
-                    {
-                        let s1 = start_pos_self * shape_self.position.translation;
-                        let e1 = end_pos_self * shape_self.position.translation;
-                        let s2 = start_pos_other * shape_other.position.translation;
-                        let e2 = end_pos_other * shape_other.position.translation;
+                    && ((start_pos_self.rotation.angle() - end_pos_self.rotation.angle()).abs()
+                        <= 1e-12
+                        || shape_self.position.translation.length_squared() <= 1e-24)
+                    && ((start_pos_other.rotation.angle() - end_pos_other.rotation.angle()).abs()
+                        <= 1e-12
+                        || shape_other.position.translation.length_squared() <= 1e-24)
+                {
+                    let s1 = start_pos_self * shape_self.position.translation;
+                    let e1 = end_pos_self * shape_self.position.translation;
+                    let s2 = start_pos_other * shape_other.position.translation;
+                    let e2 = end_pos_other * shape_other.position.translation;
 
-                        let d_s = s1 - s2;
-                        let r = radius_self + radius_other;
-                        let r_sq = r * r;
+                    let d_s = s1 - s2;
+                    let r = radius_self + radius_other;
+                    let r_sq = r * r;
 
-                        if d_s.length_squared() <= r_sq {
-                            return true;
-                        }
+                    if d_s.length_squared() <= r_sq {
+                        return true;
+                    }
 
-                        let v_self = e1 - s1;
-                        let v_other = e2 - s2;
-                        let v_d = v_self - v_other;
+                    let v_self = e1 - s1;
+                    let v_other = e2 - s2;
+                    let v_d = v_self - v_other;
 
-                        let a = v_d.length_squared();
-                        if a > 1e-12 {
-                            let b = 2.0 * d_s.dot(v_d);
-                            let c = d_s.length_squared() - r_sq;
-                            let discriminant = b * b - 4.0 * a * c;
-                            if discriminant >= 0.0 {
-                                let t = (-b - discriminant.sqrt()) / (2.0 * a);
-                                if (0.0..=1.0).contains(&t) {
-                                    return true;
-                                }
+                    let a = v_d.length_squared();
+                    if a > 1e-12 {
+                        let b = 2.0 * d_s.dot(v_d);
+                        let c = d_s.length_squared() - r_sq;
+                        let discriminant = b * b - 4.0 * a * c;
+                        if discriminant >= 0.0 {
+                            let t = (-b - discriminant.sqrt()) / (2.0 * a);
+                            if (0.0..=1.0).contains(&t) {
+                                return true;
                             }
                         }
-                        continue;
                     }
+                    continue;
                 }
 
                 if components_hit_continuous(
