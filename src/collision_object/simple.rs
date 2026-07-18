@@ -594,7 +594,6 @@ mod tests {
         assert!(SimpleCollisionObject::polygon(bow_tie).is_err());
     }
 
-    #[cfg(feature = "parry")]
     #[rstest]
     fn swept_areas_cover_interpolated_shape_positions(
         #[values(

@@ -6,6 +6,7 @@ use geo::{Polygon, Rect, Triangle};
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
 
+#[cfg(any(feature = "rhusics", feature = "collide"))]
 pub mod distance;
 pub mod dynamic;
 pub mod simple;
@@ -328,7 +329,6 @@ mod tests {
         assert!(collision_object.is_full_space());
     }
 
-    #[cfg(feature = "parry")]
     #[rstest]
     fn swept_areas_cover_interpolated_shape_positions(
         #[values(

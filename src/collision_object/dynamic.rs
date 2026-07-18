@@ -267,31 +267,42 @@ mod tests {
         assert_eq!(convex_hulls.len(), 2);
     }
 
-    #[cfg(feature = "parry")]
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
     #[rstest]
     fn convert_repr_preserves_trajectory_metadata(dynamic_obstacle: DynamicObstacle) {
-        use crate::collision_checker::engine::parry::ParryCollisionObject;
-
-        let converted = dynamic_obstacle
-            .clone()
-            .convert_repr::<ParryCollisionObject>();
-        assert_eq!(
-            converted.trajectory.positions(),
-            dynamic_obstacle.0.trajectory.positions()
-        );
-        assert_eq!(converted.time_offset, dynamic_obstacle.0.time_offset);
-        match (&converted.trajectory, &dynamic_obstacle.0.trajectory) {
-            (
-                DynamicObstacleTrajectory::FixedShape {
-                    convex_hulls: converted_hulls,
-                    ..
-                },
-                DynamicObstacleTrajectory::FixedShape {
-                    convex_hulls: original_hulls,
-                    ..
-                },
-            ) => assert_eq!(converted_hulls.len(), original_hulls.len()),
-            _ => panic!("fixture should be fixed-shape"),
+        fn check<E: crate::collision_checker::engine::EngineCollisionObject>(
+            dynamic_obstacle: &DynamicObstacle,
+        ) {
+            let converted = dynamic_obstacle.clone().convert_repr::<E>();
+            assert_eq!(
+                converted.trajectory.positions(),
+                dynamic_obstacle.0.trajectory.positions()
+            );
+            assert_eq!(converted.time_offset, dynamic_obstacle.0.time_offset);
+            match (&converted.trajectory, &dynamic_obstacle.0.trajectory) {
+                (
+                    DynamicObstacleTrajectory::FixedShape {
+                        convex_hulls: converted_hulls,
+                        ..
+                    },
+                    DynamicObstacleTrajectory::FixedShape {
+                        convex_hulls: original_hulls,
+                        ..
+                    },
+                ) => assert_eq!(converted_hulls.len(), original_hulls.len()),
+                _ => panic!("fixture should be fixed-shape"),
+            }
         }
+
+        #[cfg(feature = "parry")]
+        check::<crate::collision_checker::engine::parry::ParryCollisionObject>(&dynamic_obstacle);
+        #[cfg(feature = "rhusics")]
+        check::<crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject>(
+            &dynamic_obstacle,
+        );
+        #[cfg(feature = "collide")]
+        check::<crate::collision_checker::engine::collide::CollideCollisionObject>(
+            &dynamic_obstacle,
+        );
     }
 }

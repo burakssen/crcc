@@ -272,18 +272,26 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, any(feature = "parry", feature = "rhusics", feature = "collide")))]
 mod tests {
     use super::*;
-    #[cfg(feature = "parry")]
-    use crate::collision_checker::engine::parry::ParryCollisionObject;
     use crate::collision_object::CollisionObject;
     use crate::collision_object::DynamicObstacle;
     use crate::collision_object::simple::SimpleCollisionObject;
     use geo::Rect;
     use std::f64::consts::FRAC_PI_2;
 
-    #[cfg(feature = "parry")]
+    fn engines() -> Vec<CollisionEngine> {
+        vec![
+            #[cfg(feature = "parry")]
+            CollisionEngine::Parry,
+            #[cfg(feature = "rhusics")]
+            CollisionEngine::Rhusics,
+            #[cfg(feature = "collide")]
+            CollisionEngine::Collide,
+        ]
+    }
+
     #[test]
     fn static_queries_respect_dynamic_obstacle_time_windows() {
         let dynamic_obstacle = DynamicObstacle::new(
@@ -298,59 +306,46 @@ mod tests {
             ],
             TimeStep(0),
         );
-        let checker = CollisionCheckerBuilder::new()
-            .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
-            .with_dynamic_obstacle(dynamic_obstacle)
-            .build::<ParryCollisionObject>();
+        let query = CollisionObject::from(SimpleCollisionObject::circle((8.0, 8.0), 1.0).unwrap());
 
-        let query =
-            CollisionObject::from(SimpleCollisionObject::circle((8.0, 8.0), 1.0).unwrap()).into();
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
+                .with_dynamic_obstacle(dynamic_obstacle.clone())
+                .build_with_engine(engine)
+                .unwrap();
 
-        assert!(
-            !checker
-                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(0)..=TimeStep(0))
-                .unwrap()
-                .collides()
-        );
-        assert!(
-            checker
-                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(1)..=TimeStep(1))
-                .unwrap()
-                .collides()
-        );
-        assert!(
-            !checker
-                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(2)..=TimeStep(2))
-                .unwrap()
-                .collides()
-        );
-        assert!(
-            !checker
-                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(3)..=TimeStep(3))
-                .unwrap()
-                .collides()
-        );
-        assert!(
-            !checker
-                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(4)..=TimeStep(4))
-                .unwrap()
-                .collides()
-        );
-        assert_eq!(
-            checker
-                .collides_static_range(&query, DPose2::IDENTITY, ..)
-                .unwrap(),
-            CollisionStatus::CollidesDynamic(TimeStep(0))
-        );
-        assert_eq!(
-            checker
-                .collides_static_range(&query, DPose2::IDENTITY, TimeStep(2)..=TimeStep(4))
-                .unwrap(),
-            CollisionStatus::CollidesDynamic(TimeStep(2))
-        );
+            for (time, expected) in [(0, false), (1, true), (2, false), (3, false), (4, false)] {
+                assert_eq!(
+                    checker
+                        .collides_static_range(
+                            &query,
+                            DPose2::IDENTITY,
+                            TimeStep(time)..=TimeStep(time),
+                        )
+                        .unwrap()
+                        .collides(),
+                    expected,
+                    "{engine:?}, t={time}"
+                );
+            }
+            assert_eq!(
+                checker
+                    .collides_static_range(&query, DPose2::IDENTITY, ..)
+                    .unwrap(),
+                CollisionStatus::CollidesDynamic(TimeStep(0)),
+                "{engine:?}"
+            );
+            assert_eq!(
+                checker
+                    .collides_static_range(&query, DPose2::IDENTITY, TimeStep(2)..=TimeStep(4))
+                    .unwrap(),
+                CollisionStatus::CollidesDynamic(TimeStep(2)),
+                "{engine:?}"
+            );
+        }
     }
 
-    #[cfg(feature = "parry")]
     #[test]
     fn continuous_dynamic_checks_use_shape_casting() {
         let dynamic_obstacle = DynamicObstacle::new(
@@ -365,10 +360,6 @@ mod tests {
             ],
             TimeStep(0),
         );
-        let checker = CollisionCheckerBuilder::new()
-            .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
-            .with_dynamic_obstacle(dynamic_obstacle)
-            .build::<ParryCollisionObject>();
         let moving_query = DynamicObstacle::new(
             SimpleCollisionObject::circle((0.0, 0.0), 1.0)
                 .unwrap()
@@ -378,37 +369,56 @@ mod tests {
                 DPose2::translation(15.0, -5.0),
             ],
             TimeStep(2),
-        )
-        .convert_repr();
-
-        assert_eq!(
-            checker.collides_dynamic(&moving_query).unwrap(),
-            CollisionStatus::NoCollision
         );
+
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
+                .with_dynamic_obstacle(dynamic_obstacle.clone())
+                .build_with_engine(engine)
+                .unwrap();
+            assert_eq!(
+                checker.collides_dynamic(&moving_query).unwrap(),
+                CollisionStatus::NoCollision,
+                "{engine:?}"
+            );
+        }
     }
 
-    #[cfg(feature = "parry")]
     #[test]
     fn dynamic_query_uses_static_ccd_narrow_phase() {
-        let checker = CollisionCheckerBuilder::new()
-            .with_static_obstacle(SimpleCollisionObject::circle((-1.9, 0.3), 0.1).unwrap())
-            .build::<ParryCollisionObject>();
-        let moving_query = DynamicObstacle::new(
-            SimpleCollisionObject::rectangle(Rect::new((-2.0, -0.1), (2.0, 0.1)), 0.0)
-                .unwrap()
-                .into(),
-            vec![DPose2::IDENTITY, DPose2::new((0.0, 0.0).into(), FRAC_PI_2)],
-            TimeStep(0),
-        )
-        .convert_repr();
-
-        assert_eq!(
-            checker.collides_dynamic(&moving_query).unwrap(),
-            CollisionStatus::NoCollision
+        let static_obstacle =
+            CollisionObject::from(SimpleCollisionObject::circle((-1.9, 0.3), 0.1).unwrap());
+        let moving_shape = CollisionObject::from(
+            SimpleCollisionObject::rectangle(Rect::new((-2.0, -0.1), (2.0, 0.1)), 0.0).unwrap(),
         );
+        let start = DPose2::IDENTITY;
+        let end = DPose2::new((0.0, 0.0).into(), FRAC_PI_2);
+        let moving_query =
+            DynamicObstacle::new(moving_shape.clone(), vec![start, end], TimeStep(0));
+
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(static_obstacle.clone())
+                .build_with_engine(engine)
+                .unwrap();
+            assert_eq!(
+                checker.collides_dynamic(&moving_query).unwrap().collides(),
+                crate::collision_checker::engine::collides_continuous(
+                    &moving_shape,
+                    start,
+                    end,
+                    &static_obstacle,
+                    DPose2::IDENTITY,
+                    DPose2::IDENTITY,
+                    engine,
+                )
+                .unwrap(),
+                "{engine:?}"
+            );
+        }
     }
 
-    #[cfg(feature = "parry")]
     #[test]
     fn dynamic_compound_query_matches_expanded_children() {
         let static_compound = CollisionObject::merge_all([
@@ -417,9 +427,6 @@ mod tests {
                 SimpleCollisionObject::rectangle(Rect::new((4.0, -0.5), (5.0, 0.5)), 0.0).unwrap(),
             ),
         ]);
-        let checker = CollisionCheckerBuilder::new()
-            .with_static_obstacle(static_compound)
-            .build::<ParryCollisionObject>();
         let query_parts = vec![
             CollisionObject::from(SimpleCollisionObject::circle((-0.75, 0.0), 0.25).unwrap()),
             CollisionObject::from(
@@ -435,53 +442,65 @@ mod tests {
             CollisionObject::merge_all(query_parts.clone()),
             positions.clone(),
             TimeStep(0),
-        )
-        .convert_repr();
-        let expanded = query_parts
-            .into_iter()
-            .map(|part| {
-                let obstacle =
-                    DynamicObstacle::new(part, positions.clone(), TimeStep(0)).convert_repr();
-                checker.collides_dynamic(&obstacle).unwrap()
-            })
-            .find(|status| status.collides())
-            .unwrap_or(CollisionStatus::NoCollision);
+        );
 
-        assert_eq!(checker.collides_dynamic(&compound).unwrap(), expanded);
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(static_compound.clone())
+                .build_with_engine(engine)
+                .unwrap();
+            let expanded = query_parts
+                .iter()
+                .cloned()
+                .map(|part| DynamicObstacle::new(part, positions.clone(), TimeStep(0)))
+                .map(|obstacle| checker.collides_dynamic(&obstacle).unwrap())
+                .find(|status| status.collides())
+                .unwrap_or(CollisionStatus::NoCollision);
+
+            assert_eq!(
+                checker.collides_dynamic(&compound).unwrap(),
+                expanded,
+                "{engine:?}"
+            );
+        }
     }
 
-    #[cfg(feature = "parry")]
     #[test]
     fn rotated_rectangles_collide_at_expected_extents() {
         let rect1 =
             SimpleCollisionObject::rectangle(Rect::new((0.0, 0.0), (2.0, 1.0)), 0.0).unwrap();
         let rect2 =
             SimpleCollisionObject::rectangle(Rect::new((0.0, 1.1), (2.0, 2.1)), FRAC_PI_2).unwrap();
-        let checker = CollisionCheckerBuilder::new()
-            .with_static_obstacle(rect1)
-            .build::<ParryCollisionObject>();
-
-        assert_ne!(
-            checker
-                .collides_static(&CollisionObject::from(rect2).into())
-                .unwrap(),
-            CollisionStatus::NoCollision
-        );
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(rect1.clone())
+                .build_with_engine(engine)
+                .unwrap();
+            assert_ne!(
+                checker
+                    .collides_static(&CollisionObject::from(rect2.clone()))
+                    .unwrap(),
+                CollisionStatus::NoCollision,
+                "{engine:?}"
+            );
+        }
     }
 
-    #[cfg(feature = "parry")]
     #[test]
     fn full_space_query_always_collides() {
-        let checker = CollisionCheckerBuilder::new()
-            .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
-            .build::<ParryCollisionObject>();
-
-        assert_ne!(
-            checker
-                .collides_static(&CollisionObject::from(SimpleCollisionObject::full_space()).into())
-                .unwrap(),
-            CollisionStatus::NoCollision
-        );
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
+                .build_with_engine(engine)
+                .unwrap();
+            assert_ne!(
+                checker
+                    .collides_static(&CollisionObject::from(SimpleCollisionObject::full_space()))
+                    .unwrap(),
+                CollisionStatus::NoCollision,
+                "{engine:?}"
+            );
+        }
     }
 }
 
