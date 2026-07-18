@@ -230,7 +230,7 @@ mod tests {
     use crate::time::TimeStep;
     use geo::{Polygon, Rect, Triangle};
     use glamx::DPose2;
-    use std::f64::consts::{FRAC_PI_2, PI};
+    use std::f64::consts::{FRAC_PI_2, PI, SQRT_2};
 
     fn assert_engine_parity(left: &CollisionObject, right: &CollisionObject, expected: bool) {
         assert_engine_parity_at(left, DPose2::IDENTITY, right, DPose2::IDENTITY, expected);
@@ -710,6 +710,27 @@ mod tests {
                     &fixed,
                     DPose2::IDENTITY,
                     DPose2::IDENTITY,
+                    engine,
+                )
+                .unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn continuous_engines_detect_off_center_circle_rotation() {
+        let rotating = CollisionObject::circle((2.0, 0.0), 0.25).unwrap();
+        let fixed = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
+
+        for engine in [CollisionEngine::Parry, CollisionEngine::Collide] {
+            assert!(
+                collides_continuous(
+                    &rotating,
+                    DPose2::IDENTITY,
+                    DPose2::new((0.0, 0.0).into(), FRAC_PI_2),
+                    &fixed,
+                    DPose2::translation(SQRT_2, SQRT_2),
+                    DPose2::translation(SQRT_2, SQRT_2),
                     engine,
                 )
                 .unwrap()

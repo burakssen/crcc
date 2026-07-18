@@ -1,10 +1,11 @@
 use crate::collision_checker::engine::parry::simple::ParrySimpleCollisionObject;
 use crate::collision_object::CollisionObject;
 use glamx::{DPose2, DVec2};
+use parry2d_f64::bounding_volume::{Aabb, BoundingVolume};
 use parry2d_f64::query::{
     NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, distance, intersection_test,
 };
-use parry2d_f64::shape::{Compound, TriMesh, TriMeshBuilderError};
+use parry2d_f64::shape::{Compound, Shape, TriMesh, TriMeshBuilderError};
 use std::f64::consts::{PI, TAU};
 
 // Most collision objects will be non-trivial, so boxing them would be counter-productive.
@@ -137,6 +138,63 @@ impl NonTrivial {
                 .into_iter()
                 .flatten()
             {
+                let aabb_self = Self::swept_aabb(comp_self, start_pos_self, end_pos_self);
+                let aabb_other = Self::swept_aabb(comp_other, start_pos_other, end_pos_other);
+                if !aabb_self.intersects(&aabb_other) {
+                    continue;
+                }
+
+                let shapes_self = comp_self.shapes();
+                let shapes_other = comp_other.shapes();
+                if shapes_self.len() == 1 && shapes_other.len() == 1 {
+                    let (local_pose_self, shape_self) = &shapes_self[0];
+                    let (local_pose_other, shape_other) = &shapes_other[0];
+
+                    if let (
+                        parry2d_f64::shape::TypedShape::Ball(ball_self),
+                        parry2d_f64::shape::TypedShape::Ball(ball_other),
+                    ) = (shape_self.as_typed_shape(), shape_other.as_typed_shape())
+                        && ((start_pos_self.rotation.angle() - end_pos_self.rotation.angle()).abs()
+                            <= 1e-12
+                            || local_pose_self.translation.length_squared() <= 1e-24)
+                        && ((start_pos_other.rotation.angle() - end_pos_other.rotation.angle())
+                            .abs()
+                            <= 1e-12
+                            || local_pose_other.translation.length_squared() <= 1e-24)
+                    {
+                        let s1 = start_pos_self * local_pose_self.translation;
+                        let e1 = end_pos_self * local_pose_self.translation;
+                        let s2 = start_pos_other * local_pose_other.translation;
+                        let e2 = end_pos_other * local_pose_other.translation;
+
+                        let d_s = s1 - s2;
+                        let r = ball_self.radius + ball_other.radius;
+                        let r_sq = r * r;
+
+                        if d_s.length_squared() <= r_sq {
+                            return Ok(true);
+                        }
+
+                        let v_self = e1 - s1;
+                        let v_other = e2 - s2;
+                        let v_d = v_self - v_other;
+
+                        let a = v_d.length_squared();
+                        if a > 1e-12 {
+                            let b = 2.0 * d_s.dot(v_d);
+                            let c = d_s.length_squared() - r_sq;
+                            let discriminant = b * b - 4.0 * a * c;
+                            if discriminant >= 0.0 {
+                                let t = (-b - discriminant.sqrt()) / (2.0 * a);
+                                if (0.0..=1.0).contains(&t) {
+                                    return Ok(true);
+                                }
+                            }
+                        }
+                        continue;
+                    }
+                }
+
                 if cast_shapes_nonlinear(
                     &motion_self,
                     comp_self,
@@ -153,6 +211,26 @@ impl NonTrivial {
             }
         }
         Ok(false)
+    }
+
+    fn swept_aabb(comp: &Compound, start: DPose2, end: DPose2) -> Aabb {
+        let start_angle = start.rotation.angle();
+        let end_angle = end.rotation.angle();
+        if (start_angle - end_angle).abs() <= 1e-12 {
+            let aabb_start = comp.compute_aabb(&start);
+            let aabb_end = comp.compute_aabb(&end);
+            return aabb_start.merged(&aabb_end);
+        }
+
+        let local_aabb = comp.compute_aabb(&DPose2::IDENTITY);
+        let r = local_aabb.mins.length().max(local_aabb.maxs.length());
+
+        let min_x = start.translation.x.min(end.translation.x) - r;
+        let min_y = start.translation.y.min(end.translation.y) - r;
+        let max_x = start.translation.x.max(end.translation.x) + r;
+        let max_y = start.translation.y.max(end.translation.y) + r;
+
+        Aabb::new(DVec2::new(min_x, min_y), DVec2::new(max_x, max_y))
     }
 
     pub fn distance(
