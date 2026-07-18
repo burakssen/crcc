@@ -131,6 +131,7 @@ class PlaygroundState:
     speed: int = 1
     _next_id: int = 1
     _results: dict[int, ObjectResult] = field(default_factory=dict)
+    _interval_results: dict[int, ObjectResult] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.time_steps and self.current_time not in self.time_steps:
@@ -201,7 +202,6 @@ class PlaygroundState:
     def evaluate(self):
         queries = [obj for obj in self.objects if obj.role == "query"]
         environments = [obj for obj in self.objects if obj.role == "environment"]
-        self._results = {query.object_id: self._evaluate_object(query) for query in queries}
         priority = {
             Verdict.EXACT_CLEAR: 0,
             Verdict.CERTIFIED_CLEAR: 0,
@@ -209,15 +209,19 @@ class PlaygroundState:
             Verdict.POTENTIAL_COLLISION: 2,
             Verdict.EXACT_HIT: 3,
         }
-        for environment in environments:
-            pair_results = [
-                self._evaluate_object(query, obstacles=(environment,), include_scenario=False) for query in queries
-            ]
-            if pair_results:
-                self._results[environment.object_id] = max(pair_results, key=lambda result: priority[result.verdict])
+        for interval, results in ((False, self._results), (True, self._interval_results)):
+            results.clear()
+            results.update({query.object_id: self._evaluate_object(query, interval=interval) for query in queries})
+            for environment in environments:
+                pair_results = [self._evaluate_object(environment, obstacles=(), interval=interval)] + [
+                    self._evaluate_object(query, obstacles=(environment,), include_scenario=False, interval=interval)
+                    for query in queries
+                ]
+                if pair_results:
+                    results[environment.object_id] = max(pair_results, key=lambda result: priority[result.verdict])
         return self._results
 
-    def _evaluate_object(self, query, *, obstacles=None, include_scenario=True):
+    def _evaluate_object(self, query, *, obstacles=None, include_scenario=True, interval=False):
         try:
             builder = CollisionCheckerBuilder(engine=self.engine)
             if include_scenario and self.scenario is not None:
@@ -232,9 +236,17 @@ class PlaygroundState:
                     builder.with_dynamic_obstacle(obj.dynamic_obstacle(self.time_steps))
             checker = builder.build()
             max_time = self.current_time
-            if self.time_steps:
+            if interval and self.time_steps:
                 index = self.time_steps.index(self.current_time)
                 max_time = self.time_steps[min(index + 1, len(self.time_steps) - 1)]
+            if not interval:
+                status = checker.collides_static(
+                    query.shape_at(self.current_time, self.time_steps[0]).collision_object(),
+                    query.pose_at(self.current_time),
+                    min_time=self.current_time,
+                    max_time=self.current_time,
+                )
+                return ObjectResult(Verdict.EXACT_HIT if status.collides else Verdict.EXACT_CLEAR, str(status))
             if query.mode == "static":
                 status = checker.collides_static(
                     query.shape_at(self.current_time, self.time_steps[0]).collision_object(),
@@ -242,7 +254,10 @@ class PlaygroundState:
                     min_time=self.current_time,
                     max_time=max_time,
                 )
-                return ObjectResult(Verdict.EXACT_HIT if status.collides else Verdict.EXACT_CLEAR, str(status))
+                return ObjectResult(
+                    Verdict.POTENTIAL_COLLISION if status.collides else Verdict.CERTIFIED_CLEAR,
+                    str(status),
+                )
             status = checker.collides_dynamic(query.dynamic_obstacle(self.time_steps), self.current_time, max_time)
             return ObjectResult(
                 Verdict.POTENTIAL_COLLISION if status.collides else Verdict.CERTIFIED_CLEAR,
@@ -255,26 +270,62 @@ class PlaygroundState:
         self.objects.clear()
         self.selected_id = None
         self._next_id = 1
-        xmin, xmax, ymin, ymax = bounds
-        cx, cy = (xmin + xmax) / 2, (ymin + ymax) / 2
+        if name == "Empty":
+            self.evaluate()
+            return
+        (cx, cy), angle = self._preset_frame(bounds)
+
+        def pose(x, y=0.0, rotation=0.0):
+            cosine, sine = math.cos(angle), math.sin(angle)
+            return Pose((cx + cosine * x - sine * y, cy + sine * x + cosine * y), angle + rotation)
+
         if name == "Tunneling":
             self.shape_kind, self.mode = "rectangle", "static"
             self.add_object((cx, cy), role="environment")
+            self.selected.pose = pose(0.0)
             self.shape_kind, self.mode = "circle", "dynamic"
-            self.draft_path = [Pose.from_translation((cx - 8, cy)), Pose.from_translation((cx + 8, cy))]
-            self.add_object((cx - 8, cy))
+            self.draft_path = [pose(-8.0), pose(8.0)]
+            self.add_object(pose(-8.0).translation)
         elif name == "Intersection":
-            for index, (start, end) in enumerate((((cx - 8, cy), (cx + 8, cy)), ((cx, cy - 8), (cx, cy + 8)))):
+            for index, (start, end) in enumerate(
+                ((pose(-8.0), pose(8.0)), (pose(0.0, -8.0, math.pi / 2), pose(0.0, 8.0, math.pi / 2)))
+            ):
                 self.shape_kind, self.mode = "rectangle", "dynamic"
-                self.draft_path = [Pose.from_translation(start), Pose.from_translation(end)]
-                self.add_object(start, role="environment" if index == 0 else "query")
+                self.draft_path = [start, end]
+                self.add_object(start.translation, role="environment" if index == 0 else "query")
         elif name == "Overtaking":
-            for offset, points in ((0, [(cx - 6, cy), (cx + 5, cy)]), (1, [(cx - 8, cy), (cx, cy + 3), (cx + 7, cy)])):
+            for offset, points in ((0, [pose(-5.0), pose(5.0)]), (1, [pose(-9.0), pose(0.0, 3.0), pose(7.0)])):
                 self.shape_kind, self.mode = "rectangle", "dynamic"
-                self.draft_path = [Pose.from_translation(point) for point in points]
-                self.add_object(points[0], role="environment" if offset == 0 else "query")
+                self.draft_path = points
+                self.add_object(points[0].translation, role="environment" if offset == 0 else "query")
                 self.selected.name = "lead vehicle" if offset == 0 else "overtaking vehicle"
         self.evaluate()
+
+    def _preset_frame(self, bounds):
+        if self.scenario is not None:
+            checker = create_collision_checker_from_scenario(
+                self.scenario, CollisionCheckerBuilder(engine=self.engine)
+            ).build()
+            time_step = self.time_steps[0]
+            for lanelet in self.scenario.lanelet_network.lanelets:
+                points = np.asarray(lanelet.center_vertices)
+                for start, end in zip(points, points[1:], strict=False):
+                    direction = end - start
+                    length = np.linalg.norm(direction)
+                    if not length:
+                        continue
+                    direction /= length
+                    center = (start + end) / 2
+                    angle = math.atan2(direction[1], direction[0])
+                    poses = [Pose(tuple(center + offset * direction), angle) for offset in (-8.0, 0.0, 8.0)]
+                    shapes = [Circle(0.9), Rectangle(3.8, 1.8), Circle(0.9)]
+                    if all(
+                        not checker.collides_static(shape, candidate, min_time=time_step, max_time=time_step).collides
+                        for shape, candidate in zip(shapes, poses, strict=True)
+                    ):
+                        return tuple(center), angle
+        xmin, xmax, ymin, ymax = bounds
+        return ((xmin + xmax) / 2, (ymin + ymax) / 2), 0.0
 
 
 @dataclass(frozen=True)
@@ -402,12 +453,12 @@ def verdict_color(result):
     }[result.verdict]
 
 
-def draw_shape(ax, definition, pose, color, *, selected=False, alpha=0.65):
+def draw_shape(ax, definition, pose, color, *, selected=False, edge_color=None, alpha=0.65):
     from matplotlib import patches
     from matplotlib.transforms import Affine2D
 
     transform = Affine2D().rotate(pose.rotation).translate(*pose.translation) + ax.transData
-    edge = COLOR_SELECTED if selected else color
+    edge = COLOR_SELECTED if selected else edge_color or color
     width = 3 if selected else 1.8
     if definition.kind == "circle":
         artist = patches.Circle(
@@ -479,10 +530,24 @@ def draw_scene(ax, scenario, state, bounds, *, reset_view=False):
         pose = obj.pose_at(state.current_time)
         shape = obj.shape_at(state.current_time, state.time_steps[0])
         result = state._results.get(obj.object_id)
-        artists.append(draw_shape(ax, shape, pose, verdict_color(result), selected=obj.object_id == state.selected_id))
+        interval_result = state._interval_results.get(obj.object_id)
+        artists.append(
+            draw_shape(
+                ax,
+                shape,
+                pose,
+                verdict_color(result),
+                selected=obj.object_id == state.selected_id,
+                edge_color=verdict_color(interval_result),
+            )
+        )
         if obj.path:
             points = np.asarray([sample_pose.translation for _time, sample_pose in obj.path])
-            artists.append(ax.plot(points[:, 0], points[:, 1], "--", color=COLOR_PATH, linewidth=1.2, zorder=45)[0])
+            artists.append(
+                ax.plot(
+                    points[:, 0], points[:, 1], "--", color=verdict_color(interval_result), linewidth=1.2, zorder=45
+                )[0]
+            )
     if state.draft_path:
         points = np.asarray([pose.translation for pose in state.draft_path])
         artists.append(
@@ -509,7 +574,12 @@ def draw_scene(ax, scenario, state, bounds, *, reset_view=False):
         ax.set_ylim(view[1])
     selected = state.selected
     result = state._results.get(selected.object_id) if selected else None
-    status = result.verdict.value if result else "select or add a query object"
+    interval_result = state._interval_results.get(selected.object_id) if selected else None
+    status = (
+        f"current: {result.verdict.value} | next interval: {interval_result.verdict.value}"
+        if result and interval_result
+        else "select or add a query object"
+    )
     ax.set_title(f"t={state.current_time} | {state.engine} | {status}")
     return artists
 

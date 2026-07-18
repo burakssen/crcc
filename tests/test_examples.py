@@ -109,7 +109,10 @@ def test_playground_presets_color_every_collision_participant(engine):
         state = playground.PlaygroundState(engine, (0, 1, 2))
         state.load_preset(preset, bounds)
         assert set(state._results) == {obj.object_id for obj in state.objects}
-        assert {result.verdict for result in state._results.values()} == {playground.Verdict.POTENTIAL_COLLISION}
+        assert {result.verdict for result in state._results.values()} == {playground.Verdict.EXACT_CLEAR}
+        assert {result.verdict for result in state._interval_results.values()} == {
+            playground.Verdict.POTENTIAL_COLLISION
+        }
 
     state = playground.PlaygroundState(engine, (0, 1))
     state.shape_kind, state.mode = "rectangle", "static"
@@ -120,9 +123,33 @@ def test_playground_presets_color_every_collision_participant(engine):
     query = state.add_object((-8.0, 0.0))
     results = state.evaluate()
 
-    assert results[query.object_id].verdict == playground.Verdict.POTENTIAL_COLLISION
-    assert results[colliding.object_id].verdict == playground.Verdict.POTENTIAL_COLLISION
-    assert results[separated.object_id].verdict == playground.Verdict.CERTIFIED_CLEAR
+    assert {results[obj.object_id].verdict for obj in (query, colliding, separated)} == {playground.Verdict.EXACT_CLEAR}
+    assert state._interval_results[query.object_id].verdict == playground.Verdict.POTENTIAL_COLLISION
+    assert state._interval_results[colliding.object_id].verdict == playground.Verdict.POTENTIAL_COLLISION
+    assert state._interval_results[separated.object_id].verdict == playground.Verdict.CERTIFIED_CLEAR
+
+
+def test_playground_tunneling_outlines_every_interval_collision(engine):
+    from matplotlib.colors import to_rgba
+
+    state = playground.PlaygroundState(engine, (0, 1, 2, 3, 4))
+    state.load_preset("Tunneling", (-10.0, 10.0, -10.0, 10.0))
+    state.current_time = 1
+
+    fig, ax = plt.subplots()
+    try:
+        artists = playground.draw_scene(ax, None, state, (-10.0, 10.0, -10.0, 10.0), reset_view=True)
+        environment = next(obj for obj in state.objects if obj.role == "environment")
+        patch = artists[state.objects.index(environment)]
+        assert patch.get_facecolor() == to_rgba(playground.COLOR_CLEAR, alpha=0.65)
+        assert patch.get_edgecolor() == to_rgba(playground.COLOR_POTENTIAL, alpha=0.65)
+
+        state.current_time = 2
+        artists = playground.draw_scene(ax, None, state, (-10.0, 10.0, -10.0, 10.0))
+        patches = [artist for artist in artists if hasattr(artist, "get_facecolor")]
+        assert {patch.get_facecolor() for patch in patches} == {to_rgba(playground.COLOR_EXACT_HIT, alpha=0.65)}
+    finally:
+        plt.close(fig)
 
 
 def test_playground_freehand_polygon_uses_local_coordinates():
@@ -147,7 +174,10 @@ def test_playground_paths_do_not_obscure_scene_and_zoom_is_preserved(engine):
     try:
         artists = playground.draw_scene(ax, None, state, bounds, reset_view=True)
         path = next(
-            artist for artist in artists if getattr(artist, "get_color", lambda: None)() == playground.COLOR_PATH
+            artist
+            for artist in artists
+            if getattr(artist, "get_linestyle", lambda: None)() == "--"
+            and getattr(artist, "get_marker", lambda: None)() == "None"
         )
         assert path.get_marker() == "None"
 
@@ -168,6 +198,24 @@ def test_playground_paths_do_not_obscure_scene_and_zoom_is_preserved(engine):
         assert ax.get_ylim() == (-5.0, 5.0)
     finally:
         plt.close(fig)
+
+
+def test_playground_tunneling_checks_every_object_against_the_scenario():
+    scenario, checker = utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionEngine.Rhusics)
+    lower, upper = utils.scenario_pose_bounds(scenario)
+    bounds = (lower[0], upper[0], lower[1], upper[1])
+    state = playground.PlaygroundState(checker.engine, tuple(utils.scenario_time_steps(scenario)), scenario)
+
+    state.load_preset("Tunneling", bounds)
+
+    assert {result.verdict for result in state._results.values()} == {playground.Verdict.EXACT_CLEAR}
+
+    environment = next(obj for obj in state.objects if obj.role == "environment")
+    environment.pose = playground.Pose.from_translation(((bounds[0] + bounds[1]) / 2, (bounds[2] + bounds[3]) / 2))
+    state.evaluate()
+
+    assert state._results[environment.object_id].verdict == playground.Verdict.EXACT_HIT
+    assert state._interval_results[environment.object_id].verdict == playground.Verdict.POTENTIAL_COLLISION
 
 
 def test_commonroad_probes_are_geometry_derived_and_repeatable():
