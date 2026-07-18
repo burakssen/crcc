@@ -53,14 +53,17 @@ impl SelectedCollisionChecker {
         Self(inner)
     }
 
+    /// Checks a static obstacle against the scene geometry across all active times.
     pub fn collides_static(&self, static_obstacle: &CollisionObject) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, ..)
     }
 
+    /// Checks a dynamic obstacle against the scene geometry across all active times.
     pub fn collides_dynamic(&self, dynamic_obstacle: &DynamicObstacle) -> CollisionResult {
         self.collides_dynamic_range(dynamic_obstacle, ..)
     }
 
+    /// Checks a static obstacle against the scene geometry at a specific time step.
     pub fn collides_static_at(
         &self,
         static_obstacle: &CollisionObject,
@@ -69,6 +72,7 @@ impl SelectedCollisionChecker {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, time_step..=time_step)
     }
 
+    /// Checks a dynamic obstacle against the scene geometry at a specific time step.
     pub fn collides_dynamic_at(
         &self,
         dynamic_obstacle: &DynamicObstacle,
@@ -77,6 +81,7 @@ impl SelectedCollisionChecker {
         self.collides_dynamic_range(dynamic_obstacle, time_step..=time_step)
     }
 
+    /// Checks a positioned static obstacle against the scene geometry across all active times.
     pub fn collides_static_pos(
         &self,
         static_obstacle: &CollisionObject,
@@ -85,6 +90,7 @@ impl SelectedCollisionChecker {
         self.collides_static_range(static_obstacle, position, ..)
     }
 
+    /// Checks a positioned static obstacle against the scene geometry at a specific time step.
     pub fn collides_static_pos_at(
         &self,
         static_obstacle: &CollisionObject,
@@ -229,6 +235,7 @@ impl SelectedCollisionChecker {
     }
 
     #[cfg(feature = "rayon")]
+    /// Checks multiple positioned static obstacles in parallel using Rayon.
     pub fn par_static(
         &self,
         positioned_static_obstacles: &[(CollisionObject, DPose2)],
@@ -238,6 +245,7 @@ impl SelectedCollisionChecker {
     }
 
     #[cfg(feature = "rayon")]
+    /// Checks multiple dynamic obstacles in parallel using Rayon.
     pub fn par_dynamic(
         &self,
         dynamic_obstacles: &[DynamicObstacle],

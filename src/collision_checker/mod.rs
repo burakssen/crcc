@@ -50,10 +50,12 @@ pub struct CollisionChecker<E: EngineCollisionObject> {
 }
 
 impl<E: EngineCollisionObject> CollisionChecker<E> {
+    /// Checks a static obstacle against the scene geometry across all active times.
     pub fn collides_static(&self, static_obstacle: &E) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, ..)
     }
 
+    /// Checks a dynamic obstacle against the scene geometry across all active times.
     pub fn collides_dynamic(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E>,
@@ -61,10 +63,12 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         self.collides_dynamic_range(dynamic_obstacle, ..)
     }
 
+    /// Checks a static obstacle against the scene geometry at a specific time step.
     pub fn collides_static_at(&self, static_obstacle: &E, time_step: TimeStep) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, time_step..=time_step)
     }
 
+    /// Checks a dynamic obstacle against the scene geometry at a specific time step.
     pub fn collides_dynamic_at(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E>,
@@ -73,10 +77,12 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         self.collides_dynamic_range(dynamic_obstacle, time_step..=time_step)
     }
 
+    /// Checks a positioned static obstacle against the scene geometry across all active times.
     pub fn collides_static_pos(&self, static_obstacle: &E, position: DPose2) -> CollisionResult {
         self.collides_static_range(static_obstacle, position, ..)
     }
 
+    /// Checks a positioned static obstacle against the scene geometry at a specific time step.
     pub fn collides_static_pos_at(
         &self,
         static_obstacle: &E,
@@ -86,6 +92,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         self.collides_static_range(static_obstacle, position, time_step..=time_step)
     }
 
+    /// Checks a positioned static obstacle against the scene geometry within a specific time range.
     pub fn collides_static_range(
         &self,
         static_obstacle: &E,
@@ -114,6 +121,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         Ok(CollisionStatus::NoCollision)
     }
 
+    /// Checks a dynamic obstacle against the scene geometry within a specific time range.
     pub fn collides_dynamic_range(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E>,

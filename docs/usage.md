@@ -1,38 +1,35 @@
 # Using CRCC
 
-This guide presents the same tasks in Python and Rust. See the [Python API](python-api.md) or [Rust API](rust-api.md) for complete signatures.
+This guide provides practical examples for common collision-checking tasks in both Python and Rust.
 
-## Shared semantics
+<!-- ponytail: simplified and structured usage guide, placing Python and Rust examples close together -->
 
-Geometry is defined in local coordinates and placed with a pose. Pair queries receive a pose for each operand; checker queries receive the query pose because scene geometry is already positioned.
+## Core Semantics
 
-Python `min_time` and `max_time` bounds are inclusive. Rust accepts standard ranges over `TimeStep`: `a..=b` includes both endpoints and `a..b` excludes `b`. Omitting bounds searches all representable steps. To check motion from step `t` to `t + 1`, include both endpoints in the range.
+- **Geometry & Poses**: Shapes are defined in local coordinates and placed with a `Pose`.
+- **Time Windows**: Python uses inclusive bounds (`min_time` / `max_time`). Rust uses `TimeStep` ranges (e.g. `t1..=t2`).
+- **CCD**: Continuous Collision Detection is conservative. `False` guarantees separation; `True` indicates a potential collision.
+- **Batch Queries**: Results are returned in parallel (using Rayon) but always preserve input order.
+- **API Boundary**: Only package-root exports and the Python `crcc.commonroad` module are public.
 
-Batch results always match input order. Implementations may execute sufficiently large batches in parallel, but that does not change results or ordering.
+---
 
-CCD is conservative. `False` certifies separation over the entire interval. `True` reports a possible collision and may be conservative for rotations, changing shapes, or numerically unresolved cases. Backend contact classification and unsupported shape-operation combinations can differ; these are semantic differences, not performance conclusions.
+## 1. Pair Collision and Distance
 
-Only package/crate-root names and the Python `crcc.commonroad` module are public. Underscore-prefixed modules and methods, backend representations, and research-tool support are implementation details.
-
-## Pair collision and distance
-
-Python:
-
+### Python
 ```python
 from crcc.collision_checker import CollisionEngine
 from crcc.collision_object import Circle
 from crcc.pose import Pose
 
-left = Circle(1.0)
-right = Circle(1.0)
-right_pose = Pose.from_translation((3.0, 0.0))
+left, right = Circle(1.0), Circle(1.0)
+r_pose = Pose.from_translation((3.0, 0.0))
 
-assert not left.collides(right, pos_other=right_pose, engine=CollisionEngine.Parry)
-assert left.distance(right, pos_other=right_pose, engine=CollisionEngine.Parry) == 1.0
+assert not left.collides(right, pos_other=r_pose, engine=CollisionEngine.Parry)
+assert left.distance(right, pos_other=r_pose, engine=CollisionEngine.Parry) == 1.0
 ```
 
-Rust:
-
+### Rust
 ```rust
 use crcc::collision_checker::engine::CollisionEngine;
 use crcc::collision_object::CollisionObject;
@@ -41,18 +38,19 @@ use glamx::DPose2 as Pose;
 # fn main() -> Result<(), crcc::error::CrccError> {
 let left = CollisionObject::circle((0.0, 0.0), 1.0)?;
 let right = CollisionObject::circle((0.0, 0.0), 1.0)?;
-let right_pose = Pose::translation(3.0, 0.0);
+let r_pose = Pose::translation(3.0, 0.0);
 
-assert!(!left.collides(&right, Pose::IDENTITY, right_pose, CollisionEngine::Parry)?);
-assert_eq!(left.distance(&right, Pose::IDENTITY, right_pose, CollisionEngine::Parry)?, 1.0);
+assert!(!left.collides(&right, Pose::IDENTITY, r_pose, CollisionEngine::Parry)?);
+assert_eq!(left.distance(&right, Pose::IDENTITY, r_pose, CollisionEngine::Parry)?, 1.0);
 # Ok(())
 # }
 ```
 
-## Continuous pair collision
+---
 
-Python:
+## 2. Continuous Pair Collision
 
+### Python
 ```python
 from crcc.collision_checker import CollisionEngine
 from crcc.collision_object import Circle, Rectangle
@@ -60,19 +58,17 @@ from crcc.pose import Pose
 
 moving = Circle(0.5)
 barrier = Rectangle(0.25, 3.0)
-possible_hit = moving.collides_continuous(
-    Pose.from_translation((-2.0, 0.0)),
-    Pose.from_translation((2.0, 0.0)),
-    barrier,
-    Pose.identity(),
-    Pose.identity(),
+
+# Check motion from (-2.0, 0) to (2.0, 0)
+hit = moving.collides_continuous(
+    Pose.from_translation((-2.0, 0.0)), Pose.from_translation((2.0, 0.0)),
+    barrier, Pose.identity(), Pose.identity(),
     CollisionEngine.Parry,
 )
-assert possible_hit
+assert hit
 ```
 
-Rust:
-
+### Rust
 ```rust
 use crcc::collision_checker::engine::CollisionEngine;
 use crcc::collision_object::CollisionObject;
@@ -81,23 +77,22 @@ use glamx::DPose2 as Pose;
 # fn main() -> Result<(), crcc::error::CrccError> {
 let moving = CollisionObject::circle((0.0, 0.0), 0.5)?;
 let barrier = CollisionObject::rectangle(geo::Rect::new((-0.125, -1.5), (0.125, 1.5)), 0.0)?;
-let possible_hit = moving.collides_continuous(
-    Pose::translation(-2.0, 0.0),
-    Pose::translation(2.0, 0.0),
-    &barrier,
-    Pose::IDENTITY,
-    Pose::IDENTITY,
+
+let hit = moving.collides_continuous(
+    Pose::translation(-2.0, 0.0), Pose::translation(2.0, 0.0),
+    &barrier, Pose::IDENTITY, Pose::IDENTITY,
     CollisionEngine::Parry,
 )?;
-assert!(possible_hit);
+assert!(hit);
 # Ok(())
 # }
 ```
 
-## Build a checker and select an engine
+---
 
-Python:
+## 3. Builder and Engine Selection
 
+### Python
 ```python
 from crcc.collision_checker import CollisionCheckerBuilder, CollisionEngine
 from crcc.collision_object import Circle, Rectangle
@@ -108,13 +103,11 @@ checker = (
     .with_static_obstacle(Rectangle(2.0, 2.0))
     .build()
 )
-status = checker.collides_static(Circle(0.5), Pose.identity())
-assert status.collides
+assert checker.collides_static(Circle(0.5), Pose.identity()).collides
 assert checker.engine == CollisionEngine.Rhusics
 ```
 
-Rust:
-
+### Rust
 ```rust
 use crcc::collision_checker::CollisionCheckerBuilder;
 use crcc::collision_checker::engine::CollisionEngine;
@@ -124,6 +117,7 @@ use glamx::DPose2 as Pose;
 # fn main() -> Result<(), crcc::error::CrccError> {
 let wall = CollisionObject::rectangle(geo::Rect::new((-1.0, -1.0), (1.0, 1.0)), 0.0)?;
 let query = CollisionObject::circle((0.0, 0.0), 0.5)?;
+
 let checker = CollisionCheckerBuilder::new()
     .with_static_obstacle(wall)
     .build_with_engine(CollisionEngine::Rhusics)?;
@@ -134,12 +128,13 @@ assert_eq!(checker.engine(), CollisionEngine::Rhusics);
 # }
 ```
 
-## Dynamic obstacles and time windows
+---
 
-The first pose is active at `time_offset`. Each later pose advances one integer step. A fixed-shape checker query is tested against dynamic scene objects only inside the requested time window; static scene geometry is always checked.
+## 4. Dynamic Obstacles and Time Windows
 
-Python:
+Static geometry is always checked. Dynamic geometry is checked only within the specified time step window.
 
+### Python
 ```python
 from crcc.collision_checker import CollisionCheckerBuilder
 from crcc.collision_object import Circle, Rectangle
@@ -149,16 +144,16 @@ from crcc.pose import Pose
 moving = DynamicObstacle(
     Circle(0.5),
     [Pose.from_translation((-2.0, 0.0)), Pose.from_translation((2.0, 0.0))],
-    10,
+    time_offset=10,
 )
 checker = CollisionCheckerBuilder().with_static_obstacle(Rectangle(0.25, 3.0)).build()
+
 status = checker.collides_dynamic(moving, min_time=10, max_time=11)
 assert status.collides
 assert status.time_step == 10
 ```
 
-Rust:
-
+### Rust
 ```rust
 use crcc::collision_checker::CollisionCheckerBuilder;
 use crcc::collision_checker::engine::CollisionEngine;
@@ -177,18 +172,19 @@ let barrier = CollisionObject::rectangle(geo::Rect::new((-0.125, -1.5), (0.125, 
 let checker = CollisionCheckerBuilder::new()
     .with_static_obstacle(barrier)
     .build_with_engine(CollisionEngine::Parry)?;
+
 let status = checker.collides_dynamic_range(&moving, TimeStep(10)..=TimeStep(11))?;
 assert!(status.collides());
 # Ok(())
 # }
 ```
+Use `DynamicObstacle.from_time_variant` (Python) or `DynamicObstacle::time_variant` (Rust) for time-varying shape geometries.
 
-Use Python `DynamicObstacle.from_time_variant(objects, time_offset, positions)` or Rust `DynamicObstacle::time_variant(objects, positions, time_offset)` when geometry changes between steps. Shape and pose counts must match.
+---
 
-## Batch queries
+## 5. Parallel Batch Queries
 
-Python batches are always available because the extension is built with Rayon:
-
+### Python
 ```python
 from crcc.collision_checker import CollisionCheckerBuilder
 from crcc.collision_object import Circle, Rectangle
@@ -196,12 +192,13 @@ from crcc.pose import Pose
 
 checker = CollisionCheckerBuilder().with_static_obstacle(Rectangle(2.0, 2.0)).build()
 queries = [(Circle(0.25), Pose.identity()), (Circle(0.25), Pose.from_translation((5.0, 0.0)))]
-statuses = checker.par_static(queries)
-assert [status.collides for status in statuses] == [True, False]
+
+results = checker.par_static(queries)
+assert [res.collides for res in results] == [True, False]
 ```
 
-In Rust, enable `rayon` and pass positioned objects or dynamic obstacles:
-
+### Rust
+*(Requires the `rayon` feature enabled)*
 ```rust
 # use crcc::collision_checker::CollisionCheckerBuilder;
 # use crcc::collision_checker::engine::CollisionEngine;
@@ -222,7 +219,9 @@ assert!(!results[1].as_ref().unwrap().collides());
 # }
 ```
 
-## CommonRoad workflow (Python)
+---
+
+## 6. CommonRoad Scenario Conversion (Python Only)
 
 ```python
 from commonroad.common.file_reader import CommonRoadFileReader
@@ -235,5 +234,4 @@ checker = create_collision_checker_from_scenario(
     CollisionCheckerBuilder(CollisionEngine.Parry),
 ).build()
 ```
-
-The scenario conversion adds the road boundary, static occupancies, and supported dynamic predictions. Individual conversion helpers are listed in the [Python API](python-api.md).
+Scenario conversion adds road boundaries, static occupancies, and predicted dynamic obstacle trajectories automatically.
