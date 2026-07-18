@@ -233,3 +233,25 @@ checker = create_collision_checker_from_scenario(
 ).build()
 ```
 Scenario conversion adds road boundaries, static occupancies, and predicted dynamic obstacle trajectories automatically.
+
+---
+
+## 7. Approximation and Interpolation Semantics
+
+To perform Continuous Collision Detection (CCD) and dynamic trajectory checking efficiently, CRCC utilizes specific geometric approximations and pose interpolation models:
+
+### Pose Interpolation
+When query objects or obstacles move between discrete keyframes or endpoints:
+* **Translation**: Linearly interpolated (`lerp`) using standard vector math.
+* **Rotation**: Spherically linearly interpolated (`slerp`) using orientation matrices/quaternions (in Rust) or shortest-path angular modular interpolation (in Python).
+
+### Swept Area Approximations
+Continuous Collision Detection (CCD) checks the sweep of shapes over a time interval. Because simultaneous translation and rotation generate complex transcendental boundaries, CRCC over-approximates swept geometries:
+1. **Translation Only (No Rotation)**: The swept area is computed using the `convex_hull` of the union of the start and end polygons. This is exact for convex polygons and conservative for non-convex polygons:
+   $$\text{Swept Area} = \text{ConvexHull}(\text{start} \cup \text{end})$$
+2. **Translation with Rotation**: The swept bounds are conservatively over-approximated using bounding box or bounding sphere enclosures (constructed from the maximum vertex radius of the shape).
+3. **Half-Spaces with Rotation**: If a half-space rotates, it sweeps the entire plane, so the swept area is approximated by a `FullSpace` collision object.
+
+### Controlling Accuracy
+* **Conservative CCD guarantees safety**: A result of `False` certifies absolute separation, whereas `True` indicates a potential intersection.
+* **Precision Tuning**: Dividing trajectories into smaller time intervals reduces the angular rotation per step and tightens the conservative bounds. The CCD engine also recursively subdivides candidate intervals until either separation is proven, a collision is found, or its tolerance/depth limits are reached.
