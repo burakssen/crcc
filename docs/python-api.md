@@ -102,13 +102,13 @@ Python-only conversion helpers.
 
 | Helper Function | Description |
 | :--- | :--- |
-| `create_collision_checker_from_scenario(scenario, builder=None)` | Populates builder with road boundary and obstacles. |
-| `add_commonroad_static_obstacle_to_builder(builder, static_obstacle)` | Adds a static obstacle to the builder. |
-| `add_commonroad_dynamic_obstacle_to_builder(builder, dynamic_obstacle)`| Adds a dynamic obstacle to the builder. |
-| `commonroad_dynamic_obstacle(dynamic_obstacle)` | Converts dynamic obstacle to `DynamicObstacle`. |
-| `add_road_boundary_to_builder(builder, lanelet_network)` | Adds network boundaries to builder. |
+| `scenario_builder(scenario, builder=None)` | Populates a builder with road boundary and obstacles. |
+| `add_static_obstacle(builder, static_obstacle)` | Adds a static obstacle to the builder. |
+| `add_dynamic_obstacle(builder, dynamic_obstacle)`| Adds a dynamic obstacle to the builder. |
+| `to_dynamic_obstacle(dynamic_obstacle)` | Converts dynamic obstacle to `DynamicObstacle`. |
+| `add_road_boundary(builder, lanelet_network)` | Adds network boundaries to builder. |
 | `road_boundary(lanelet_network)` | Returns boundary `CollisionObject`. |
-| `commonroad_polygon(polygon)` / `commonroad_shape(shape)` | Converts shape representation to `CollisionObject`. |
-| `commonroad_occupancy(occupancy)` | Returns world-positioned occupancy geometry. |
-| `shapely_geometry(geometry)` | Converts Shapely Polygon/MultiPolygon to `CollisionObject`. |
-| `commonroad_state_to_pose(state)` | Converts trajectory state to `Pose`. |
+| `to_polygon(polygon)` / `to_shape(shape)` | Converts shape representation to `CollisionObject`. |
+| `to_occupancy(occupancy)` | Returns world-positioned occupancy geometry. |
+| `from_shapely(geometry)` | Converts Shapely Polygon/MultiPolygon to `CollisionObject`. |
+| `to_pose(state)` | Converts trajectory state to `Pose`. |

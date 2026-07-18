@@ -16,7 +16,7 @@ from crcc import (
     Rectangle,
     Triangle,
 )
-from crcc.commonroad import create_collision_checker_from_scenario
+from crcc.commonroad import scenario_builder
 
 from examples.utils import CAR_SIZE, sample_poses, scenario_pose_bounds
 
@@ -345,8 +345,7 @@ def scenario_workload(path: Path, engines: tuple[tuple[str, CollisionEngine], ..
     poses = tuple(sample_poses(sample_count, bounds, rng(seed + stable_hash(path.name))))
     car = Rectangle(*CAR_SIZE)
     checkers = {
-        name: create_collision_checker_from_scenario(scenario, CollisionCheckerBuilder(engine=engine)).build()
-        for name, engine in engines
+        name: scenario_builder(scenario, CollisionCheckerBuilder(engine=engine)).build() for name, engine in engines
     }
     return ScenarioWorkload(path.stem, checkers, car, poses, tuple((car, pose) for pose in poses))
 

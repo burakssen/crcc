@@ -224,10 +224,10 @@ assert!(!results[1].as_ref().unwrap().collides());
 ```python
 from commonroad.common.file_reader import CommonRoadFileReader
 from crcc.collision_checker import CollisionCheckerBuilder, CollisionEngine
-from crcc.commonroad import create_collision_checker_from_scenario
+from crcc.commonroad import scenario_builder
 
 scenario, _ = CommonRoadFileReader("scenarios/DEU_MerzenichRather-2_870_T-149.xml").open()
-checker = create_collision_checker_from_scenario(
+checker = scenario_builder(
     scenario,
     CollisionCheckerBuilder(CollisionEngine.Parry),
 ).build()

@@ -15,7 +15,7 @@ from crcc import (
     Rectangle,
     Triangle,
 )
-from crcc.commonroad import create_collision_checker_from_scenario
+from crcc.commonroad import scenario_builder
 
 from examples.continuous import Sweep, evaluate_sweep
 
@@ -226,7 +226,7 @@ class PlaygroundState:
         try:
             builder = CollisionCheckerBuilder(engine=self.engine)
             if include_scenario and self.scenario is not None:
-                builder = create_collision_checker_from_scenario(self.scenario, builder)
+                builder = scenario_builder(self.scenario, builder)
             candidates = obstacles if obstacles is not None else self.objects
             for obj in candidates:
                 if obj.object_id == query.object_id or (obstacles is None and obj.role != "environment"):
@@ -304,9 +304,7 @@ class PlaygroundState:
 
     def _preset_frame(self, bounds):
         if self.scenario is not None:
-            checker = create_collision_checker_from_scenario(
-                self.scenario, CollisionCheckerBuilder(engine=self.engine)
-            ).build()
+            checker = scenario_builder(self.scenario, CollisionCheckerBuilder(engine=self.engine)).build()
             time_step = self.time_steps[0]
             for lanelet in self.scenario.lanelet_network.lanelets:
                 points = np.asarray(lanelet.center_vertices)

@@ -14,40 +14,40 @@ from crcc import CollisionCheckerBuilder, CollisionObject, DynamicObstacle, Pose
 ROAD_BOUNDARY_SIMPLIFY_TOLERANCE: float
 ROAD_BOUNDARY_MIN_HOLE_AREA: float
 
-def create_collision_checker_from_scenario(
+def scenario_builder(
     scenario: Scenario,
     builder: CollisionCheckerBuilder | None = None,
 ) -> CollisionCheckerBuilder: ...
-def add_commonroad_static_obstacle_to_builder(
+def add_static_obstacle(
     builder: CollisionCheckerBuilder,
     static_obstacle: StaticObstacle,
 ) -> CollisionCheckerBuilder: ...
-def add_commonroad_dynamic_obstacle_to_builder(
+def add_dynamic_obstacle(
     builder: CollisionCheckerBuilder,
     dynamic_obstacle: CommonRoadDynamicObstacle,
 ) -> CollisionCheckerBuilder: ...
-def commonroad_dynamic_obstacle(dynamic_obstacle: CommonRoadDynamicObstacle) -> DynamicObstacle: ...
-def add_road_boundary_to_builder(
+def to_dynamic_obstacle(dynamic_obstacle: CommonRoadDynamicObstacle) -> DynamicObstacle: ...
+def add_road_boundary(
     builder: CollisionCheckerBuilder,
     lanelet_network: LaneletNetwork,
 ) -> CollisionCheckerBuilder: ...
 def road_boundary(lanelet_network: LaneletNetwork) -> CollisionObject: ...
-def commonroad_polygon(polygon: ShapelyPolygon) -> CollisionObject: ...
-def commonroad_shape(shape: ObstacleShape) -> CollisionObject: ...
-def commonroad_occupancy(occupancy: Occupancy) -> CollisionObject: ...
-def shapely_geometry(geometry: BaseGeometry) -> CollisionObject: ...
-def commonroad_state_to_pose(state: TraceState) -> Pose: ...
+def to_polygon(polygon: ShapelyPolygon) -> CollisionObject: ...
+def to_shape(shape: ObstacleShape) -> CollisionObject: ...
+def to_occupancy(occupancy: Occupancy) -> CollisionObject: ...
+def from_shapely(geometry: BaseGeometry) -> CollisionObject: ...
+def to_pose(state: TraceState) -> Pose: ...
 
 __all__ = [
-    "create_collision_checker_from_scenario",
-    "add_commonroad_static_obstacle_to_builder",
-    "add_commonroad_dynamic_obstacle_to_builder",
-    "commonroad_dynamic_obstacle",
-    "add_road_boundary_to_builder",
+    "add_dynamic_obstacle",
+    "add_road_boundary",
+    "add_static_obstacle",
+    "from_shapely",
     "road_boundary",
-    "commonroad_polygon",
-    "commonroad_shape",
-    "commonroad_occupancy",
-    "shapely_geometry",
-    "commonroad_state_to_pose",
+    "scenario_builder",
+    "to_dynamic_obstacle",
+    "to_occupancy",
+    "to_polygon",
+    "to_pose",
+    "to_shape",
 ]

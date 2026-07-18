@@ -5,7 +5,7 @@ from pathlib import Path
 import crcc
 from commonroad.common.file_reader import CommonRoadFileReader
 from crcc import Circle, CollisionCheckerBuilder, DynamicObstacle, Pose, Rectangle
-from crcc.commonroad import create_collision_checker_from_scenario
+from crcc.commonroad import scenario_builder
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_GUIDES = (ROOT / "README.md", ROOT / "docs/usage.md", ROOT / "docs/python-api.md", ROOT / "docs/rust-api.md")
@@ -36,7 +36,7 @@ def test_documented_python_workflows_execute():
 def test_documented_commonroad_workflow_executes():
     scenario_path = ROOT / "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
     scenario, _ = CommonRoadFileReader(scenario_path).open()
-    checker = create_collision_checker_from_scenario(scenario, CollisionCheckerBuilder()).build()
+    checker = scenario_builder(scenario, CollisionCheckerBuilder()).build()
     assert checker.engine == crcc.CollisionEngine.Parry
 
 

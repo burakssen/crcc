@@ -5,7 +5,7 @@ import numpy as np
 from commonroad.common.file_reader import CommonRoadFileReader
 from commonroad.prediction.prediction import TrajectoryPrediction
 from crcc import CollisionCheckerBuilder, CollisionEngine
-from crcc.commonroad import create_collision_checker_from_scenario
+from crcc.commonroad import scenario_builder
 
 CAR_SIZE = (4.5, 2.0)
 POSE_BOUNDS_PADDING = 5.0
@@ -16,7 +16,7 @@ def load_collision_checker(scenario_path: str, engine: CollisionEngine):
     """Load a CommonRoad scenario and build a CollisionChecker with the given engine."""
     scenario, _ = CommonRoadFileReader(scenario_path).open()
     builder = CollisionCheckerBuilder(engine=engine)
-    checker = create_collision_checker_from_scenario(scenario, builder=builder).build()
+    checker = scenario_builder(scenario, builder=builder).build()
     return scenario, checker
 
 
