@@ -45,7 +45,11 @@ def basic_results(engine: CollisionEngine) -> tuple[ResultRow, ...]:
     )
     return (
         *(collision_result(name, query) for name, query in queries),
-        ("separation distance", "clear", f"distance={vehicle.distance(circle, pos_other=clear_pose, engine=engine):.3f}"),
+        (
+            "separation distance",
+            "clear",
+            f"distance={vehicle.distance(circle, pos_other=clear_pose, engine=engine):.3f}",
+        ),
         ("pose composition", "clear", f"translation={tuple(round(v, 3) for v in composed.translation)}"),
     )
 

@@ -1465,7 +1465,9 @@ def _measure_checker_static(backend, checker, workload, repetition):
 def _measure_checker_parallel(backend, checker, workload, repetition):
     try:
         if workload.positioned_queries:
-            checker.collides_static_batch(workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))])
+            checker.collides_static_batch(
+                workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))]
+            )
     except Exception:
         pass
     start = time.perf_counter_ns()

@@ -29,11 +29,7 @@ def test_root_api_is_complete_and_executable():
     query = crcc.Circle(0.5)
     assert obstacle.collides(query)
 
-    checker = (
-        crcc.CollisionCheckerBuilder(crcc.CollisionEngine.Parry)
-        .with_static_obstacle(obstacle)
-        .build()
-    )
+    checker = crcc.CollisionCheckerBuilder(crcc.CollisionEngine.Parry).with_static_obstacle(obstacle).build()
     assert checker.collides_static(query).collides
     assert checker.collides_static_batch([(query, crcc.Pose.identity())])[0].collides
 

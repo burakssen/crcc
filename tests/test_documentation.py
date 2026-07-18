@@ -20,9 +20,7 @@ def test_documented_python_workflows_execute():
 
     checker = CollisionCheckerBuilder().with_static_obstacle(Rectangle(2.0, 2.0)).build()
     assert checker.collides_static(Circle(0.25), Pose.identity()).collides
-    batch = checker.par_static(
-        [(Circle(0.25), Pose.identity()), (Circle(0.25), Pose.from_translation((5.0, 0.0)))]
-    )
+    batch = checker.par_static([(Circle(0.25), Pose.identity()), (Circle(0.25), Pose.from_translation((5.0, 0.0)))])
     assert [status.collides for status in batch] == [True, False]
 
     moving = DynamicObstacle(
