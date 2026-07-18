@@ -76,7 +76,7 @@ pub mod benchmark_support {
         builder.build()
     }
 
-    pub fn convert_dynamic<E: From<crate::CollisionObject>>(
+    pub fn convert_dynamic<E: EngineCollisionObject>(
         obstacle: crate::DynamicObstacle,
     ) -> EngineDynamicObstacle<E> {
         obstacle.convert_repr()

@@ -40,8 +40,6 @@ pub struct HalfSpaceComponent {
     pub offset: f64,
 }
 
-// --- Conversion Logic ---
-
 impl RhusicsCoreSimpleCollisionObject {
     pub fn into_components(self) -> Vec<RhusicsCoreCollisionComponent> {
         match self {

@@ -2,30 +2,263 @@ use crate::error::{CrccError, CrccResult};
 use enum_dispatch::enum_dispatch;
 use geo::{
     AffineOps, AffineTransform, BooleanOps, ConvexHull, HasDimensions, IsConvex, Polygon, Rect,
-    Triangle as GeoTriangle, Validation,
+    Rotate, Triangle as GeoTriangle, Validation,
 };
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
+use std::ops::Deref;
 
-pub use circle::Circle;
-pub use convex_polygon::ConvexPolygon;
-pub use empty::Empty;
-pub use full_space::FullSpace;
-pub use half_space::HalfSpace;
-pub use non_convex_polygon::NonConvexPolygon;
-pub use polygon_with_holes::PolygonWithHoles;
-pub use rectangle::Rectangle;
-pub use triangle::Triangle;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Geometry representing the empty set.
+pub struct Empty;
 
-mod circle;
-mod convex_polygon;
-mod empty;
-mod full_space;
-mod half_space;
-mod non_convex_polygon;
-mod polygon_with_holes;
-mod rectangle;
-mod triangle;
+impl Empty {
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Geometry representing the entire plane.
+pub struct FullSpace;
+
+impl FullSpace {
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// Non-degenerate triangle geometry accepted by [`crate::CollisionObject::from`].
+pub struct Triangle(pub(super) GeoTriangle);
+
+impl Triangle {
+    /// Creates a finite, non-empty triangle.
+    pub fn new(triangle: GeoTriangle) -> CrccResult<Triangle> {
+        if [triangle.0, triangle.1, triangle.2]
+            .iter()
+            .any(|coord| !coord.x.is_finite() || !coord.y.is_finite())
+        {
+            return Err(CrccError::InvalidGeometry(
+                "triangle coordinates must be finite",
+            ));
+        }
+        if triangle.is_empty() {
+            return Err(CrccError::EmptyShape);
+        }
+        Ok(Triangle(triangle))
+    }
+}
+
+impl Deref for Triangle {
+    type Target = GeoTriangle;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// A rectangle with a local orientation in radians.
+pub struct Rectangle {
+    pub(super) rect: Rect,
+    pub(super) orientation: f64,
+}
+
+impl Rectangle {
+    /// Creates a finite, non-empty oriented rectangle.
+    pub fn new(rect: Rect, orientation: f64) -> CrccResult<Rectangle> {
+        if !rect.min().x.is_finite()
+            || !rect.min().y.is_finite()
+            || !rect.max().x.is_finite()
+            || !rect.max().y.is_finite()
+            || !orientation.is_finite()
+        {
+            return Err(CrccError::InvalidGeometry(
+                "rectangle coordinates and orientation must be finite",
+            ));
+        }
+        if rect.is_empty() {
+            return Err(CrccError::EmptyShape);
+        }
+        Ok(Rectangle { rect, orientation })
+    }
+
+    /// Returns the underlying axis-aligned local rectangle.
+    pub fn rect(&self) -> &Rect {
+        &self.rect
+    }
+
+    /// Returns the local-space center.
+    pub fn center(&self) -> (f64, f64) {
+        self.rect.center().into()
+    }
+
+    /// Returns the local x extent.
+    pub fn width(&self) -> f64 {
+        self.rect.width()
+    }
+
+    /// Returns the local y extent.
+    pub fn height(&self) -> f64 {
+        self.rect.height()
+    }
+
+    /// Returns the local orientation in radians.
+    pub fn orientation(&self) -> f64 {
+        self.orientation
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ConvexPolygon(pub(super) Polygon);
+
+impl ConvexPolygon {
+    pub fn new(polygon: Polygon) -> CrccResult<ConvexPolygon> {
+        if !polygon.interiors().is_empty() {
+            return Err(CrccError::HasHoles);
+        }
+        if !polygon.exterior().is_convex() {
+            return Err(CrccError::NotConvex);
+        }
+        Ok(ConvexPolygon(polygon))
+    }
+
+    pub fn polygon(&self) -> &Polygon {
+        &self.0
+    }
+}
+
+impl Deref for ConvexPolygon {
+    type Target = Polygon;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NonConvexPolygon(pub(super) Polygon);
+
+impl NonConvexPolygon {
+    pub fn new(polygon: Polygon) -> CrccResult<NonConvexPolygon> {
+        if !polygon.interiors().is_empty() {
+            return Err(CrccError::HasHoles);
+        }
+        Ok(NonConvexPolygon(polygon))
+    }
+
+    pub fn polygon(&self) -> &Polygon {
+        &self.0
+    }
+}
+
+impl Deref for NonConvexPolygon {
+    type Target = Polygon;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PolygonWithHoles(pub(super) Polygon);
+
+impl PolygonWithHoles {
+    pub fn new(polygon: Polygon) -> PolygonWithHoles {
+        PolygonWithHoles(polygon)
+    }
+}
+
+impl Deref for PolygonWithHoles {
+    type Target = Polygon;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// Circle geometry accepted by [`crate::CollisionObject::from`].
+pub struct Circle {
+    pub(super) center: (f64, f64),
+    pub(super) radius: f64,
+}
+
+impl Circle {
+    /// Creates a circle with a finite center and strictly positive radius.
+    pub fn new(center: (f64, f64), radius: f64) -> CrccResult<Circle> {
+        if !center.0.is_finite() || !center.1.is_finite() || !radius.is_finite() || radius <= 0.0 {
+            return Err(CrccError::InvalidRadius(radius));
+        }
+        Ok(Circle { center, radius })
+    }
+
+    /// Returns the local-space center.
+    pub fn center(&self) -> (f64, f64) {
+        self.center
+    }
+
+    /// Returns the radius.
+    pub fn radius(&self) -> f64 {
+        self.radius
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// The half-space `outward_normal · point <= offset`.
+pub struct HalfSpace {
+    /// The normalized outward normal.
+    pub outward_normal: DVec2,
+    /// The signed boundary offset along the normal.
+    pub offset: f64,
+}
+
+impl HalfSpace {
+    /// Creates a half-space from a directed boundary line.
+    pub fn from_points(p1: impl Into<DVec2>, p2: impl Into<DVec2>) -> CrccResult<Self> {
+        let p1 = p1.into();
+        let p2 = p2.into();
+        let dir = p2 - p1;
+        if !p1.is_finite() || !p2.is_finite() || dir.length_squared() == 0.0 {
+            return Err(CrccError::InvalidGeometry(
+                "half-space points must be finite and distinct",
+            ));
+        }
+        let unit_normal = DVec2::new(-dir.y, dir.x).normalize();
+        let offset = unit_normal.dot(p1);
+        Ok(Self {
+            outward_normal: unit_normal,
+            offset,
+        })
+    }
+
+    /// Creates the half-space `a*x + b*y <= c`.
+    pub fn from_coeffs(a: f64, b: f64, c: f64) -> CrccResult<Self> {
+        let normal = DVec2::new(a, b);
+        if !normal.is_finite() || !c.is_finite() || normal.length_squared() == 0.0 {
+            return Err(CrccError::InvalidGeometry(
+                "half-space coefficients must be finite with a nonzero normal",
+            ));
+        }
+        let offset = c / normal.length();
+        Ok(Self {
+            outward_normal: normal.normalize(),
+            offset,
+        })
+    }
+
+    /// Compares two normalized half-spaces with the default tolerance.
+    pub fn almost_equal(&self, other: &HalfSpace) -> bool {
+        self.almost_equal_with_tol(other, 1e-9)
+    }
+
+    /// Compares two normalized half-spaces with `tol`.
+    pub fn almost_equal_with_tol(&self, other: &HalfSpace, tol: f64) -> bool {
+        (self.outward_normal - other.outward_normal).length().abs() < tol
+            && (self.offset - other.offset).abs() < tol
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 #[enum_dispatch(SweptArea)]
@@ -67,13 +300,10 @@ impl SimpleCollisionObject {
     }
 
     pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> CrccResult<Self> {
-        // Create a half space defined by the line through p1 and p2,
-        // with the outward normal pointing to the left of the line
         Ok(Self::HalfSpace(HalfSpace::from_points(p1, p2)?))
     }
 
     pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> CrccResult<Self> {
-        // Represents the half space ax + by <= c
         Ok(Self::HalfSpace(HalfSpace::from_coeffs(a, b, c)?))
     }
 
@@ -119,6 +349,7 @@ impl SimpleCollisionObject {
             _ => Ok(Self::PolygonWithHoles(PolygonWithHoles(polygon))),
         }
     }
+
     pub fn is_empty(&self) -> bool {
         matches!(self, Self::Empty(_))
     }
@@ -140,6 +371,119 @@ pub trait SweptArea {
         self.swept_areas(&[start_pos, end_pos])
             .pop()
             .expect("two positions produce one swept area")
+    }
+}
+
+impl SweptArea for Empty {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        vec![SimpleCollisionObject::empty(); positions.len().saturating_sub(1)]
+    }
+}
+
+impl SweptArea for FullSpace {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        vec![SimpleCollisionObject::full_space(); positions.len().saturating_sub(1)]
+    }
+}
+
+impl SweptArea for Triangle {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        swept_areas(&self.0, positions)
+    }
+}
+
+impl SweptArea for Rectangle {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        let mut poly = Polygon::from(self.rect);
+        poly.rotate_around_center_mut(self.orientation.to_degrees());
+        swept_areas(&poly, positions)
+    }
+}
+
+impl SweptArea for ConvexPolygon {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        swept_areas(&self.0, positions)
+    }
+}
+
+impl SweptArea for NonConvexPolygon {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        swept_areas(&self.0, positions)
+    }
+}
+
+impl SweptArea for PolygonWithHoles {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        swept_areas(&self.0, positions)
+    }
+}
+
+impl SweptArea for Circle {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        let mut swept_areas = Vec::with_capacity(positions.len().saturating_sub(1));
+        for (start_pos, end_pos) in positions.iter().tuple_windows() {
+            if rotation_changed(*start_pos, *end_pos) && self.center != (0.0, 0.0) {
+                let bound_radius = DVec2::from(self.center).length() + self.radius;
+                swept_areas.push(
+                    SimpleCollisionObject::rectangle(
+                        Rect::new(
+                            (
+                                start_pos.translation.x.min(end_pos.translation.x) - bound_radius,
+                                start_pos.translation.y.min(end_pos.translation.y) - bound_radius,
+                            ),
+                            (
+                                start_pos.translation.x.max(end_pos.translation.x) + bound_radius,
+                                start_pos.translation.y.max(end_pos.translation.y) + bound_radius,
+                            ),
+                        ),
+                        0.0,
+                    )
+                    .expect("a finite circle has a valid rotational swept bound"),
+                );
+                continue;
+            }
+            let center = DVec2::from(self.center);
+            let start = start_pos * center;
+            let end = end_pos * center;
+            swept_areas.push(
+                SimpleCollisionObject::rectangle(
+                    Rect::new(
+                        (
+                            start.x.min(end.x) - self.radius,
+                            start.y.min(end.y) - self.radius,
+                        ),
+                        (
+                            start.x.max(end.x) + self.radius,
+                            start.y.max(end.y) + self.radius,
+                        ),
+                    ),
+                    0.0,
+                )
+                .expect("a finite circle has a valid swept bounding rectangle"),
+            );
+        }
+        swept_areas
+    }
+}
+
+impl SweptArea for HalfSpace {
+    fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
+        let mut swept_areas = Vec::with_capacity(positions.len().saturating_sub(1));
+        for (start_pos, end_pos) in positions.iter().tuple_windows() {
+            if (start_pos.rotation.angle() - end_pos.rotation.angle()).abs() > 1e-9 {
+                swept_areas.push(SimpleCollisionObject::full_space());
+            } else {
+                let outward_normal = start_pos.rotation * self.outward_normal;
+                let start_offset = outward_normal.dot(start_pos.translation);
+                let end_offset = outward_normal.dot(end_pos.translation);
+                let offset = start_offset.max(end_offset) + self.offset;
+                swept_areas.push(
+                    SimpleCollisionObject::half_space(outward_normal, offset)
+                        .expect("a transformed valid half-space remains valid"),
+                );
+            }
+        }
+        swept_areas
     }
 }
 

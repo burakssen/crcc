@@ -157,9 +157,10 @@ impl<E> GenericDynamicObstacle<E> {
     pub(crate) fn active_times(&self) -> TimeStepSet {
         match self.len().checked_sub(1) {
             Some(last_index) => {
-                TimeStepSet::from(self.time_offset..=self.time_offset.add_steps(last_index))
+                TimeStep::iter_range(self.time_offset..=self.time_offset.add_steps(last_index))
+                    .collect()
             }
-            None => TimeStepSet::default(),
+            None => TimeStepSet::new(),
         }
     }
 
@@ -171,7 +172,6 @@ impl<E> GenericDynamicObstacle<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::time::TimeStepSet;
     use geo::Rect;
     use rstest::{fixture, rstest};
 
@@ -212,7 +212,10 @@ mod tests {
     #[rstest]
     fn active_times_cover_trajectory_range(dynamic_obstacle: DynamicObstacle) {
         let active_times = dynamic_obstacle.active_times();
-        assert_eq!(active_times, TimeStepSet::from(TimeStep(5)..=TimeStep(7)));
+        assert_eq!(
+            active_times,
+            TimeStep::iter_range(TimeStep(5)..=TimeStep(7)).collect()
+        );
     }
 
     #[rstest]

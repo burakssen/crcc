@@ -1,9 +1,7 @@
-pub use crate::time::set::TimeStepSet;
+pub type TimeStepSet = std::collections::BTreeSet<TimeStep>;
 use derive_more::{Add, From, Mul, Sub, Sum};
 use std::fmt::Display;
 use std::ops::RangeBounds;
-
-mod set;
 
 pub(crate) type TimeStepInner = i32;
 

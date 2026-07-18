@@ -143,8 +143,8 @@ fn run_native<E: EngineCollisionObject>(workload: &Workload, iterations: usize) 
     if matches!(workload.operation, Operation::Dynamic) {
         return run_native_dynamic::<E>(workload, iterations);
     }
-    let left = E::from(workload.left.clone());
-    let right = E::from(workload.right.clone());
+    let left: E = workload.left.clone().into();
+    let right: E = workload.right.clone().into();
     let execute = || execute_native(&left, &right, workload);
     warm_up(execute);
     let start = Instant::now();

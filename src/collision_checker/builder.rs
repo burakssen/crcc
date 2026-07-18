@@ -88,7 +88,7 @@ impl CollisionCheckerBuilder {
     fn active_times(&self) -> TimeStepSet {
         let mut active_times = TimeStepSet::new();
         for dynamic_obstacle in &self.dynamic_obstacles {
-            active_times.union(&dynamic_obstacle.active_times());
+            active_times.extend(dynamic_obstacle.active_times());
         }
         active_times
     }

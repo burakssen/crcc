@@ -103,11 +103,10 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
             return Ok(CollisionStatus::CollidesStatic);
         }
 
-        let mut active_times = TimeStepSet::from(time_range);
-        active_times.intersect(&self.active_times);
-        for time_step in active_times.iter() {
+        let active_times: TimeStepSet = self.active_times.range(time_range).copied().collect();
+        for &time_step in &active_times {
             let ccd_collider = active_times
-                .contains(time_step.succ())
+                .contains(&time_step.succ())
                 .then(|| Self::stationary_ccd_collider(static_obstacle, position));
             if self.static_query_collides_dynamic_at(
                 static_obstacle,
@@ -127,13 +126,13 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         dynamic_obstacle: &GenericDynamicObstacle<E>,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
-        let mut active_times = TimeStepSet::from(time_range);
-        active_times.intersect(&dynamic_obstacle.active_times());
-        for time_step in active_times.iter() {
+        let obstacle_active_times = dynamic_obstacle.active_times();
+        let active_times: TimeStepSet = obstacle_active_times.range(time_range).copied().collect();
+        for &time_step in &active_times {
             if self.dynamic_query_collides_at(
                 dynamic_obstacle,
                 time_step,
-                active_times.contains(time_step.succ()),
+                active_times.contains(&time_step.succ()),
             )? {
                 return Ok(CollisionStatus::CollidesDynamic(time_step));
             }
@@ -175,7 +174,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         if next_step_active && let Some(ccd_collider) = dynamic_obstacle.ccd_collider_at(time_step)
         {
             return Ok(self.check_collision_static_ccd(&ccd_collider)?
-                || (self.active_times.contains(time_step)
+                || (self.active_times.contains(&time_step)
                     && self.check_collision_dynamic_ccd(&ccd_collider, time_step)?));
         }
 
@@ -183,7 +182,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
             return Ok(false);
         };
         Ok(self.check_collision_static_static(shape, position)?
-            || (self.active_times.contains(time_step)
+            || (self.active_times.contains(&time_step)
                 && self.check_collision_dynamic_static(shape, position, time_step)?))
     }
 
