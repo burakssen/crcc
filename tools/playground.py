@@ -199,33 +199,51 @@ class PlaygroundState:
         return self.current_time
 
     def evaluate(self):
-        self._results = {obj.object_id: self._evaluate_object(obj) for obj in self.objects if obj.role == "query"}
+        queries = [obj for obj in self.objects if obj.role == "query"]
+        environments = [obj for obj in self.objects if obj.role == "environment"]
+        self._results = {query.object_id: self._evaluate_object(query) for query in queries}
+        priority = {
+            Verdict.EXACT_CLEAR: 0,
+            Verdict.CERTIFIED_CLEAR: 0,
+            Verdict.UNSUPPORTED: 1,
+            Verdict.POTENTIAL_COLLISION: 2,
+            Verdict.EXACT_HIT: 3,
+        }
+        for environment in environments:
+            pair_results = [
+                self._evaluate_object(query, obstacles=(environment,), include_scenario=False) for query in queries
+            ]
+            if pair_results:
+                self._results[environment.object_id] = max(pair_results, key=lambda result: priority[result.verdict])
         return self._results
 
-    def _evaluate_object(self, query):
+    def _evaluate_object(self, query, *, obstacles=None, include_scenario=True):
         try:
             builder = CollisionCheckerBuilder(engine=self.engine)
-            if self.scenario is not None:
+            if include_scenario and self.scenario is not None:
                 builder = create_collision_checker_from_scenario(self.scenario, builder)
-            for obj in self.objects:
-                if obj.object_id == query.object_id or obj.role != "environment":
+            candidates = obstacles if obstacles is not None else self.objects
+            for obj in candidates:
+                if obj.object_id == query.object_id or (obstacles is None and obj.role != "environment"):
                     continue
                 if obj.mode == "static":
                     builder.with_static_obstacle(positioned_shape(obj, self.current_time, self.time_steps[0]))
                 else:
                     builder.with_dynamic_obstacle(obj.dynamic_obstacle(self.time_steps))
             checker = builder.build()
+            max_time = self.current_time
+            if self.time_steps:
+                index = self.time_steps.index(self.current_time)
+                max_time = self.time_steps[min(index + 1, len(self.time_steps) - 1)]
             if query.mode == "static":
                 status = checker.collides_static(
                     query.shape_at(self.current_time, self.time_steps[0]).collision_object(),
                     query.pose_at(self.current_time),
                     min_time=self.current_time,
-                    max_time=self.current_time,
+                    max_time=max_time,
                 )
                 return ObjectResult(Verdict.EXACT_HIT if status.collides else Verdict.EXACT_CLEAR, str(status))
-            status = checker.collides_dynamic(
-                query.dynamic_obstacle(self.time_steps), min_time=self.current_time, max_time=self.current_time
-            )
+            status = checker.collides_dynamic(query.dynamic_obstacle(self.time_steps), self.current_time, max_time)
             return ObjectResult(
                 Verdict.POTENTIAL_COLLISION if status.collides else Verdict.CERTIFIED_CLEAR,
                 str(status),

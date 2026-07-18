@@ -103,6 +103,28 @@ def test_playground_scene_supports_all_occupancy_modes(engine):
     assert state.step() == 1
 
 
+def test_playground_presets_color_every_collision_participant(engine):
+    bounds = (-10.0, 10.0, -10.0, 10.0)
+    for preset in ("Tunneling", "Intersection", "Overtaking"):
+        state = playground.PlaygroundState(engine, (0, 1, 2))
+        state.load_preset(preset, bounds)
+        assert set(state._results) == {obj.object_id for obj in state.objects}
+        assert {result.verdict for result in state._results.values()} == {playground.Verdict.POTENTIAL_COLLISION}
+
+    state = playground.PlaygroundState(engine, (0, 1))
+    state.shape_kind, state.mode = "rectangle", "static"
+    colliding = state.add_object((0.0, 0.0), role="environment")
+    separated = state.add_object((20.0, 0.0), role="environment")
+    state.shape_kind, state.mode = "circle", "dynamic"
+    state.draft_path = [playground.Pose.from_translation((-8.0, 0.0)), playground.Pose.from_translation((8.0, 0.0))]
+    query = state.add_object((-8.0, 0.0))
+    results = state.evaluate()
+
+    assert results[query.object_id].verdict == playground.Verdict.POTENTIAL_COLLISION
+    assert results[colliding.object_id].verdict == playground.Verdict.POTENTIAL_COLLISION
+    assert results[separated.object_id].verdict == playground.Verdict.CERTIFIED_CLEAR
+
+
 def test_playground_freehand_polygon_uses_local_coordinates():
     shape, center = playground.normalized_polygon([(10.0, 10.0), (12.0, 10.0), (11.0, 12.0)])
     assert center == (11.0, 10.666666666666666)
