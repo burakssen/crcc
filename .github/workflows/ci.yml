@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: Pre-commit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install Rust components
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup component add rustfmt clippy
+      - name: Install pre-commit
+        run: python -m pip install pre-commit
+      - name: Run pre-commit
+        run: pre-commit run --all-files --show-diff-on-failure
+
+  rust:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - run: cargo build
+      - run: cargo test
+      - run: cargo test --no-default-features --features rayon,rhusics
+      - run: cargo test --no-default-features --features rayon,collide
+
+  python:
+    name: Python tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build Python extension
+        run: uv run --frozen maturin develop
+      - name: Run Python tests
+        run: uv run --frozen pytest
+
+  build-sdist:
+    name: Build source distribution
+    needs: [pre-commit, rust, python]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build sdist
+        run: uv build --sdist
+      - name: Upload sdist
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-distribution
+          path: dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  build-wheels:
+    name: Build wheel (${{ matrix.artifact }})
+    if: github.event_name != 'pull_request'
+    needs: build-sdist
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: linux-x86_64
+          - os: ubuntu-24.04-arm
+            artifact: linux-arm64
+          - os: windows-latest
+            artifact: windows-x86_64
+          - os: windows-11-arm
+            artifact: windows-arm64
+          - os: macos-15-intel
+            artifact: macos-x86_64
+          - os: macos-latest
+            artifact: macos-arm64
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: Build wheel
+        uses: pypa/cibuildwheel@v3.4.1
+        env:
+          CIBW_BUILD: cp310-*
+          CIBW_ARCHS: native
+          CIBW_BEFORE_ALL_LINUX: >-
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
+            sh -s -- --default-toolchain stable --profile minimal -y
+          CIBW_ENVIRONMENT_LINUX: PATH=$HOME/.cargo/bin:$PATH
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=10.12
+        with:
+          output-dir: wheelhouse
+      - name: Upload wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheel-${{ matrix.artifact }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+          retention-days: 1
