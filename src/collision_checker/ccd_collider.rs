@@ -1,4 +1,4 @@
-use crate::dynamic_obstacle::{DynamicObstacleTrajectory, GenericDynamicObstacle};
+use crate::collision_object::dynamic::{DynamicObstacleTrajectory, GenericDynamicObstacle};
 use crate::time::TimeStep;
 use glamx::DPose2;
 

@@ -1,4 +1,4 @@
-use crate::dynamic_obstacle::DynamicObstacle as RustDynamicObstacle;
+use crate::collision_object::DynamicObstacle as RustDynamicObstacle;
 use crate::python::collision_object::CollisionObject;
 use crate::python::pose::Pose;
 use crate::time::TimeStepInner;

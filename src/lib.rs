@@ -35,7 +35,6 @@
 
 pub mod collision_checker;
 pub mod collision_object;
-pub mod dynamic_obstacle;
 pub mod error;
 pub mod time;
 
@@ -45,8 +44,8 @@ pub use collision_checker::{
     SelectedCollisionChecker,
 };
 pub use collision_object::CollisionObject;
+pub use collision_object::DynamicObstacle;
 pub use collision_object::simple::{Circle, Empty, FullSpace, HalfSpace, Rectangle, Triangle};
-pub use dynamic_obstacle::DynamicObstacle;
 pub use error::{CrccError, CrccResult};
 pub use geo::Polygon;
 pub use glamx::DPose2 as Pose;
@@ -68,8 +67,8 @@ pub mod benchmark_support {
     pub use crate::collision_checker::engine::{
         EngineCollisionObject, collides, collides_continuous, distance,
     };
+    pub use crate::collision_object::dynamic::GenericDynamicObstacle as EngineDynamicObstacle;
     pub use crate::collision_object::simple::SimpleCollisionObject;
-    pub use crate::dynamic_obstacle::GenericDynamicObstacle as EngineDynamicObstacle;
 
     pub fn build_typed<E: EngineCollisionObject>(
         builder: crate::CollisionCheckerBuilder,

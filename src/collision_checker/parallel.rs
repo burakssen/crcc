@@ -1,6 +1,6 @@
 use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_checker::{CollisionChecker, CollisionResult};
-use crate::dynamic_obstacle::GenericDynamicObstacle;
+use crate::collision_object::dynamic::GenericDynamicObstacle;
 use crate::time::TimeStep;
 use glamx::DPose2;
 use rayon::prelude::*;

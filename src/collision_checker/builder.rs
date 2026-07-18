@@ -1,10 +1,11 @@
-use crate::collision_checker::CollisionChecker;
 use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::engine::EngineCollisionObject;
-use crate::collision_checker::selected::{SelectedCollisionChecker, SelectedCollisionCheckerInner};
+use crate::collision_checker::{
+    CollisionChecker, SelectedCollisionChecker, SelectedCollisionCheckerInner,
+};
 use crate::collision_object::CollisionObject;
+use crate::collision_object::DynamicObstacle;
 use crate::collision_object::simple::SimpleCollisionObject;
-use crate::dynamic_obstacle::DynamicObstacle;
 use crate::error::CrccError;
 use crate::time::TimeStepSet;
 use geo::{Area, BooleanOps, ConvexHull, HasDimensions, Polygon, Simplify, Winding, unary_union};

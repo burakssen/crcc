@@ -216,6 +216,11 @@ mod tests {
     }
 
     #[rstest]
+    fn len_fixture_matches(dynamic_obstacle: DynamicObstacle) {
+        assert_eq!(dynamic_obstacle.0.len(), 3);
+    }
+
+    #[rstest]
     #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
     fn convex_hull_covers_interpolated_motion(dynamic_obstacle: DynamicObstacle) {
         let DynamicObstacleTrajectory::FixedShape {

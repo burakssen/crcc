@@ -7,7 +7,10 @@ use glamx::{DPose2, DVec2};
 use itertools::Itertools;
 
 pub mod distance;
+pub mod dynamic;
 pub mod simple;
+
+pub use dynamic::DynamicObstacle;
 
 #[derive(Debug, Clone)]
 /// A shape or compound of shapes accepted by every public query.
