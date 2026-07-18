@@ -20,7 +20,7 @@
 //! let robot = CollisionObject::circle((0.0, 0.0), 0.5)?;
 //! let checker = CollisionCheckerBuilder::new()
 //!     .with_static_obstacle(wall)
-//!     .build_with_engine(CollisionEngine::Parry)?;
+//!     .build_with_engine(CollisionEngine::default())?;
 //!
 //! let status = checker.collides_static(&robot)?;
 //! assert!(status.collides());

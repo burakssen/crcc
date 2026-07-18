@@ -42,6 +42,7 @@ jobs:
           rustup default stable
       - run: cargo build
       - run: cargo test
+      - run: cargo test --no-default-features --features rayon,parry
       - run: cargo test --no-default-features --features rayon,rhusics
       - run: cargo test --no-default-features --features rayon,collide
 
@@ -62,7 +63,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
       - name: Build Python extension
-        run: uv run --frozen maturin develop
+        run: uv run --frozen --with "maturin>=1.0,<2.0" maturin develop
       - name: Run Python tests
         run: uv run --frozen pytest
 

@@ -32,6 +32,7 @@ build-rust:
   script:
     - cargo build
     - cargo test
+    - cargo test --no-default-features --features rayon,parry
     - cargo test --no-default-features --features rayon,rhusics
     - cargo test --no-default-features --features rayon,collide
   needs: [ ]
