@@ -4,7 +4,9 @@ import multiprocessing
 import os
 import subprocess
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import TypeVar
 
 from crcc import Circle, Compound, DynamicObstacle, Pose, Rectangle, Triangle
 
@@ -43,6 +45,8 @@ from .workloads import (
     time_variant_query_batch,
     update_proxy_workload,
 )
+
+T = TypeVar("T")
 
 
 def run_all(
@@ -558,10 +562,11 @@ def _run_api_overhead_suite(config, engine_items):
     return runs, correctness, parallel_rows, memory_rows
 
 
-def _stable_call_time(call, minimum_ns=1_000_000):
-    total_ns = 0
-    iterations = 0
-    value = None
+def _stable_call_time(call: Callable[[], T], minimum_ns=1_000_000) -> tuple[int, T]:
+    start = time.perf_counter_ns()
+    value = call()
+    total_ns = time.perf_counter_ns() - start
+    iterations = 1
     while total_ns < minimum_ns:
         start = time.perf_counter_ns()
         value = call()
@@ -1038,7 +1043,7 @@ def _measure_python_layer(backend, engine_items, workload, repetition, iteration
     try:
         for _ in range(iterations):
             value = execute()
-            checksum += int(value.collides if hasattr(value, "collides") else bool(value))
+            checksum += int(value if isinstance(value, bool) else value.collides)
     except Exception:
         errors = 1
     total_ns = time.perf_counter_ns() - start

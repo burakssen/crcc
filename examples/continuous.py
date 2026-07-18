@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass, field
 
-from crcc import Circle, CollisionCheckerBuilder, CollisionEngine, DynamicObstacle, Pose, Rectangle
+from crcc import Circle, CollisionCheckerBuilder, CollisionEngine, CollisionObject, DynamicObstacle, Pose, Rectangle
 
 from examples.presentation import ResultRow, collision_result, print_results
 
@@ -9,10 +9,10 @@ from examples.presentation import ResultRow, collision_result, print_results
 @dataclass(frozen=True)
 class Sweep:
     name: str
-    moving: object
+    moving: CollisionObject
     start: Pose
     end: Pose
-    obstacle: object
+    obstacle: CollisionObject
     obstacle_pose: Pose = field(default_factory=Pose.identity)
 
 

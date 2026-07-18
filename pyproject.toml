@@ -20,7 +20,7 @@ classifiers = [
 dependencies = ["commonroad-io>=2026.1"]
 
 [dependency-groups]
-dev = ["pre-commit>=2.21.0", "pytest>=8.0", "ruff==0.14.8"]
+dev = ["pre-commit>=2.21.0", "pyright==1.1.411", "pytest>=8.0", "ruff==0.14.8"]
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
@@ -72,3 +72,8 @@ pythonpath = ["."]
 filterwarnings = [
     "ignore:datetime\\.datetime\\.utcfromtimestamp\\(\\) is deprecated.*:DeprecationWarning:google\\.protobuf\\.internal\\.well_known_types",
 ]
+
+[tool.pyright]
+include = ["python", "examples", "tools", "tests", "main.py"]
+pythonVersion = "3.10"
+typeCheckingMode = "basic"

@@ -255,11 +255,11 @@ def test_playground_unselect_click_outside(monkeypatch, engine):
         fig = plt.gcf()
         ax = fig.axes[0]
 
-        from matplotlib.backend_bases import MouseEvent
+        from matplotlib.backend_bases import MouseButton, MouseEvent
 
         def trigger_click(xdata, ydata):
             disp = ax.transData.transform((xdata, ydata))
-            event = MouseEvent("button_press_event", fig.canvas, disp[0], disp[1], button=1)
+            event = MouseEvent("button_press_event", fig.canvas, disp[0], disp[1], button=MouseButton.LEFT)
             event.inaxes = ax
             event.xdata = xdata
             event.ydata = ydata

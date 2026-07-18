@@ -1,6 +1,8 @@
 from types import SimpleNamespace
+from typing import cast
 
 import commonroad.scenario.obstacle as cr_obstacle
+import numpy as np
 from commonroad.common.util import Interval
 from commonroad.geometry.obstacle_shapes.rect_obstacle_shape import RectObstacleShape
 from commonroad.geometry.occupancy.circle_occupancy import CircleOccupancy
@@ -9,6 +11,7 @@ from commonroad.geometry.occupancy.polygon_occupancy import PolygonOccupancy
 from commonroad.geometry.occupancy.rect_occupancy import RectOccupancy
 from commonroad.prediction.prediction import SetBasedPrediction
 from commonroad.scenario.obstacle import ObstacleType, StaticObstacle
+from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import InitialState
 from crcc import Circle, CollisionCheckerBuilder, DynamicObstacle, Pose, Rectangle
 from crcc.commonroad import (
@@ -72,7 +75,7 @@ def test_static_obstacle_conversion():
         obstacle_id=1,
         obstacle_type=ObstacleType.PARKED_VEHICLE,
         obstacle_shape=RectObstacleShape(width=2.0, length=4.0),
-        initial_state=InitialState(time_step=3, position=(10.0, 0.0), orientation=0.0),
+        initial_state=InitialState(time_step=3, position=np.array((10.0, 0.0)), orientation=0.0),
     )
     builder = CollisionCheckerBuilder()
     add_static_obstacle(builder, static_obstacle)
@@ -95,7 +98,7 @@ def set_based_commonroad_obstacle():
         obstacle_id=2,
         obstacle_type=ObstacleType.CAR,
         obstacle_shape=RectObstacleShape(width=1.0, length=2.0),
-        initial_state=InitialState(time_step=0, position=(10.0, 0.0), orientation=0.0),
+        initial_state=InitialState(time_step=0, position=np.array((10.0, 0.0)), orientation=0.0),
         prediction=prediction,
     )
 
@@ -118,7 +121,7 @@ def test_scenario_builder_includes_set_based_dynamic_obstacles(engine):
         static_obstacles=[],
         dynamic_obstacles=[set_based_commonroad_obstacle()],
     )
-    checker = scenario_builder(scenario, CollisionCheckerBuilder(engine=engine)).build()
+    checker = scenario_builder(cast(Scenario, scenario), CollisionCheckerBuilder(engine=engine)).build()
 
     assert checker.collides_static(Circle(0.75), min_time=5, max_time=5).time_step == 5
     assert not checker.collides_static(Circle(0.75), min_time=4, max_time=4).collides

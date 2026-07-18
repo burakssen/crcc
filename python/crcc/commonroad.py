@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+from numbers import Real
+from typing import cast
+
 import commonroad.scenario.obstacle as cr_obstacle
+import numpy as np
+from commonroad.common.util import Interval
 from commonroad.geometry.obstacle_shapes.circle_obstacle_shape import CircleObstacleShape
 from commonroad.geometry.obstacle_shapes.obstacle_shape import ObstacleShape
 from commonroad.geometry.obstacle_shapes.polygon_obstacle_shape import PolygonObstacleShape
@@ -20,6 +25,16 @@ from crcc import Circle, CollisionCheckerBuilder, CollisionObject, Compound, Dyn
 
 ROAD_BOUNDARY_SIMPLIFY_TOLERANCE = 0.01
 ROAD_BOUNDARY_MIN_HOLE_AREA = 0.001
+
+
+def _exact_time_step(value: object) -> int:
+    if not isinstance(value, int):
+        raise ValueError(f"Expected an exact integer time step, got {value!r}")
+    return value
+
+
+def _point(vertex) -> tuple[float, float]:
+    return float(vertex[0]), float(vertex[1])
 
 
 def scenario_builder(
@@ -43,7 +58,9 @@ def add_static_obstacle(
     static_obstacle: cr_obstacle.StaticObstacle,
 ) -> CollisionCheckerBuilder:
     """Adds a CommonRoad static obstacle to the builder."""
-    collision_object = to_occupancy(static_obstacle.occupancy_at_time(static_obstacle.initial_state.time_step))
+    collision_object = to_occupancy(
+        static_obstacle.occupancy_at_time(_exact_time_step(static_obstacle.initial_state.time_step))
+    )
     builder.with_static_obstacle(collision_object)
     return builder
 
@@ -59,7 +76,7 @@ def add_dynamic_obstacle(
 
 def to_dynamic_obstacle(dynamic_obstacle: cr_obstacle.DynamicObstacle) -> DynamicObstacle:
     """Converts a CommonRoad dynamic obstacle to a local crcc DynamicObstacle."""
-    initial_time = dynamic_obstacle.initial_state.time_step
+    initial_time = _exact_time_step(dynamic_obstacle.initial_state.time_step)
     if isinstance(dynamic_obstacle.prediction, TrajectoryPrediction):
         trajectory = dynamic_obstacle.prediction.trajectory
         states = [dynamic_obstacle.initial_state] + trajectory.state_list
@@ -81,7 +98,9 @@ def to_dynamic_obstacle(dynamic_obstacle: cr_obstacle.DynamicObstacle) -> Dynami
 
 def _prediction_final_time_step(prediction: SetBasedPrediction) -> int:
     final_time_step = prediction.final_time_step
-    return final_time_step.end if hasattr(final_time_step, "end") else final_time_step
+    if isinstance(final_time_step, Interval):
+        final_time_step = final_time_step.end
+    return _exact_time_step(final_time_step)
 
 
 def add_road_boundary(
@@ -97,15 +116,15 @@ def road_boundary(lanelet_network: LaneletNetwork) -> CollisionObject:
     """Creates an obstacle for all space outside the lanelet network."""
     import crcc._core.collision_checker as core
 
-    lanelets = [[tuple(v) for v in lanelet.polygon.vertices] for lanelet in lanelet_network.lanelets]
+    lanelets = [[_point(vertex) for vertex in lanelet.polygon.vertices] for lanelet in lanelet_network.lanelets]
     return core.road_boundary(lanelets)
 
 
 def to_polygon(polygon: ShapelyPolygon) -> CollisionObject:
     """Convert a Shapely polygon, including holes, to a collision object."""
     return Polygon(
-        exterior=[tuple(v) for v in polygon.exterior.coords],
-        interiors=[[tuple(v) for v in interior.coords] for interior in polygon.interiors],
+        exterior=[_point(vertex) for vertex in polygon.exterior.coords],
+        interiors=[[_point(vertex) for vertex in interior.coords] for interior in polygon.interiors],
     )
 
 
@@ -116,9 +135,9 @@ def to_shape(shape: ObstacleShape) -> CollisionObject:
     if isinstance(shape, RectObstacleShape):
         return Rectangle(shape.length, shape.width, center=(-shape.origin_x_shift, 0.0))
     if isinstance(shape, PolygonObstacleShape):
-        return Polygon([tuple(v) for v in shape.vertices], [])
+        return Polygon([_point(vertex) for vertex in shape.vertices], [])
 
-    return to_occupancy(shape.compute_occupancy_for_state(InitialState(position=(0.0, 0.0), orientation=0.0)))
+    return to_occupancy(shape.compute_occupancy_for_state(InitialState(position=np.array((0.0, 0.0)), orientation=0.0)))
 
 
 def to_occupancy(occupancy: Occupancy) -> CollisionObject:
@@ -135,7 +154,7 @@ def to_occupancy(occupancy: Occupancy) -> CollisionObject:
     if isinstance(occupancy, PolygonOccupancy):
         return to_polygon(occupancy.shapely_object)
 
-    return from_shapely(occupancy.shapely_object)
+    return from_shapely(cast(BaseGeometry, occupancy.shapely_object))
 
 
 def from_shapely(geometry: BaseGeometry) -> CollisionObject:
@@ -151,7 +170,10 @@ def from_shapely(geometry: BaseGeometry) -> CollisionObject:
 
 def to_pose(state: TraceState) -> Pose:
     """Converts a CommonRoad state to a crcc Pose."""
-    return Pose(
-        translation=(state.position[0], state.position[1]),
-        angle=state.orientation,
-    )
+    position = getattr(state, "position", None)
+    orientation = getattr(state, "orientation", None)
+    if not isinstance(position, np.ndarray) or position.shape != (2,):
+        raise ValueError("CommonRoad state requires an exact two-dimensional position")
+    if not isinstance(orientation, Real):
+        raise ValueError("CommonRoad state requires an exact orientation")
+    return Pose(translation=(float(position[0]), float(position[1])), angle=float(orientation))

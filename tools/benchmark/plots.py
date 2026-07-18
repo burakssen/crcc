@@ -1246,7 +1246,7 @@ def _save_plot(fig, path_base: Path):
 def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
     import re
 
-    import matplotlib.cm as cm
+    from matplotlib import colormaps
 
     scene_rows = [row for row in parallel_rows if "scene_scaling_objects_" in row["scenario"]]
     if not scene_rows:
@@ -1280,7 +1280,7 @@ def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
         len(backends), 1, figsize=(8.8, max(4.8, 3.0 * len(backends))), sharex=True, squeeze=False, layout="constrained"
     )
 
-    colors = cm.viridis(np.linspace(0.1, 0.9, len(object_sizes)))
+    colors = colormaps["viridis"](np.linspace(0.1, 0.9, len(object_sizes)))
 
     for ax, backend in zip(axes.ravel(), backends):
         backend_rows = [r for r in parsed_rows if r["backend"] == backend]

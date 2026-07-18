@@ -2,8 +2,10 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 from itertools import pairwise
+from typing import TypedDict
 
 import numpy as np
+from commonroad.scenario.scenario import Scenario
 from crcc import (
     Circle,
     CollisionCheckerBuilder,
@@ -25,6 +27,11 @@ COLOR_CLEAR = "#059669"
 COLOR_UNSUPPORTED = "#7c3aed"
 COLOR_SELECTED = "#2563eb"
 COLOR_PATH = "#7c3aed"
+
+
+class DragState(TypedDict):
+    id: int | None
+    last: tuple[float, float] | None
 
 
 class Verdict(Enum):
@@ -119,7 +126,7 @@ class ObjectResult:
 class PlaygroundState:
     engine: CollisionEngine
     time_steps: tuple[int, ...]
-    scenario: object | None = None
+    scenario: Scenario | None = None
     objects: list[SceneObject] = field(default_factory=list)
     selected_id: int | None = None
     current_time: int = 0
@@ -282,8 +289,8 @@ class PlaygroundState:
 
         if name == "Tunneling":
             self.shape_kind, self.mode = "rectangle", "static"
-            self.add_object((cx, cy), role="environment")
-            self.selected.pose = pose(0.0)
+            environment = self.add_object((cx, cy), role="environment")
+            environment.pose = pose(0.0)
             self.shape_kind, self.mode = "circle", "dynamic"
             self.draft_path = [pose(-8.0), pose(8.0)]
             self.add_object(pose(-8.0).translation)
@@ -298,8 +305,8 @@ class PlaygroundState:
             for offset, points in ((0, [pose(-5.0), pose(5.0)]), (1, [pose(-9.0), pose(0.0, 3.0), pose(7.0)])):
                 self.shape_kind, self.mode = "rectangle", "dynamic"
                 self.draft_path = points
-                self.add_object(points[0].translation, role="environment" if offset == 0 else "query")
-                self.selected.name = "lead vehicle" if offset == 0 else "overtaking vehicle"
+                vehicle = self.add_object(points[0].translation, role="environment" if offset == 0 else "query")
+                vehicle.name = "lead vehicle" if offset == 0 else "overtaking vehicle"
         self.evaluate()
 
     def _preset_frame(self, bounds):
@@ -626,13 +633,17 @@ def run(scenario, checker, scenario_path, pose_bounds):
         redraw(reset=True)
 
     preset.on_clicked(set_preset)
-    tool.on_clicked(
-        lambda value: setattr(
-            state,
-            "tool",
-            {"Select / move": "select", "Add object": "add", "Draw path": "path", "Draw polygon": "polygon"}[value],
-        )
-    )
+
+    def set_tool(value):
+        if value is not None:
+            state.tool = {
+                "Select / move": "select",
+                "Add object": "add",
+                "Draw path": "path",
+                "Draw polygon": "polygon",
+            }[value]
+
+    tool.on_clicked(set_tool)
     shape.on_clicked(lambda value: setattr(state, "shape_kind", value))
     mode.on_clicked(lambda value: setattr(state, "mode", value))
     role.on_clicked(
@@ -642,18 +653,19 @@ def run(scenario, checker, scenario_path, pose_bounds):
             redraw(),
         )
     )
-    engine.on_clicked(
-        lambda value: (
+
+    def set_engine(value):
+        if value is not None:
             state.set_engine(
                 {
                     "rhusics": CollisionEngine.Rhusics,
                     "parry": CollisionEngine.Parry,
                     "collide": CollisionEngine.Collide,
                 }[value]
-            ),
-            redraw(),
-        )
-    )
+            )
+            redraw()
+
+    engine.on_clicked(set_engine)
     timeline.on_changed(lambda value: (setattr(state, "current_time", time_steps[int(value)]), redraw()))
     delete.on_clicked(lambda _event: (state.delete_selected(), redraw()))
     finalize.on_clicked(lambda _event: (state.finalize_freehand(), redraw()))
@@ -675,14 +687,14 @@ def run(scenario, checker, scenario_path, pose_bounds):
         )
     )
 
-    drag = {"id": None, "last": None}
+    drag: DragState = {"id": None, "last": None}
 
     def press(event):
         if event.inaxes != ax or event.xdata is None:
             return
         point = (event.xdata, event.ydata)
         if state.tool == "add":
-            state.add_object(point, role=role.value_selected)
+            state.add_object(point, role=role.value_selected or "query")
         elif state.tool == "path":
             if state.selected:
                 state.selected.path.append((state.current_time, Pose.from_translation(point)))
@@ -718,10 +730,11 @@ def run(scenario, checker, scenario_path, pose_bounds):
         redraw()
 
     def motion(event):
-        if drag["id"] is None or event.inaxes != ax or event.xdata is None:
+        object_id, last = drag["id"], drag["last"]
+        if object_id is None or last is None or event.inaxes != ax or event.xdata is None:
             return
-        obj = next(item for item in state.objects if item.object_id == drag["id"])
-        dx, dy = event.xdata - drag["last"][0], event.ydata - drag["last"][1]
+        obj = next(item for item in state.objects if item.object_id == object_id)
+        dx, dy = event.xdata - last[0], event.ydata - last[1]
         obj.pose = Pose((obj.pose.translation[0] + dx, obj.pose.translation[1] + dy), obj.pose.rotation)
         obj.path = [
             (time, Pose((pose.translation[0] + dx, pose.translation[1] + dy), pose.rotation)) for time, pose in obj.path
