@@ -606,14 +606,28 @@ def run(scenario, checker, scenario_path, pose_bounds):
         elif state.tool == "polygon":
             state.add_freehand_vertex(point)
         else:
-            nearest = min(
-                state.objects,
-                key=lambda obj: np.linalg.norm(np.asarray(obj.pose_at(state.current_time).translation) - point),
-                default=None,
-            )
-            if nearest is not None:
+            clicked_objects = []
+            click_geom = Circle(0.1)
+            click_pose = Pose.from_translation(point)
+            for obj in state.objects:
+                obj_geom = obj.shape_at(state.current_time, state.time_steps[0]).collision_object()
+                obj_pose = obj.pose_at(state.current_time)
+                try:
+                    if obj_geom.collides(click_geom, obj_pose, click_pose, engine=state.engine):
+                        dist = np.linalg.norm(np.asarray(obj_pose.translation) - point)
+                        clicked_objects.append((dist, obj))
+                except Exception:
+                    dist = np.linalg.norm(np.asarray(obj_pose.translation) - point)
+                    if dist < 1.0:
+                        clicked_objects.append((dist, obj))
+
+            if clicked_objects:
+                clicked_objects.sort(key=lambda x: x[0])
+                nearest = clicked_objects[0][1]
                 state.selected_id = nearest.object_id
                 drag.update(id=nearest.object_id, last=point)
+            else:
+                state.selected_id = None
         redraw()
 
     def motion(event):

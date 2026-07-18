@@ -168,3 +168,40 @@ def test_all_bundled_scenarios_load():
         lower, upper = utils.scenario_pose_bounds(scenario)
         assert lower[0] < upper[0]
         assert checker.engine == CollisionEngine.Rhusics
+
+
+def test_playground_unselect_click_outside(monkeypatch, engine):
+    monkeypatch.setattr(plt, "show", lambda: None)
+    scenario, checker = utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, engine)
+    bounds = utils.scenario_pose_bounds(scenario)
+    pose_bounds = bounds
+
+    state = playground.run(scenario, checker, main.DEFAULT_SCENARIO_PATH, pose_bounds)
+    try:
+        assert state.selected_id is not None
+        selected_obj = state.selected
+        assert selected_obj is not None
+
+        fig = plt.gcf()
+        ax = fig.axes[0]
+
+        from matplotlib.backend_bases import MouseEvent
+
+        def trigger_click(xdata, ydata):
+            disp = ax.transData.transform((xdata, ydata))
+            event = MouseEvent("button_press_event", fig.canvas, disp[0], disp[1], button=1)
+            event.inaxes = ax
+            event.xdata = xdata
+            event.ydata = ydata
+            fig.canvas.callbacks.process("button_press_event", event)
+
+        # Click far away to unselect
+        trigger_click(1000.0, 1000.0)
+        assert state.selected_id is None
+
+        # Click near the object to select it again
+        obj_translation = selected_obj.pose_at(state.current_time).translation
+        trigger_click(obj_translation[0], obj_translation[1])
+        assert state.selected_id == selected_obj.object_id
+    finally:
+        plt.close("all")
