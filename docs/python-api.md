@@ -1,114 +1,113 @@
 # Python API Reference
 
-All core classes are re-exported at the package root (`crcc`). Errors like invalid geometry or inverted time bounds raise `ValueError`. Angles are in radians.
+This reference summarizes the public Python surface. Start with the [Python guide](python-guide.md) for task-oriented examples.
 
-## Transforms and Geometry
+All core classes are exported from `crcc`. Angles are in radians. Invalid geometry, inverted time bounds, and unsupported operations raise `ValueError`.
+
+## Geometry and poses
 
 ### `Pose`
-Represents a 2D rigid transform. `Pose(translation: tuple[float, float], angle: float)`
 
-| Method / Property | Signature | Description |
-| :--- | :--- | :--- |
-| `Pose.identity()` | `-> Pose` | Returns identity transform. |
-| `Pose.from_translation(translation)` | `-> Pose` | Create pose from translation `(x, y)`. |
-| `Pose.from_rotation(angle)` | `-> Pose` | Create pose from rotation angle. |
+`Pose(translation: tuple[float, float], angle: float)` represents a rigid 2D transform.
+
+| Member | Result | Purpose |
+| --- | --- | --- |
+| `Pose.identity()` | `Pose` | Identity transform. |
+| `Pose.from_translation(translation)` | `Pose` | Translation-only pose. |
+| `Pose.from_rotation(angle)` | `Pose` | Rotation-only pose. |
 | `translation` | `tuple[float, float]` | Translation component. |
-| `rotation` | `float` | Rotation component in radians. |
-| `compose(other)` / `*` | `(other: Pose) -> Pose` | Compose poses (applies `other` then `self`). |
+| `rotation` | `float` | Rotation in radians. |
+| `compose(other)` / `*` | `Pose` | Compose two poses. |
 
 ### `CollisionObject`
-Base class for all geometric shapes.
 
-| Method | Signature | Description |
-| :--- | :--- | :--- |
-| `collides` | `(other, pos_self=Pose.identity(), pos_other=Pose.identity(), engine=CollisionEngine.Parry) -> bool` | Discrete pairwise collision check. |
-| `distance` | `(other, pos_self=Pose.identity(), pos_other=Pose.identity(), engine=CollisionEngine.Parry) -> float` | Pairwise Euclidean distance. |
-| `collides_continuous` | `(start_pos_self, end_pos_self, other, start_pos_other, end_pos_other, engine=CollisionEngine.Parry) -> bool` | Continuous pairwise query. |
-| `merge` | `(other) -> CollisionObject` | Returns the union of two objects. |
-| `CollisionObject.merge_all` | `(collision_objects: Iterable) -> CollisionObject` | Returns the union of multiple objects. |
-
-### Shapes
 All shapes inherit from `CollisionObject`.
 
-| Shape | Constructor Signature | Description / Constraints |
-| :--- | :--- | :--- |
-| `Circle` | `Circle(radius: float, center=(0.0, 0.0))` | Requires finite `radius > 0`. |
-| `Rectangle` | `Rectangle(length: float, width: float, orientation=0.0, center=(0.0, 0.0))` | Requires finite positive dimensions. |
-| `Triangle` | `Triangle(a: tuple, b: tuple, c: tuple)` | Triangle from three `(x, y)` vertices. |
-| `Polygon` | `Polygon(exterior: list, interiors: list = None)` | Exterior and optional holes. |
-| `HalfSpace` | `HalfSpace(outward_normal: tuple, offset: float = 0.0)` | Region where `normal dot point <= offset`. |
-| `HalfSpace.from_points` | `from_points(p1: tuple, p2: tuple) -> HalfSpace` | Space to the right of the directed line. |
-| `HalfSpace.from_coeffs`| `from_coeffs(a, b, c) -> HalfSpace` | Region satisfying `a*x + b*y <= c`. |
-| `Compound` | `Compound(collision_objects: list)` | Union of multiple collision objects. |
-| `Empty` | `Empty()` | Null shape; never collides. |
-| `FullSpace` | `FullSpace()` | Space representing the entire plane. |
+| Method | Purpose |
+| --- | --- |
+| `collides(other, pos_self=..., pos_other=..., engine=...)` | Discrete pair collision. |
+| `collides_continuous(start_self, end_self, other, start_other, end_other, engine=...)` | Conservative collision query over a motion interval. |
+| `distance(other, pos_self=..., pos_other=..., engine=...)` | Euclidean separation distance. |
+| `merge(other)` | Union of two objects. |
+| `CollisionObject.merge_all(objects)` | Union of an iterable of objects. |
 
----
+### Shapes
 
-## Engines & Status
+| Class | Constructor |
+| --- | --- |
+| `Circle` | `Circle(radius, center=(0.0, 0.0))` |
+| `Rectangle` | `Rectangle(length, width, orientation=0.0, center=(0.0, 0.0))` |
+| `Triangle` | `Triangle(a, b, c)` |
+| `Polygon` | `Polygon(exterior, interiors=None)` |
+| `HalfSpace` | `HalfSpace(outward_normal, offset=0.0)` |
+| `Compound` | `Compound(collision_objects)` |
+| `Empty` | `Empty()`; never collides. |
+| `FullSpace` | `FullSpace()`; occupies the entire plane. |
+
+`HalfSpace.from_points(p1, p2)` constructs the region to the right of a directed line. `HalfSpace.from_coeffs(a, b, c)` constructs the region satisfying `a*x + b*y <= c`.
+
+## Engines and results
 
 ### `CollisionEngine`
-Enum specifying the backend: `Parry` (default), `Rhusics`, or `Collide`.
+
+Available values are `Parry` (default), `Rhusics`, and `Collide`.
 
 ### `CollisionStatus`
-Return status from checker queries: `NoCollision()`, `CollidesStatic()`, or `CollidesDynamic(time_step)`.
 
-| Property | Type | Description |
-| :--- | :--- | :--- |
-| `collides` | `bool` | `True` if any collision occurs. |
-| `time_step` | `int \| None` | First dynamic collision step, otherwise `None`. |
-| `__str__` | `str` | Readable description of status. |
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `collides` | `bool` | Whether a collision was reported. |
+| `time_step` | `int | None` | First dynamic collision step, when applicable. |
+| `str(status)` | `str` | Human-readable status. |
 
----
-
-## Checkers
+## Scene construction
 
 ### `CollisionCheckerBuilder`
-`CollisionCheckerBuilder(engine: CollisionEngine | None = None)`
 
-| Method | Signature | Description |
-| :--- | :--- | :--- |
-| `with_engine` | `(engine) -> Self` | Sets the collision backend engine. |
-| `with_static_obstacle` | `(obj: CollisionObject) -> Self` | Adds static geometry. |
-| `with_dynamic_obstacle` | `(obs: DynamicObstacle) -> Self` | Adds dynamic obstacle trajectory. |
-| `with_road_boundary` | `(lanelets) -> Self` | Adds road boundaries. |
-| `build` | `() -> CollisionChecker` | Builds an immutable collision checker. |
+`CollisionCheckerBuilder(engine=CollisionEngine.Parry)` creates an empty builder.
+
+| Method | Purpose |
+| --- | --- |
+| `with_engine(engine)` | Select the backend. |
+| `with_static_obstacle(obj)` | Add fixed geometry. |
+| `with_dynamic_obstacle(obstacle)` | Add a trajectory. |
+| `with_road_boundary(lanelets)` | Add the region outside lanelet polygons. |
+| `build()` | Return an immutable `CollisionChecker`. |
 
 ### `CollisionChecker`
-Immutable checker instance.
 
-| Method / Property | Signature | Description |
-| :--- | :--- | :--- |
-| `engine` | `CollisionEngine` | Selected backend engine. |
-| `collides_static` | `(query, position=None, min_time=None, max_time=None) -> CollisionStatus` | Check query against static geometry. |
-| `collides_dynamic` | `(dynamic_obstacle, min_time=None, max_time=None) -> CollisionStatus` | Check query against dynamic obstacles. |
-| `par_static` | `(positioned_queries: list, min_time=None, max_time=None) -> list` | Parallel batch query (static). |
-| `par_static_threads`| `(positioned_queries: list, threads: int, min_time=None, max_time=None) -> list` | Thread-configured batch static query. |
-| `par_dynamic` | `(dynamic_obstacles: list, min_time=None, max_time=None) -> list` | Parallel batch query (dynamic). |
+Python time bounds are inclusive.
 
----
+| Member | Purpose |
+| --- | --- |
+| `engine` | Selected `CollisionEngine`. |
+| `collides_static(query, position=None, min_time=None, max_time=None)` | Check a positioned shape against the scene. |
+| `collides_dynamic(obstacle, min_time=None, max_time=None)` | Check a trajectory against the scene. |
+| `collides_static_batch(queries, min_time=None, max_time=None)` | Ordered batch of positioned shape queries. |
+| `collides_dynamic_batch(obstacles, min_time=None, max_time=None)` | Ordered batch of trajectory queries. |
 
-## Dynamic Obstacles
+Batch methods run small inputs sequentially and larger inputs through Rayon.
 
-### `DynamicObstacle`
-`DynamicObstacle(shape: CollisionObject, positions: list[Pose], time_offset: int)`
+## Dynamic obstacles
 
-- `DynamicObstacle.from_time_variant(obstacles: list[CollisionObject], time_offset: int = 0, positions: list[Pose] = None) -> DynamicObstacle`: For shape changes across steps.
+`DynamicObstacle(shape, positions, time_offset)` uses one shape across a pose sequence.
 
----
+`DynamicObstacle.from_time_variant(obstacles, time_offset=0, positions=None)` accepts different geometry at each step.
 
-## `crcc.commonroad`
-Python-only conversion helpers.
+## CommonRoad conversion
 
-| Helper Function | Description |
-| :--- | :--- |
-| `scenario_builder(scenario, builder=None)` | Populates a builder with road boundary and obstacles. |
-| `add_static_obstacle(builder, static_obstacle)` | Adds a static obstacle to the builder. |
-| `add_dynamic_obstacle(builder, dynamic_obstacle)`| Adds a dynamic obstacle to the builder. |
-| `to_dynamic_obstacle(dynamic_obstacle)` | Converts dynamic obstacle to `DynamicObstacle`. |
-| `add_road_boundary(builder, lanelet_network)` | Adds network boundaries to builder. |
-| `road_boundary(lanelet_network)` | Returns boundary `CollisionObject`. |
-| `to_polygon(polygon)` / `to_shape(shape)` | Converts shape representation to `CollisionObject`. |
-| `to_occupancy(occupancy)` | Returns world-positioned occupancy geometry. |
-| `from_shapely(geometry)` | Converts Shapely Polygon/MultiPolygon to `CollisionObject`. |
-| `to_pose(state)` | Converts trajectory state to `Pose`. |
+The `crcc.commonroad` module provides Python-only adapters.
+
+| Function | Purpose |
+| --- | --- |
+| `scenario_builder(scenario, builder=None)` | Add a scenario's road boundary and obstacles to a builder. |
+| `add_static_obstacle(builder, obstacle)` | Add one CommonRoad static obstacle. |
+| `add_dynamic_obstacle(builder, obstacle)` | Add one CommonRoad dynamic obstacle. |
+| `add_road_boundary(builder, lanelet_network)` | Add the network boundary. |
+| `road_boundary(lanelet_network)` | Return the boundary collision object. |
+| `to_dynamic_obstacle(obstacle)` | Convert a CommonRoad trajectory. |
+| `to_occupancy(occupancy)` | Convert a positioned occupancy. |
+| `to_shape(shape)` | Convert obstacle geometry. |
+| `to_polygon(polygon)` | Convert a Shapely polygon. |
+| `from_shapely(geometry)` | Convert an empty, polygon, or multipolygon geometry. |
+| `to_pose(state)` | Convert a CommonRoad state. |

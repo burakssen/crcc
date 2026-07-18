@@ -1,122 +1,95 @@
 # Rust API Reference
 
-CRCC groups its API by module: `collision_object`, `collision_checker`, `dynamic_obstacle`, `time`, and `error`. Angles are in radians.
+This reference summarizes CRCC's public Rust API. Start with the [Rust guide](rust-guide.md) for complete examples.
 
-## Cargo Features
+Angles are in radians. Fallible operations return `CrccResult<T>`.
 
-| Feature | Description |
-| :--- | :--- |
-| `parry`, `rhusics`, `collide` | Compiles corresponding backend engines (enabled by default). |
-| `rayon` | Exposes parallel batch traits and runtime-selected query methods. |
-| `python_bindings` | Builds the PyO3 Python extension (implies `rayon`). |
+## Cargo features
 
-```toml
-# Example Cargo.toml
-[dependencies]
-crcc = { path = "../crcc", default-features = false, features = ["parry", "rayon"] }
-geo = "0.32"
-glamx = "0.1"
-```
+| Feature | Purpose |
+| --- | --- |
+| `parry`, `rhusics`, `collide` | Enable collision backends; all are enabled by default. |
+| `rayon` | Enable ordered batch-query methods. |
+| `python_bindings` | Build the PyO3 extension; also enables `rayon`. |
+| `benchmarking` | Expose internal benchmark support. Not part of the library API. |
 
----
+## Root exports
 
-## Collision Objects
+The crate root exports the common application-facing types:
 
-`crcc::collision_object::CollisionObject` represents primitive or compound geometry.
+- Geometry: `CollisionObject`, `Circle`, `Rectangle`, `Triangle`, `HalfSpace`, `Polygon`, `Compound`, `Empty`, `FullSpace`.
+- Placement and time: `Pose`, `TimeStep`.
+- Scenes: `CollisionChecker`, `SelectedCollisionChecker`, `CollisionCheckerBuilder`, `DynamicObstacle`.
+- Results: `CollisionStatus`, `CollisionResult`, `CrccError`, `CrccResult`.
+- Backend selection: `CollisionEngine`.
 
-```rust
-// Constructors
-CollisionObject::empty() -> Self
-CollisionObject::full_space() -> Self
-CollisionObject::circle(center: impl Into<Coordinate>, radius: f64) -> CrccResult<Self>
-CollisionObject::rectangle(rect: geo::Rect, orientation: f64) -> CrccResult<Self>
-CollisionObject::triangle(triangle: geo::Triangle) -> CrccResult<Self>
-CollisionObject::polygon(polygon: geo::Polygon) -> CrccResult<Self>
-CollisionObject::half_space(normal: [f64; 2], offset: f64) -> CrccResult<Self>
-CollisionObject::half_space_from_points(p1: [f64; 2], p2: [f64; 2]) -> CrccResult<Self>
-CollisionObject::half_space_from_coeffs(a: f64, b: f64, c: f64) -> CrccResult<Self>
+## `CollisionObject`
 
-// Composition & Inspection
-CollisionObject::merge(self, other: Self) -> Self
-CollisionObject::merge_all(objects: impl IntoIterator<Item = Self>) -> Self
-CollisionObject::is_empty(&self) -> bool
-CollisionObject::is_full_space(&self) -> bool
-CollisionObject::swept_areas(&self, positions: &[Pose]) -> Vec<Self>
-CollisionObject::swept_area(&self, start: Pose, end: Pose) -> Self
-```
+### Constructors
 
-Discrete queries, distance, and CCD are dispatched using free functions in `crcc::collision_checker::engine::{collides, distance, collides_continuous}`.
+| Method | Result |
+| --- | --- |
+| `empty()` / `full_space()` | `CollisionObject` |
+| `circle(center, radius)` | `CrccResult<CollisionObject>` |
+| `rectangle(rect, orientation)` | `CrccResult<CollisionObject>` |
+| `triangle(triangle)` | `CrccResult<CollisionObject>` |
+| `polygon(polygon)` | `CrccResult<CollisionObject>` |
+| `half_space(normal, offset)` | `CrccResult<CollisionObject>` |
+| `half_space_from_points(p1, p2)` | `CrccResult<CollisionObject>` |
+| `half_space_from_coeffs(a, b, c)` | `CrccResult<CollisionObject>` |
 
----
+### Queries and composition
 
-## Engines
+| Method | Purpose |
+| --- | --- |
+| `collides(...)` | Discrete pair collision through a selected engine. |
+| `collides_continuous(...)` | Conservative pair collision over a motion interval. |
+| `distance(...)` | Pair separation distance. |
+| `merge(other)` / `merge_all(objects)` | Union geometry. |
+| `is_empty()` / `is_full_space()` | Inspect special geometry. |
+| `swept_area(start, end)` / `swept_areas(poses)` | Conservative swept geometry. |
 
-`crcc::collision_checker::engine::CollisionEngine` has variants `Parry`, `Rhusics`, and `Collide`.
-Backend engine types implement `EngineCollisionObject`:
-- `engine::parry::ParryCollisionObject`
-- `engine::rhusics::RhusicsCoreCollisionObject`
-- `engine::collide::CollideCollisionObject`
+## Collision checkers
 
----
+### `CollisionCheckerBuilder`
 
-## Collision Checkers
+| Method | Purpose |
+| --- | --- |
+| `new()` | Empty builder. |
+| `with_static_obstacle(object)` | Add fixed geometry. |
+| `with_dynamic_obstacle(obstacle)` | Add a trajectory. |
+| `with_road_boundary(lanelets)` | Add the region outside lanelet polygons. |
+| `build::<E>()` | Generic checker with static backend dispatch. |
+| `build_with_engine(engine)` | Runtime-selected checker. |
 
-### Generic Checker (`CollisionChecker<E>`)
-Statically bound to one engine representation at compile time.
+### `CollisionChecker<E>`
 
-```rust
-use crcc::collision_checker::CollisionCheckerBuilder;
-use crcc::collision_checker::engine::parry::ParryCollisionObject;
-use crcc::collision_object::CollisionObject;
+The generic checker accepts objects converted to engine representation `E`. Its main methods are `collides_static`, `collides_dynamic`, and their `_at`, `_pos`, and `_range` variants.
 
-# fn main() -> Result<(), crcc::error::CrccError> {
-let scene = CollisionObject::circle((0.0, 0.0), 1.0)?;
-let query: ParryCollisionObject = CollisionObject::circle((0.0, 0.0), 0.25)?.into();
+### `SelectedCollisionChecker`
 
-let checker = CollisionCheckerBuilder::new()
-    .with_static_obstacle(scene)
-    .build::<ParryCollisionObject>();
+The runtime-selected checker accepts ordinary `CollisionObject` and `DynamicObstacle` values.
 
-assert!(checker.collides_static(&query)?.collides());
-# Ok(())
-# }
-```
+| Method | Purpose |
+| --- | --- |
+| `engine()` | Active `CollisionEngine`. |
+| `collides_static(...)` / `collides_dynamic(...)` | Query the full supported time domain. |
+| `collides_static_at(...)` / `collides_dynamic_at(...)` | Query one `TimeStep`. |
+| `collides_static_range(...)` / `collides_dynamic_range(...)` | Query a Rust time range. |
+| `collides_static_batch(...)` / `collides_dynamic_batch(...)` | Ordered batch query; requires `rayon`. |
 
-### Runtime-Selected Checker (`SelectedCollisionChecker`)
-Supports selecting engines dynamically at runtime.
+## Dynamic obstacles and time
 
-| Method | Signature |
-| :--- | :--- |
-| `engine` | `&self -> CollisionEngine` |
-| `collides_static` / `_at` / `_pos` / `_pos_at` | `&self, ... -> CollisionResult` |
-| `collides_dynamic` / `_at` | `&self, ... -> CollisionResult` |
-| `collides_static_range` | `&self, &CollisionObject, Pose, impl RangeBounds<TimeStep> -> CollisionResult` |
-| `collides_dynamic_range` | `&self, &DynamicObstacle, impl RangeBounds<TimeStep> -> CollisionResult` |
-| `par_static` / `par_dynamic` | `&self, ... -> Vec<CollisionResult>` (requires `rayon`) |
+| API | Purpose |
+| --- | --- |
+| `DynamicObstacle::new(shape, poses, time_offset)` | Constant geometry across a trajectory. |
+| `DynamicObstacle::time_variant(shapes, poses, time_offset)` | Geometry that changes by step. |
+| `TimeStep::pred()` / `succ()` | Saturating adjacent step. |
+| `TimeStep::add_steps(count)` | Saturating forward offset. |
+| `TimeStep::iter_range(range)` | Iterate the steps selected by a Rust range. |
 
-### Builder (`CollisionCheckerBuilder`)
-Methods mutate and return the builder:
-- `new() -> Self`
-- `with_static_obstacle(CollisionObject) -> Self`
-- `with_dynamic_obstacle(DynamicObstacle) -> Self`
-- `with_road_boundary(Vec<geo::Polygon>) -> Self`
-- `build::<E>() -> CollisionChecker<E>`
-- `build_with_engine(CollisionEngine) -> CrccResult<SelectedCollisionChecker>`
+## Results and errors
 
----
+`CollisionStatus` is `NoCollision`, `CollidesStatic`, or `CollidesDynamic(TimeStep)`. Its `collides()` method is the simplest way to inspect a result.
 
-## Dynamic Obstacles & Time
-
-- `DynamicObstacle::new(shape, positions, time_offset: TimeStep) -> Self`
-- `DynamicObstacle::time_variant(shapes, positions, time_offset: TimeStep) -> Self`
-- `TimeStep(pub i32)` wraps the integer time steps.
-  - Constants: `TimeStep::MIN`, `TimeStep::MAX`, `TimeStep::ZERO`.
-  - Methods: `pred()`, `succ()`, `add_steps(n)`, `iter_range(start, end)`.
-
----
-
-## Status and Errors
-
-- `CollisionStatus`: `NoCollision`, `CollidesStatic`, or `CollidesDynamic(TimeStep)`.
-- `CollisionResult`: `Result<CollisionStatus, CrccError>`.
-- `CrccError` variants: `InvalidRadius`, `NotConvex`, `HasHoles`, `EmptyShape`, `InvalidGeometry`, `Unsupported(String)`.
+`CrccError` reports invalid radius, non-convex or holed geometry where unsupported, empty or invalid geometry, and unsupported engine/operation combinations.

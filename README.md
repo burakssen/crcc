@@ -1,77 +1,49 @@
 # CRCC
 
-CRCC is a Rust and Python 2D collision-checking library for primitive, compound, static, and time-varying geometry. It supports discrete queries, conservative continuous collision detection (CCD), ordered parallel batches, and CommonRoad conversion.
+CRCC is a 2D collision-checking library for Rust and Python. It supports primitive and compound geometry, discrete and continuous collision queries, dynamic obstacles, ordered batch queries, and CommonRoad scenarios.
 
+Continuous collision detection (CCD) is conservative: a negative result certifies separation, while a positive result may be an over-approximation.
 
-## Setup & Development
+## Choose your language
+
+| Language | Start here | API reference |
+| --- | --- | --- |
+| Python | [Python guide](docs/python-guide.md) | [Python API](docs/python-api.md) |
+| Rust | [Rust guide](docs/rust-guide.md) | [Rust API](docs/rust-api.md) |
+
+Additional documentation:
+
+- [Benchmark tool](tools/benchmark/README.md)
+- [Broad-phase acceleration design note](docs/future-work.md)
+
+## Development setup
+
+The repository uses `uv` for the Python environment and Cargo for Rust:
 
 ```bash
-# Clone & install dependencies
-git clone <repository-url> crcc && cd crcc
+git clone <repository-url> crcc
+cd crcc
 uv sync
+```
 
-# Run tests & lint
-cargo test --all-features
-uv run pytest -q
+Run the standard checks with:
+
+```bash
 uv run ruff check .
+uv run pytest -q
+cargo test --all-features
+cargo clippy --all-targets --all-features -- -D warnings
 ```
 
-## Quick Start
+## Tutorials and playground
 
-### Python
-```python
-from crcc.collision_checker import CollisionCheckerBuilder, CollisionEngine
-from crcc.collision_object import Circle, Rectangle
-from crcc.pose import Pose
+The CLI exposes deterministic examples for the supported engines:
 
-# Build checker with static rectangle
-checker = (
-    CollisionCheckerBuilder(CollisionEngine.Parry)
-    .with_static_obstacle(Rectangle(2.0, 2.0))
-    .build()
-)
-
-# Query static collision
-status = checker.collides_static(Circle(0.5), Pose.identity())
-assert status.collides
-```
-
-### Rust
-Add to `Cargo.toml`:
-```toml
-[dependencies]
-crcc = { path = "../crcc" }
-geo = "0.32"
-```
-
-```rust
-use crcc::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
-use crcc::collision_checker::engine::parry::ParryCollisionObject;
-use crcc::collision_object::CollisionObject;
-
-fn main() -> Result<(), crcc::error::CrccError> {
-    let wall = CollisionObject::rectangle(geo::Rect::new((-1.0, -1.0), (1.0, 1.0)), 0.0)?;
-    let robot: ParryCollisionObject = CollisionObject::circle((0.0, 0.0), 0.5)?.into();
-
-    let checker = CollisionCheckerBuilder::new()
-        .with_static_obstacle(wall)
-        .build::<ParryCollisionObject>();
-
-    assert_eq!(checker.collides_static(&robot)?, CollisionStatus::CollidesStatic);
-    Ok(())
-}
-```
-
-## Documentation & Guides
-- [Usage & Examples](docs/usage.md)
-- [Python API Reference](docs/python-api.md)
-- [Rust API Reference](docs/rust-api.md)
-
-## Run CLI Tools
 ```bash
 uv run main.py basic --engine parry
 uv run main.py continuous --engine rhusics
 uv run main.py commonroad --engine collide
-uv run main.py study --benchmark-profile smoke
+uv run main.py playground
 ```
-For benchmarking details, see [benchmark tool guide](tools/benchmark/README.md).
+
+Run `uv run main.py` without an action to choose interactively.
