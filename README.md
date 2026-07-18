@@ -2,7 +2,6 @@
 
 CRCC is a Rust and Python 2D collision-checking library for primitive, compound, static, and time-varying geometry. It supports discrete queries, conservative continuous collision detection (CCD), ordered parallel batches, and CommonRoad conversion.
 
-<!-- ponytail: simplified README to the absolute essentials, removing wordy semantics covered in usage.md -->
 
 ## Setup & Development
 

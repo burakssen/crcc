@@ -168,7 +168,6 @@ impl CollisionObject {
         for geo_self in &left {
             for geo_other in &right {
                 min_distance = min_distance.min(distance_geo(geo_self, geo_other)?);
-                // ponytail: exact zero cannot improve, so skip the remaining pairs.
                 if min_distance == 0.0 {
                     return Ok(0.0);
                 }

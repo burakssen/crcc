@@ -2,8 +2,6 @@
 
 CRCC groups its API by module: `collision_object`, `collision_checker`, `dynamic_obstacle`, `time`, and `error`. Angles are in radians.
 
-<!-- ponytail: simplified and table-structured Rust API guide -->
-
 ## Cargo Features
 
 | Feature | Description |

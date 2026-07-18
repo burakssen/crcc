@@ -81,7 +81,6 @@ fn main() {
         usage();
     }
 
-    // ponytail: one backend and layer per process keeps native profiles attributable.
     match backend.as_str() {
         #[cfg(feature = "parry")]
         "parry" => run::<ParryCollisionObject>(

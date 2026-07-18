@@ -2,8 +2,6 @@
 
 This guide provides practical examples for common collision-checking tasks in both Python and Rust.
 
-<!-- ponytail: simplified and structured usage guide, placing Python and Rust examples close together -->
-
 ## Core Semantics
 
 - **Geometry & Poses**: Shapes are defined in local coordinates and placed with a `Pose`.

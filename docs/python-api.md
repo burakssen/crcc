@@ -2,8 +2,6 @@
 
 All core classes are re-exported at the package root (`crcc`). Errors like invalid geometry or inverted time bounds raise `ValueError`. Angles are in radians.
 
-<!-- ponytail: converted verbose bullet lists to structured tables -->
-
 ## Transforms and Geometry
 
 ### `Pose`
