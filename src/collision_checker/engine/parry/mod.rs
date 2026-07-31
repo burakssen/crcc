@@ -1,7 +1,7 @@
 use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_checker::engine::parry::inner::ParryCollisionObjectInner;
 use crate::collision_object::CollisionObject;
-use crate::error::CrccError;
+use crate::error::{CrccError, CrccResult};
 use glamx::DPose2;
 use parry2d_f64::query::Unsupported;
 
@@ -12,15 +12,10 @@ mod simple;
 pub struct ParryCollisionObject(ParryCollisionObjectInner);
 
 impl EngineCollisionObject for ParryCollisionObject {
-    fn collides_at(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-    ) -> Result<bool, CrccError> {
-        Ok(self
-            .as_ref()
-            .collides(pos_self, other.as_ref(), pos_other)?)
+    fn collides_at(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> CrccResult<bool> {
+        self.as_ref()
+            .collides(pos_self, other.as_ref(), pos_other)
+            .map_err(CrccError::from)
     }
 
     fn collides_continuous(
@@ -30,25 +25,22 @@ impl EngineCollisionObject for ParryCollisionObject {
         other: &Self,
         start_pos_other: DPose2,
         end_pos_other: DPose2,
-    ) -> Result<bool, CrccError> {
-        Ok(self.as_ref().collides_continuous(
-            start_pos_self,
-            end_pos_self,
-            other.as_ref(),
-            start_pos_other,
-            end_pos_other,
-        )?)
+    ) -> CrccResult<bool> {
+        self.as_ref()
+            .collides_continuous(
+                start_pos_self,
+                end_pos_self,
+                other.as_ref(),
+                start_pos_other,
+                end_pos_other,
+            )
+            .map_err(CrccError::from)
     }
 
-    fn distance_at(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-    ) -> Result<f64, CrccError> {
-        Ok(self
-            .as_ref()
-            .distance(pos_self, other.as_ref(), pos_other)?)
+    fn distance_at(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> CrccResult<f64> {
+        self.as_ref()
+            .distance(pos_self, other.as_ref(), pos_other)
+            .map_err(CrccError::from)
     }
 }
 
@@ -65,10 +57,7 @@ impl AsRef<ParryCollisionObjectInner> for ParryCollisionObject {
 }
 
 impl From<Unsupported> for CrccError {
-    fn from(error: Unsupported) -> Self {
-        match error {
-            // Deliberate match with one arm to future-proof against new error variants in parry
-            Unsupported => CrccError::Unsupported,
-        }
+    fn from(_: Unsupported) -> Self {
+        Self::Unsupported
     }
 }

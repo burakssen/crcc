@@ -8,6 +8,7 @@ use collide_sphere::Sphere as CollideSphere;
 use geo::{TriangulateEarcut, Winding};
 use glamx::{DPose2, DVec2};
 use simple_vectors::Vector;
+use std::ops::{Div, Neg, Sub};
 
 pub type CollideVec2 = Vector<f64, 2>;
 
@@ -45,22 +46,21 @@ pub struct HalfSpaceComponent {
 }
 
 impl CollideSimpleCollisionObject {
+    #[must_use]
     pub fn into_components(self) -> Vec<CollideCollisionComponent> {
         match self {
-            CollideSimpleCollisionObject::Empty | CollideSimpleCollisionObject::FullSpace => {
-                Vec::new()
-            }
-            CollideSimpleCollisionObject::Component(component) => vec![component],
-            CollideSimpleCollisionObject::Compound(components) => components,
+            Self::Empty | Self::FullSpace => Vec::new(),
+            Self::Component(component) => vec![component],
+            Self::Compound(components) => components,
         }
     }
 }
 
 impl From<SimpleCollisionObject> for CollideSimpleCollisionObject {
     fn from(collision_object: SimpleCollisionObject) -> Self {
-        match collision_object {
-            SimpleCollisionObject::Empty(..) => CollideSimpleCollisionObject::Empty,
-            SimpleCollisionObject::FullSpace(..) => CollideSimpleCollisionObject::FullSpace,
+        match &collision_object {
+            SimpleCollisionObject::Empty(..) => Self::Empty,
+            SimpleCollisionObject::FullSpace(..) => Self::FullSpace,
             SimpleCollisionObject::HalfSpace(half_space) => convert_half_space(half_space),
             SimpleCollisionObject::Circle(circle) => convert_circle(circle),
             SimpleCollisionObject::Rectangle(rectangle) => convert_rectangle(rectangle),
@@ -78,7 +78,7 @@ impl From<SimpleCollisionObject> for CollideSimpleCollisionObject {
     }
 }
 
-fn convert_half_space(half_space: HalfSpace) -> CollideSimpleCollisionObject {
+const fn convert_half_space(half_space: &HalfSpace) -> CollideSimpleCollisionObject {
     CollideSimpleCollisionObject::Component(CollideCollisionComponent::HalfSpace(
         HalfSpaceComponent {
             outward_normal: half_space.outward_normal,
@@ -87,28 +87,35 @@ fn convert_half_space(half_space: HalfSpace) -> CollideSimpleCollisionObject {
     ))
 }
 
-fn convert_circle(circle: Circle) -> CollideSimpleCollisionObject {
-    let collider = CollideConvex::sphere(vec2(DVec2::ZERO), circle.radius());
+fn convert_circle(circle: &Circle) -> CollideSimpleCollisionObject {
+    let radius = circle.radius();
+    let origin = vec2(DVec2::ZERO);
+    let collider = CollideConvex::sphere(origin, radius);
+
     CollideSimpleCollisionObject::Component(CollideCollisionComponent::Finite(FiniteShape {
         collider,
-        bounding_sphere: CollideSphere::new(vec2(DVec2::ZERO), circle.radius()),
+        bounding_sphere: CollideSphere::new(vec2(DVec2::ZERO), radius),
         position: make_pose(circle.center(), 0.0),
-        support: FiniteShapeSupport::Circle {
-            radius: circle.radius(),
-        },
+        support: FiniteShapeSupport::Circle { radius },
     }))
 }
 
-fn convert_rectangle(rectangle: Rectangle) -> CollideSimpleCollisionObject {
-    let half_width = rectangle.width() / 2.0;
-    let half_height = rectangle.height() / 2.0;
+fn convert_rectangle(rectangle: &Rectangle) -> CollideSimpleCollisionObject {
+    let half_width = rectangle.width().div(2.0);
+    let half_height = rectangle.height().div(2.0);
+
+    let negative_half_width = half_width.neg();
+    let negative_half_height = half_height.neg();
+
     let vertices = vec![
-        DVec2::new(-half_width, -half_height),
-        DVec2::new(half_width, -half_height),
+        DVec2::new(negative_half_width, negative_half_height),
+        DVec2::new(half_width, negative_half_height),
         DVec2::new(half_width, half_height),
-        DVec2::new(-half_width, half_height),
+        DVec2::new(negative_half_width, half_height),
     ];
+
     let collider = collide_convex_from_vertices(&vertices);
+
     CollideSimpleCollisionObject::Component(CollideCollisionComponent::Finite(FiniteShape {
         bounding_sphere: collider.bounding_volume(),
         collider,
@@ -117,66 +124,72 @@ fn convert_rectangle(rectangle: Rectangle) -> CollideSimpleCollisionObject {
     }))
 }
 
-fn convert_triangle(triangle: Triangle) -> CollideSimpleCollisionObject {
+fn convert_triangle(triangle: &Triangle) -> CollideSimpleCollisionObject {
     let mut vertices = [
         DVec2::new(triangle.0.x, triangle.0.y),
         DVec2::new(triangle.1.x, triangle.1.y),
         DVec2::new(triangle.2.x, triangle.2.y),
     ];
+
     normalize_triangle_winding(&mut vertices);
-    finite_polygon_component(vertices.into())
+
+    finite_polygon_component(Vec::from(vertices))
 }
 
-fn convert_convex_polygon(convex_polygon: ConvexPolygon) -> CollideSimpleCollisionObject {
+fn convert_convex_polygon(convex_polygon: &ConvexPolygon) -> CollideSimpleCollisionObject {
     let vertices = convex_polygon
         .exterior()
         .points_ccw()
         .skip(1)
-        .map(|p| DVec2::new(p.x(), p.y()))
+        .map(|point| DVec2::new(point.x(), point.y()))
         .collect();
+
     finite_polygon_component(vertices)
 }
 
 fn convert_non_convex_polygon(
-    non_convex_polygon: NonConvexPolygon,
+    non_convex_polygon: &NonConvexPolygon,
 ) -> CollideSimpleCollisionObject {
     CollideSimpleCollisionObject::Compound(
         non_convex_polygon
             .earcut_triangles()
             .into_iter()
-            .map(triangle_to_component)
+            .map(|triangle| triangle_to_component(&triangle))
             .collect(),
     )
 }
 
 fn convert_polygon_with_holes(
-    polygon_with_holes: PolygonWithHoles,
+    polygon_with_holes: &PolygonWithHoles,
 ) -> CollideSimpleCollisionObject {
     CollideSimpleCollisionObject::Compound(
         polygon_with_holes
             .earcut_triangles()
             .into_iter()
-            .map(triangle_to_component)
+            .map(|triangle| triangle_to_component(&triangle))
             .collect(),
     )
 }
 
 fn finite_polygon_component(vertices: Vec<DVec2>) -> CollideSimpleCollisionObject {
-    CollideSimpleCollisionObject::Component(triangle_or_polygon_to_component(vertices))
+    CollideSimpleCollisionObject::Component(polygon_to_component(vertices))
 }
 
-fn triangle_to_component(triangle: geo::Triangle) -> CollideCollisionComponent {
+fn triangle_to_component(triangle: &geo::Triangle) -> CollideCollisionComponent {
     let mut vertices = [
         DVec2::new(triangle.0.x, triangle.0.y),
         DVec2::new(triangle.1.x, triangle.1.y),
         DVec2::new(triangle.2.x, triangle.2.y),
     ];
+
     normalize_triangle_winding(&mut vertices);
-    triangle_or_polygon_to_component(vertices.into())
+
+    polygon_to_component(Vec::from(vertices))
 }
 
-fn triangle_or_polygon_to_component(vertices: Vec<DVec2>) -> CollideCollisionComponent {
+fn polygon_to_component(vertices: Vec<DVec2>) -> CollideCollisionComponent {
     let collider = collide_convex_from_vertices(&vertices);
+
     CollideCollisionComponent::Finite(FiniteShape {
         bounding_sphere: collider.bounding_volume(),
         collider,
@@ -196,14 +209,18 @@ fn normalize_triangle_winding(vertices: &mut [DVec2; 3]) {
 }
 
 fn signed_area(vertices: &[DVec2; 3]) -> f64 {
-    (vertices[1] - vertices[0]).perp_dot(vertices[2] - vertices[0]) / 2.0
+    let [first, second, third] = vertices;
+
+    second.sub(*first).perp_dot(third.sub(*first)).div(2.0)
 }
 
 fn make_pose(translation: impl Into<DVec2>, rotation: f64) -> DPose2 {
     DPose2::new(translation.into(), rotation)
 }
 
-pub fn vec2(v: impl Into<DVec2>) -> CollideVec2 {
-    let v = v.into();
-    Vector::new([v.x, v.y])
+#[must_use]
+pub fn vec2(vector: impl Into<DVec2>) -> CollideVec2 {
+    let vector = vector.into();
+
+    Vector::new([vector.x, vector.y])
 }

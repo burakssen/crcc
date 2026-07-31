@@ -1,13 +1,11 @@
 use crate::collision_checker::ccd_collider::{CCDCollider, CCDColliderAt};
 use crate::collision_checker::engine::EngineCollisionObject;
-use crate::collision_object::CollisionObject;
-use crate::collision_object::DynamicObstacle;
 use crate::collision_object::dynamic::GenericDynamicObstacle;
+use crate::collision_object::{CollisionObject, DynamicObstacle};
+use crate::error::CrccError;
 use crate::time::{TimeStep, TimeStepSet};
 use glamx::DPose2;
 use std::ops::RangeBounds;
-
-use crate::error::CrccError;
 
 mod builder;
 mod ccd_collider;
@@ -32,11 +30,9 @@ pub enum CollisionStatus {
 
 impl CollisionStatus {
     /// Returns whether this status represents any collision.
-    pub fn collides(&self) -> bool {
-        match self {
-            CollisionStatus::NoCollision => false,
-            CollisionStatus::CollidesStatic | CollisionStatus::CollidesDynamic(_) => true,
-        }
+    #[must_use]
+    pub const fn collides(self) -> bool {
+        !matches!(self, Self::NoCollision)
     }
 }
 
@@ -51,11 +47,19 @@ pub struct CollisionChecker<E: EngineCollisionObject> {
 
 impl<E: EngineCollisionObject> CollisionChecker<E> {
     /// Checks a static obstacle against the scene geometry across all active times.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an underlying collision-engine query fails.
     pub fn collides_static(&self, static_obstacle: &E) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, ..)
     }
 
     /// Checks a dynamic obstacle against the scene geometry across all active times.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an underlying collision-engine query fails.
     pub fn collides_dynamic(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E>,
@@ -64,11 +68,19 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     }
 
     /// Checks a static obstacle against the scene geometry at a specific time step.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an underlying collision-engine query fails.
     pub fn collides_static_at(&self, static_obstacle: &E, time_step: TimeStep) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, time_step..=time_step)
     }
 
     /// Checks a dynamic obstacle against the scene geometry at a specific time step.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an underlying collision-engine query fails.
     pub fn collides_dynamic_at(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E>,
@@ -78,11 +90,19 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     }
 
     /// Checks a positioned static obstacle against the scene geometry across all active times.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an underlying collision-engine query fails.
     pub fn collides_static_pos(&self, static_obstacle: &E, position: DPose2) -> CollisionResult {
         self.collides_static_range(static_obstacle, position, ..)
     }
 
     /// Checks a positioned static obstacle against the scene geometry at a specific time step.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an underlying collision-engine query fails.
     pub fn collides_static_pos_at(
         &self,
         static_obstacle: &E,
@@ -93,6 +113,10 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     }
 
     /// Checks a positioned static obstacle against the scene geometry within a specific time range.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an underlying collision-engine query fails.
     pub fn collides_static_range(
         &self,
         static_obstacle: &E,
@@ -107,7 +131,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         for &time_step in &active_times {
             let ccd_collider = active_times
                 .contains(&time_step.succ())
-                .then(|| Self::stationary_ccd_collider(static_obstacle, position));
+                .then_some(Self::stationary_ccd_collider(static_obstacle, position));
             if self.static_query_collides_dynamic_at(
                 static_obstacle,
                 position,
@@ -121,6 +145,10 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     }
 
     /// Checks a dynamic obstacle against the scene geometry within a specific time range.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if an underlying collision-engine query fails.
     pub fn collides_dynamic_range(
         &self,
         dynamic_obstacle: &GenericDynamicObstacle<E>,
@@ -140,7 +168,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         Ok(CollisionStatus::NoCollision)
     }
 
-    fn stationary_ccd_collider(static_obstacle: &E, position: DPose2) -> CCDCollider<'_, E> {
+    const fn stationary_ccd_collider(static_obstacle: &E, position: DPose2) -> CCDCollider<'_, E> {
         CCDCollider {
             shape: static_obstacle,
             position,
@@ -273,6 +301,7 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
 }
 
 #[cfg(all(test, any(feature = "parry", feature = "rhusics", feature = "collide")))]
+#[allow(clippy::panic, clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::collision_object::CollisionObject;
@@ -531,21 +560,36 @@ pub(crate) enum SelectedCollisionCheckerInner {
 pub struct SelectedCollisionChecker(SelectedCollisionCheckerInner);
 
 impl SelectedCollisionChecker {
-    pub(crate) fn new(inner: SelectedCollisionCheckerInner) -> Self {
+    pub(crate) const fn new(inner: SelectedCollisionCheckerInner) -> Self {
         Self(inner)
     }
 
     /// Checks a static obstacle against the scene geometry across all active times.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] if no collision backend is available,
+    /// or propagates an error from the selected backend.
     pub fn collides_static(&self, static_obstacle: &CollisionObject) -> CollisionResult {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, ..)
     }
 
     /// Checks a dynamic obstacle against the scene geometry across all active times.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] if no collision backend is available,
+    /// or propagates an error from the selected backend.
     pub fn collides_dynamic(&self, dynamic_obstacle: &DynamicObstacle) -> CollisionResult {
         self.collides_dynamic_range(dynamic_obstacle, ..)
     }
 
     /// Checks a static obstacle against the scene geometry at a specific time step.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] if no collision backend is available,
+    /// or propagates an error from the selected backend.
     pub fn collides_static_at(
         &self,
         static_obstacle: &CollisionObject,
@@ -555,6 +599,11 @@ impl SelectedCollisionChecker {
     }
 
     /// Checks a dynamic obstacle against the scene geometry at a specific time step.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] if no collision backend is available,
+    /// or propagates an error from the selected backend.
     pub fn collides_dynamic_at(
         &self,
         dynamic_obstacle: &DynamicObstacle,
@@ -564,6 +613,11 @@ impl SelectedCollisionChecker {
     }
 
     /// Checks a positioned static obstacle against the scene geometry across all active times.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] if no collision backend is available,
+    /// or propagates an error from the selected backend.
     pub fn collides_static_pos(
         &self,
         static_obstacle: &CollisionObject,
@@ -573,6 +627,11 @@ impl SelectedCollisionChecker {
     }
 
     /// Checks a positioned static obstacle against the scene geometry at a specific time step.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] if no collision backend is available,
+    /// or propagates an error from the selected backend.
     pub fn collides_static_pos_at(
         &self,
         static_obstacle: &CollisionObject,
@@ -586,6 +645,11 @@ impl SelectedCollisionChecker {
     ///
     /// `time_range` limits dynamic-obstacle checks. Static geometry is always
     /// checked. The first dynamic collision time is returned.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] if no collision backend is available,
+    /// or propagates an error from the selected backend.
     pub fn collides_static_range(
         &self,
         static_obstacle: &CollisionObject,
@@ -609,13 +673,18 @@ impl SelectedCollisionChecker {
                 collides_static(checker, static_obstacle, position, time_range)
             }
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-            _ => Err(crate::error::CrccError::Unsupported),
+            _ => Err(CrccError::Unsupported),
         }
     }
 
     /// Checks a moving obstacle against static and dynamic scene geometry.
     ///
     /// Continuous motion between adjacent active trajectory steps is included.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] if no collision backend is available,
+    /// or propagates an error from the selected backend.
     pub fn collides_dynamic_range(
         &self,
         dynamic_obstacle: &DynamicObstacle,
@@ -638,12 +707,14 @@ impl SelectedCollisionChecker {
                 collides_dynamic(checker, dynamic_obstacle, time_range)
             }
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-            _ => Err(crate::error::CrccError::Unsupported),
+            _ => Err(CrccError::Unsupported),
         }
     }
 
     /// Returns the backend selected when this checker was built.
-    pub fn engine(&self) -> CollisionEngine {
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    #[must_use]
+    pub const fn engine(&self) -> CollisionEngine {
         match &self.0 {
             #[cfg(feature = "parry")]
             SelectedCollisionCheckerInner::Parry(_) => CollisionEngine::Parry,
@@ -651,15 +722,21 @@ impl SelectedCollisionChecker {
             SelectedCollisionCheckerInner::Rhusics(_) => CollisionEngine::Rhusics,
             #[cfg(feature = "collide")]
             SelectedCollisionCheckerInner::Collide(_) => CollisionEngine::Collide,
-            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-            _ => CollisionEngine::default(),
         }
+    }
+
+    /// Returns the default backend when no collision backend is compiled in.
+    #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+    #[must_use]
+    pub fn engine(&self) -> CollisionEngine {
+        CollisionEngine::default()
     }
 
     #[cfg(feature = "rayon")]
     /// Checks fixed-shape queries in a batch, preserving input order.
     ///
     /// Small batches run sequentially; larger batches use Rayon's active pool.
+    #[must_use]
     pub fn collides_static_batch(
         &self,
         positioned_static_obstacles: &[(CollisionObject, DPose2)],
@@ -681,7 +758,7 @@ impl SelectedCollisionChecker {
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => positioned_static_obstacles
                 .iter()
-                .map(|_| Err(crate::error::CrccError::Unsupported))
+                .map(|_| Err(CrccError::Unsupported))
                 .collect(),
         }
     }
@@ -690,6 +767,7 @@ impl SelectedCollisionChecker {
     /// Checks dynamic queries in a batch, preserving input order.
     ///
     /// Small batches run sequentially; larger batches use Rayon's active pool.
+    #[must_use]
     pub fn collides_dynamic_batch(
         &self,
         dynamic_obstacles: &[DynamicObstacle],
@@ -711,13 +789,14 @@ impl SelectedCollisionChecker {
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => dynamic_obstacles
                 .iter()
-                .map(|_| Err(crate::error::CrccError::Unsupported))
+                .map(|_| Err(CrccError::Unsupported))
                 .collect(),
         }
     }
 
     #[cfg(feature = "rayon")]
     /// Checks multiple positioned static obstacles in parallel using Rayon.
+    #[must_use]
     pub fn par_static(
         &self,
         positioned_static_obstacles: &[(CollisionObject, DPose2)],
@@ -728,6 +807,7 @@ impl SelectedCollisionChecker {
 
     #[cfg(feature = "rayon")]
     /// Checks multiple dynamic obstacles in parallel using Rayon.
+    #[must_use]
     pub fn par_dynamic(
         &self,
         dynamic_obstacles: &[DynamicObstacle],
@@ -825,6 +905,7 @@ fn collides_dynamic_batch<E: EngineCollisionObject + Send + Sync>(
     feature = "rayon",
     any(feature = "parry", feature = "rhusics", feature = "collide")
 ))]
+#[allow(clippy::panic, clippy::unwrap_used)]
 mod selected_tests {
     use super::*;
     use crate::collision_checker::CollisionCheckerBuilder;
@@ -841,7 +922,7 @@ mod selected_tests {
         ]
     }
 
-    fn assert_send_sync<T: Send + Sync>() {}
+    const fn assert_send_sync<T: Send + Sync>() {}
 
     #[test]
     fn backend_objects_are_send_and_sync() {

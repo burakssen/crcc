@@ -8,15 +8,17 @@ use collide::{Collider, CollisionInfo, Transform, Transformable};
 use collide_convex::Convex as CollideConvex;
 use collide_sphere::Sphere as CollideSphere;
 use glamx::{DPose2, DVec2};
+use std::cmp::Ordering;
 use std::fmt;
+use std::ops::{Add, Div, Mul, Neg, Sub};
 
 const HALF_SPACE_EPSILON: f64 = 1e-9;
+const ROTATION_EPSILON: f64 = 1e-12;
+const LOCAL_OFFSET_EPSILON_SQUARED: f64 = 1e-24;
+const QUADRATIC_EPSILON: f64 = 1e-12;
 const TOI_TIME_TOLERANCE: f64 = 1e-9;
-const TOI_INITIAL_SAMPLES: usize = 8;
 const TOI_MAX_DEPTH: usize = 10;
-
-#[derive(Debug, Clone)]
-pub struct Unsupported;
+const TOI_SAMPLE_TIMES: [f64; 8] = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
@@ -27,11 +29,11 @@ pub enum CollideCollisionObjectInner {
 }
 
 impl fmt::Debug for CollideCollisionObjectInner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Empty => write!(f, "Empty"),
-            Self::FullSpace => write!(f, "FullSpace"),
-            Self::NonTrivial(_) => write!(f, "NonTrivial([Components])"),
+            Self::Empty => write!(formatter, "Empty"),
+            Self::FullSpace => write!(formatter, "FullSpace"),
+            Self::NonTrivial(_) => write!(formatter, "NonTrivial([Components])"),
         }
     }
 }
@@ -42,25 +44,18 @@ pub struct NonTrivial {
 }
 
 impl CollideCollisionObjectInner {
-    pub fn collides(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-    ) -> Result<bool, Unsupported> {
+    #[must_use]
+    pub fn collides(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> bool {
         match (self, other) {
-            (CollideCollisionObjectInner::Empty, _) | (_, CollideCollisionObjectInner::Empty) => {
-                Ok(false)
+            (Self::Empty, _) | (_, Self::Empty) => false,
+            (Self::FullSpace, _) | (_, Self::FullSpace) => true,
+            (Self::NonTrivial(left), Self::NonTrivial(right)) => {
+                left.collides(pos_self, right, pos_other)
             }
-            (CollideCollisionObjectInner::FullSpace, _)
-            | (_, CollideCollisionObjectInner::FullSpace) => Ok(true),
-            (
-                CollideCollisionObjectInner::NonTrivial(slf),
-                CollideCollisionObjectInner::NonTrivial(other),
-            ) => Ok(slf.collides(pos_self, other, pos_other)),
         }
     }
 
+    #[must_use]
     pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
@@ -68,28 +63,23 @@ impl CollideCollisionObjectInner {
         other: &Self,
         start_pos_other: DPose2,
         end_pos_other: DPose2,
-    ) -> Result<bool, Unsupported> {
+    ) -> bool {
         match (self, other) {
-            (CollideCollisionObjectInner::Empty, _) | (_, CollideCollisionObjectInner::Empty) => {
-                Ok(false)
-            }
-            (CollideCollisionObjectInner::FullSpace, _)
-            | (_, CollideCollisionObjectInner::FullSpace) => Ok(true),
-            (
-                CollideCollisionObjectInner::NonTrivial(slf),
-                CollideCollisionObjectInner::NonTrivial(other),
-            ) => Ok(slf.collides_continuous(
+            (Self::Empty, _) | (_, Self::Empty) => false,
+            (Self::FullSpace, _) | (_, Self::FullSpace) => true,
+            (Self::NonTrivial(left), Self::NonTrivial(right)) => left.collides_continuous(
                 start_pos_self,
                 end_pos_self,
-                other,
+                right,
                 start_pos_other,
                 end_pos_other,
-            )),
+            ),
         }
     }
 }
 
 impl NonTrivial {
+    #[must_use]
     pub fn collides(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> bool {
         if finite_components_collide(&self.components, pos_self, &other.components, pos_other) {
             return true;
@@ -106,14 +96,17 @@ impl NonTrivial {
                 ) {
                     continue;
                 }
+
                 if components_collide(component_self, pos_self, component_other, pos_other) {
                     return true;
                 }
             }
         }
+
         false
     }
 
+    #[must_use]
     pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
@@ -124,54 +117,18 @@ impl NonTrivial {
     ) -> bool {
         for component_self in &self.components {
             for component_other in &other.components {
-                if let (
-                    CollideCollisionComponent::Finite(shape_self),
-                    CollideCollisionComponent::Finite(shape_other),
-                ) = (component_self, component_other)
-                    && let (
-                        FiniteShapeSupport::Circle {
-                            radius: radius_self,
-                        },
-                        FiniteShapeSupport::Circle {
-                            radius: radius_other,
-                        },
-                    ) = (&shape_self.support, &shape_other.support)
-                    && ((start_pos_self.rotation.angle() - end_pos_self.rotation.angle()).abs()
-                        <= 1e-12
-                        || shape_self.position.translation.length_squared() <= 1e-24)
-                    && ((start_pos_other.rotation.angle() - end_pos_other.rotation.angle()).abs()
-                        <= 1e-12
-                        || shape_other.position.translation.length_squared() <= 1e-24)
-                {
-                    let s1 = start_pos_self * shape_self.position.translation;
-                    let e1 = end_pos_self * shape_self.position.translation;
-                    let s2 = start_pos_other * shape_other.position.translation;
-                    let e2 = end_pos_other * shape_other.position.translation;
-
-                    let d_s = s1 - s2;
-                    let r = radius_self + radius_other;
-                    let r_sq = r * r;
-
-                    if d_s.length_squared() <= r_sq {
+                if let Some(collides) = moving_circle_pair_collides(
+                    component_self,
+                    start_pos_self,
+                    end_pos_self,
+                    component_other,
+                    start_pos_other,
+                    end_pos_other,
+                ) {
+                    if collides {
                         return true;
                     }
 
-                    let v_self = e1 - s1;
-                    let v_other = e2 - s2;
-                    let v_d = v_self - v_other;
-
-                    let a = v_d.length_squared();
-                    if a > 1e-12 {
-                        let b = 2.0 * d_s.dot(v_d);
-                        let c = d_s.length_squared() - r_sq;
-                        let discriminant = b * b - 4.0 * a * c;
-                        if discriminant >= 0.0 {
-                            let t = (-b - discriminant.sqrt()) / (2.0 * a);
-                            if (0.0..=1.0).contains(&t) {
-                                return true;
-                            }
-                        }
-                    }
                     continue;
                 }
 
@@ -187,8 +144,95 @@ impl NonTrivial {
                 }
             }
         }
+
         false
     }
+}
+
+fn moving_circle_pair_collides(
+    component_self: &CollideCollisionComponent,
+    start_pos_self: DPose2,
+    end_pos_self: DPose2,
+    component_other: &CollideCollisionComponent,
+    start_pos_other: DPose2,
+    end_pos_other: DPose2,
+) -> Option<bool> {
+    let (
+        CollideCollisionComponent::Finite(shape_self),
+        CollideCollisionComponent::Finite(shape_other),
+    ) = (component_self, component_other)
+    else {
+        return None;
+    };
+
+    let (
+        FiniteShapeSupport::Circle {
+            radius: radius_self,
+        },
+        FiniteShapeSupport::Circle {
+            radius: radius_other,
+        },
+    ) = (&shape_self.support, &shape_other.support)
+    else {
+        return None;
+    };
+
+    let self_rotation_supported = start_pos_self
+        .rotation
+        .angle()
+        .sub(end_pos_self.rotation.angle())
+        .abs()
+        <= ROTATION_EPSILON
+        || shape_self.position.translation.length_squared() <= LOCAL_OFFSET_EPSILON_SQUARED;
+
+    let other_rotation_supported = start_pos_other
+        .rotation
+        .angle()
+        .sub(end_pos_other.rotation.angle())
+        .abs()
+        <= ROTATION_EPSILON
+        || shape_other.position.translation.length_squared() <= LOCAL_OFFSET_EPSILON_SQUARED;
+
+    if !self_rotation_supported || !other_rotation_supported {
+        return None;
+    }
+
+    let start_self = start_pos_self.mul(shape_self.position.translation);
+    let end_self = end_pos_self.mul(shape_self.position.translation);
+    let start_other = start_pos_other.mul(shape_other.position.translation);
+    let end_other = end_pos_other.mul(shape_other.position.translation);
+
+    let relative_start = start_self.sub(start_other);
+    let combined_radius = (*radius_self).add(*radius_other);
+    let combined_radius_squared = combined_radius.mul(combined_radius);
+
+    if relative_start.length_squared() <= combined_radius_squared {
+        return Some(true);
+    }
+
+    let velocity_self = end_self.sub(start_self);
+    let velocity_other = end_other.sub(start_other);
+    let relative_velocity = velocity_self.sub(velocity_other);
+    let quadratic_a = relative_velocity.length_squared();
+
+    if quadratic_a <= QUADRATIC_EPSILON {
+        return Some(false);
+    }
+
+    let quadratic_b = 2.0_f64.mul(relative_start.dot(relative_velocity));
+    let quadratic_c = relative_start.length_squared().sub(combined_radius_squared);
+    let discriminant = quadratic_b
+        .mul(quadratic_b)
+        .sub(4.0_f64.mul(quadratic_a).mul(quadratic_c));
+
+    if discriminant < 0.0 {
+        return Some(false);
+    }
+
+    let denominator = 2.0_f64.mul(quadratic_a);
+    let collision_time = quadratic_b.neg().sub(discriminant.sqrt()).div(denominator);
+
+    Some((0.0..=1.0).contains(&collision_time))
 }
 
 fn finite_components_collide(
@@ -201,10 +245,12 @@ fn finite_components_collide(
         let CollideCollisionComponent::Finite(left) = left else {
             return false;
         };
+
         right_components.iter().any(|right| {
             let CollideCollisionComponent::Finite(right) = right else {
                 return false;
             };
+
             finite_shapes_collide(left, left_pose, right, right_pose)
         })
     })
@@ -218,10 +264,11 @@ struct ManagedFiniteShape {
 
 impl ManagedFiniteShape {
     fn new(finite: &FiniteShape, pose: DPose2) -> Self {
-        let pose = pose * finite.position;
+        let global_pose = pose.mul(finite.position);
+
         Self {
-            collider: transformed_convex_at_pose(finite, pose),
-            bounding_sphere: transformed_bounding_sphere_at_pose(finite, pose),
+            collider: transformed_convex_at_pose(finite, global_pose),
+            bounding_sphere: transformed_bounding_sphere_at_pose(finite, global_pose),
         }
     }
 }
@@ -283,24 +330,28 @@ fn components_hit_continuous(
     if !pair.interval_may_collide(0.0, 1.0) {
         return false;
     }
+
     if pair.collides_at(0.0) || pair.collides_at(1.0) {
         return true;
     }
+
     if left_start_pose == left_end_pose && right_start_pose == right_end_pose {
         return false;
     }
 
-    let mut previous_t = 0.0;
-    for index in 1..=TOI_INITIAL_SAMPLES {
-        let t = index as f64 / TOI_INITIAL_SAMPLES as f64;
-        if pair.collides_at(t)
-            || (pair.interval_may_collide(previous_t, t)
-                && pair.interval_collides(previous_t, t, 0))
+    let mut previous_time = 0.0;
+
+    for sample_time in TOI_SAMPLE_TIMES {
+        if pair.collides_at(sample_time)
+            || (pair.interval_may_collide(previous_time, sample_time)
+                && pair.interval_collides(previous_time, sample_time, 0))
         {
             return true;
         }
-        previous_t = t;
+
+        previous_time = sample_time;
     }
+
     false
 }
 
@@ -314,43 +365,56 @@ struct ContinuousPair<'a> {
 }
 
 impl ContinuousPair<'_> {
-    fn collides_at(&self, t: f64) -> bool {
+    fn collides_at(&self, time: f64) -> bool {
         components_collide(
             self.left,
-            lerp_pose(self.left_start_pose, self.left_end_pose, t),
+            lerp_pose(self.left_start_pose, self.left_end_pose, time),
             self.right,
-            lerp_pose(self.right_start_pose, self.right_end_pose, t),
+            lerp_pose(self.right_start_pose, self.right_end_pose, time),
         )
     }
 
-    fn interval_collides(&self, t0: f64, t1: f64, depth: usize) -> bool {
-        let mid = (t0 + t1) / 2.0;
-        if self.collides_at(mid) {
+    fn interval_collides(&self, start_time: f64, end_time: f64, depth: usize) -> bool {
+        let midpoint = f64::midpoint(start_time, end_time);
+
+        if self.collides_at(midpoint) {
             return true;
         }
 
-        if t1 - t0 <= TOI_TIME_TOLERANCE || depth >= TOI_MAX_DEPTH {
-            // The interval broad phase still overlaps, so absence is unproven.
+        if end_time.sub(start_time) <= TOI_TIME_TOLERANCE || depth >= TOI_MAX_DEPTH {
+            // The broad phase still overlaps, so absence of collision is unproven.
             return true;
         }
 
-        (self.interval_may_collide(t0, mid) && self.interval_collides(t0, mid, depth + 1))
-            || (self.interval_may_collide(mid, t1) && self.interval_collides(mid, t1, depth + 1))
+        let Some(next_depth) = depth.checked_add(1) else {
+            return true;
+        };
+
+        (self.interval_may_collide(start_time, midpoint)
+            && self.interval_collides(start_time, midpoint, next_depth))
+            || (self.interval_may_collide(midpoint, end_time)
+                && self.interval_collides(midpoint, end_time, next_depth))
     }
 
-    fn interval_may_collide(&self, t0: f64, t1: f64) -> bool {
+    fn interval_may_collide(&self, start_time: f64, end_time: f64) -> bool {
         match (
-            component_interval_aabb(self.left, self.left_start_pose, self.left_end_pose, t0, t1),
+            component_interval_aabb(
+                self.left,
+                self.left_start_pose,
+                self.left_end_pose,
+                start_time,
+                end_time,
+            ),
             component_interval_aabb(
                 self.right,
                 self.right_start_pose,
                 self.right_end_pose,
-                t0,
-                t1,
+                start_time,
+                end_time,
             ),
         ) {
             (Some(left), Some(right)) => left.overlaps(right),
-            // Infinite half-spaces cannot be rejected by finite AABBs.
+            // Infinite half-spaces cannot be rejected using finite AABBs.
             _ => true,
         }
     }
@@ -364,6 +428,7 @@ fn finite_shapes_collide(
 ) -> bool {
     let left = ManagedFiniteShape::new(left, left_pose);
     let right = ManagedFiniteShape::new(right, right_pose);
+
     left.check_collision(&right) && left.collision_info(&right).is_some()
 }
 
@@ -391,7 +456,8 @@ impl Transform<CollideVec2> for CollideTransform {
 }
 
 fn transform_collide_point(point: CollideVec2, pose: DPose2) -> CollideVec2 {
-    vec2(pose * DVec2::new(point[0], point[1]))
+    let [x, y]: [f64; 2] = point.into();
+    vec2(pose.mul(DVec2::new(x, y)))
 }
 
 fn half_space_hits_finite(
@@ -401,9 +467,11 @@ fn half_space_hits_finite(
     finite_pose: DPose2,
 ) -> bool {
     let world_half_space = transform_half_space(half_space, half_space_pose);
-    let support_point = finite_support_point(finite, finite_pose, -world_half_space.outward_normal);
+    let support_point =
+        finite_support_point(finite, finite_pose, world_half_space.outward_normal.neg());
+
     world_half_space.outward_normal.dot(support_point)
-        <= world_half_space.offset + HALF_SPACE_EPSILON
+        <= world_half_space.offset.add(HALF_SPACE_EPSILON)
 }
 
 fn half_spaces_collide(
@@ -415,37 +483,39 @@ fn half_spaces_collide(
     let left = transform_half_space(left, left_pose);
     let right = transform_half_space(right, right_pose);
 
-    if (left.outward_normal + right.outward_normal).length() <= HALF_SPACE_EPSILON {
-        left.offset + right.offset >= -HALF_SPACE_EPSILON
+    if left.outward_normal.add(right.outward_normal).length() <= HALF_SPACE_EPSILON {
+        left.offset.add(right.offset) >= HALF_SPACE_EPSILON.neg()
     } else {
         true
     }
 }
 
 fn transform_half_space(half_space: &HalfSpaceComponent, pose: DPose2) -> HalfSpaceComponent {
-    let outward_normal = pose.rotation * half_space.outward_normal;
+    let outward_normal = pose.rotation.mul(half_space.outward_normal);
+
     HalfSpaceComponent {
         outward_normal,
-        offset: half_space.offset + outward_normal.dot(pose.translation),
+        offset: half_space.offset.add(outward_normal.dot(pose.translation)),
     }
 }
 
 fn finite_support_point(finite: &FiniteShape, pose: DPose2, direction: DVec2) -> DVec2 {
-    let global_pose = pose * finite.position;
+    let global_pose = pose.mul(finite.position);
+
     match &finite.support {
-        FiniteShapeSupport::Circle { radius } => {
-            global_pose.translation + direction.normalize_or_zero() * *radius
-        }
+        FiniteShapeSupport::Circle { radius } => global_pose
+            .translation
+            .add(direction.normalize_or_zero().mul(*radius)),
         FiniteShapeSupport::Vertices(vertices) => vertices
             .iter()
-            .map(|vertex| global_pose * *vertex)
+            .map(|vertex| global_pose.mul(*vertex))
             .max_by(|left, right| {
                 direction
                     .dot(*left)
                     .partial_cmp(&direction.dot(*right))
-                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .unwrap_or(Ordering::Equal)
             })
-            .expect("Finite polygonal shapes should have vertices"),
+            .unwrap_or(global_pose.translation),
     }
 }
 
@@ -453,13 +523,14 @@ fn component_interval_aabb(
     component: &CollideCollisionComponent,
     start_pose: DPose2,
     end_pose: DPose2,
-    t0: f64,
-    t1: f64,
+    start_time: f64,
+    end_time: f64,
 ) -> Option<Aabb> {
     match component {
         CollideCollisionComponent::Finite(finite) => {
-            let start = lerp_pose(start_pose, end_pose, t0);
-            let end = lerp_pose(start_pose, end_pose, t1);
+            let start = lerp_pose(start_pose, end_pose, start_time);
+            let end = lerp_pose(start_pose, end_pose, end_time);
+
             if !rotation_changed(start, end) {
                 return Some(finite_aabb_at(finite, start).union(finite_aabb_at(finite, end)));
             }
@@ -471,10 +542,13 @@ fn component_interval_aabb(
                     .map(|vertex| vertex.length())
                     .fold(0.0, f64::max),
             };
-            let radius = finite.position.translation.length() + support_radius;
+
+            let radius = finite.position.translation.length().add(support_radius);
+            let radius_vector = DVec2::splat(radius);
+
             Some(Aabb {
-                min: start.translation.min(end.translation) - DVec2::splat(radius),
-                max: start.translation.max(end.translation) + DVec2::splat(radius),
+                min: start.translation.min(end.translation).sub(radius_vector),
+                max: start.translation.max(end.translation).add(radius_vector),
             })
         }
         CollideCollisionComponent::HalfSpace(_) => None,
@@ -482,17 +556,24 @@ fn component_interval_aabb(
 }
 
 fn finite_aabb_at(finite: &FiniteShape, pose: DPose2) -> Aabb {
-    let global_pose = pose * finite.position;
+    let global_pose = pose.mul(finite.position);
+
     match &finite.support {
-        FiniteShapeSupport::Circle { radius } => Aabb {
-            min: global_pose.translation - DVec2::splat(*radius),
-            max: global_pose.translation + DVec2::splat(*radius),
-        },
+        FiniteShapeSupport::Circle { radius } => {
+            let radius_vector = DVec2::splat(*radius);
+
+            Aabb {
+                min: global_pose.translation.sub(radius_vector),
+                max: global_pose.translation.add(radius_vector),
+            }
+        }
         FiniteShapeSupport::Vertices(vertices) => {
             let mut aabb = Aabb::empty();
+
             for vertex in vertices {
-                aabb.include(global_pose * *vertex);
+                aabb.include(global_pose.mul(*vertex));
             }
+
             aabb
         }
     }
@@ -505,7 +586,7 @@ struct Aabb {
 }
 
 impl Aabb {
-    fn empty() -> Self {
+    const fn empty() -> Self {
         Self {
             min: DVec2::splat(f64::INFINITY),
             max: DVec2::splat(f64::NEG_INFINITY),
@@ -532,10 +613,10 @@ impl Aabb {
     }
 }
 
-fn lerp_pose(start: DPose2, end: DPose2, t: f64) -> DPose2 {
+fn lerp_pose(start: DPose2, end: DPose2, time: f64) -> DPose2 {
     DPose2::from_parts(
-        start.translation.lerp(end.translation, t),
-        start.rotation.slerp(&end.rotation, t),
+        start.translation.lerp(end.translation, time),
+        start.rotation.slerp(&end.rotation, time),
     )
 }
 
@@ -544,8 +625,7 @@ impl From<CollisionObject> for CollideCollisionObjectInner {
         let mut components = Vec::new();
 
         for simple in value {
-            let converted = CollideSimpleCollisionObject::from(simple);
-            match converted {
+            match CollideSimpleCollisionObject::from(simple) {
                 CollideSimpleCollisionObject::Empty => {}
                 CollideSimpleCollisionObject::FullSpace => {
                     return Self::FullSpace;

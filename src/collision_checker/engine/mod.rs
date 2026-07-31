@@ -1,5 +1,5 @@
 use crate::collision_object::CollisionObject;
-use crate::error::CrccError;
+use crate::error::{CrccError, CrccResult};
 use glamx::DPose2;
 
 #[cfg(feature = "collide")]
@@ -9,18 +9,32 @@ pub mod parry;
 #[cfg(feature = "rhusics")]
 pub mod rhusics;
 
+/// A collision object converted for use by a specific backend.
 pub trait EngineCollisionObject: From<CollisionObject> {
-    fn collides(&self, other: &Self) -> Result<bool, CrccError> {
+    /// Tests for a collision at the identity pose for both objects.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the backend does not support the supplied geometry
+    /// or if the underlying collision query fails.
+    fn collides(&self, other: &Self) -> CrccResult<bool> {
         self.collides_at(DPose2::IDENTITY, other, DPose2::IDENTITY)
     }
 
-    fn collides_at(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-    ) -> Result<bool, CrccError>;
+    /// Tests for a collision at the supplied poses.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the backend does not support the supplied geometry
+    /// or if the underlying collision query fails.
+    fn collides_at(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> CrccResult<bool>;
 
+    /// Tests continuously for a collision over two object motions.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if continuous collision detection is unsupported for
+    /// the supplied geometry or if the underlying query fails.
     fn collides_continuous(
         &self,
         start_pos_self: DPose2,
@@ -28,71 +42,86 @@ pub trait EngineCollisionObject: From<CollisionObject> {
         other: &Self,
         start_pos_other: DPose2,
         end_pos_other: DPose2,
-    ) -> Result<bool, CrccError>;
+    ) -> CrccResult<bool>;
 
-    fn distance_at(
-        &self,
-        _pos_self: DPose2,
-        _other: &Self,
-        _pos_other: DPose2,
-    ) -> Result<f64, CrccError> {
+    /// Returns the non-negative separation distance at the supplied poses.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] by default. Backend implementations
+    /// may also return an error when the supplied geometry cannot be processed.
+    fn distance_at(&self, _pos_self: DPose2, _other: &Self, _pos_other: DPose2) -> CrccResult<f64> {
         Err(CrccError::Unsupported)
     }
 }
 
+/// Tests two collision objects at the supplied poses using `engine`.
+///
+/// # Errors
+///
+/// Returns [`CrccError::Unsupported`] when the selected backend feature is
+/// disabled or the backend cannot process the supplied geometry. Other backend
+/// query errors are propagated unchanged.
 pub fn collides(
-    slf: &CollisionObject,
+    object: &CollisionObject,
     pos_self: DPose2,
     other: &CollisionObject,
     pos_other: DPose2,
     engine: CollisionEngine,
-) -> Result<bool, CrccError> {
+) -> CrccResult<bool> {
     #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-    let _ = (slf, pos_self, other, pos_other);
+    let _ = (object, pos_self, other, pos_other);
 
     match engine {
         #[cfg(feature = "parry")]
         CollisionEngine::Parry => {
             use parry::ParryCollisionObject;
-            let slf = ParryCollisionObject::from(slf.clone());
+            let object = ParryCollisionObject::from(object.clone());
             let other = ParryCollisionObject::from(other.clone());
-            slf.collides_at(pos_self, &other, pos_other)
+            object.collides_at(pos_self, &other, pos_other)
         }
         #[cfg(not(feature = "parry"))]
         CollisionEngine::Parry => Err(CrccError::Unsupported),
         #[cfg(feature = "rhusics")]
         CollisionEngine::Rhusics => {
             use rhusics::RhusicsCoreCollisionObject;
-            let slf = RhusicsCoreCollisionObject::from(slf.clone());
+            let object = RhusicsCoreCollisionObject::from(object.clone());
             let other = RhusicsCoreCollisionObject::from(other.clone());
-            slf.collides_at(pos_self, &other, pos_other)
+            object.collides_at(pos_self, &other, pos_other)
         }
         #[cfg(not(feature = "rhusics"))]
         CollisionEngine::Rhusics => Err(CrccError::Unsupported),
         #[cfg(feature = "collide")]
         CollisionEngine::Collide => {
             use collide::CollideCollisionObject;
-            let slf = CollideCollisionObject::from(slf.clone());
+            let object = CollideCollisionObject::from(object.clone());
             let other = CollideCollisionObject::from(other.clone());
-            slf.collides_at(pos_self, &other, pos_other)
+            object.collides_at(pos_self, &other, pos_other)
         }
         #[cfg(not(feature = "collide"))]
         CollisionEngine::Collide => Err(CrccError::Unsupported),
     }
 }
 
+/// Tests continuously for a collision over two object motions using `engine`.
+///
+/// # Errors
+///
+/// Returns [`CrccError::Unsupported`] when the selected backend feature or the
+/// requested continuous query is unsupported. Other backend query errors are
+/// propagated unchanged.
 pub fn collides_continuous(
-    slf: &CollisionObject,
+    object: &CollisionObject,
     start_pos_self: DPose2,
     end_pos_self: DPose2,
     other: &CollisionObject,
     start_pos_other: DPose2,
     end_pos_other: DPose2,
     engine: CollisionEngine,
-) -> Result<bool, CrccError> {
+) -> CrccResult<bool> {
     #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
     let _ = (
-        slf,
+        object,
         start_pos_self,
         end_pos_self,
         other,
@@ -104,9 +133,9 @@ pub fn collides_continuous(
         #[cfg(feature = "parry")]
         CollisionEngine::Parry => {
             use parry::ParryCollisionObject;
-            let slf = ParryCollisionObject::from(slf.clone());
+            let object = ParryCollisionObject::from(object.clone());
             let other = ParryCollisionObject::from(other.clone());
-            slf.collides_continuous(
+            object.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 &other,
@@ -119,9 +148,9 @@ pub fn collides_continuous(
         #[cfg(feature = "rhusics")]
         CollisionEngine::Rhusics => {
             use rhusics::RhusicsCoreCollisionObject;
-            let slf = RhusicsCoreCollisionObject::from(slf.clone());
+            let object = RhusicsCoreCollisionObject::from(object.clone());
             let other = RhusicsCoreCollisionObject::from(other.clone());
-            slf.collides_continuous(
+            object.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 &other,
@@ -134,9 +163,9 @@ pub fn collides_continuous(
         #[cfg(feature = "collide")]
         CollisionEngine::Collide => {
             use collide::CollideCollisionObject;
-            let slf = CollideCollisionObject::from(slf.clone());
+            let object = CollideCollisionObject::from(object.clone());
             let other = CollideCollisionObject::from(other.clone());
-            slf.collides_continuous(
+            object.collides_continuous(
                 start_pos_self,
                 end_pos_self,
                 &other,
@@ -149,32 +178,39 @@ pub fn collides_continuous(
     }
 }
 
+/// Returns the distance between two collision objects at the supplied poses.
+///
+/// # Errors
+///
+/// Returns [`CrccError::Unsupported`] when the selected backend feature is
+/// disabled or distance queries are unsupported for the supplied geometry.
+/// Other backend query errors are propagated unchanged.
 pub fn distance(
-    slf: &CollisionObject,
+    object: &CollisionObject,
     pos_self: DPose2,
     other: &CollisionObject,
     pos_other: DPose2,
     engine: CollisionEngine,
-) -> Result<f64, CrccError> {
+) -> CrccResult<f64> {
     #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-    let _ = (slf, pos_self, other, pos_other);
+    let _ = (object, pos_self, other, pos_other);
 
     match engine {
         #[cfg(feature = "parry")]
         CollisionEngine::Parry => {
             use parry::ParryCollisionObject;
-            let slf = ParryCollisionObject::from(slf.clone());
+            let object = ParryCollisionObject::from(object.clone());
             let other = ParryCollisionObject::from(other.clone());
-            slf.distance_at(pos_self, &other, pos_other)
+            object.distance_at(pos_self, &other, pos_other)
         }
         #[cfg(not(feature = "parry"))]
         CollisionEngine::Parry => Err(CrccError::Unsupported),
         #[cfg(feature = "rhusics")]
-        CollisionEngine::Rhusics => slf.distance_at(pos_self, other, pos_other),
+        CollisionEngine::Rhusics => object.distance_at(pos_self, other, pos_other),
         #[cfg(not(feature = "rhusics"))]
         CollisionEngine::Rhusics => Err(CrccError::Unsupported),
         #[cfg(feature = "collide")]
-        CollisionEngine::Collide => slf.distance_at(pos_self, other, pos_other),
+        CollisionEngine::Collide => object.distance_at(pos_self, other, pos_other),
         #[cfg(not(feature = "collide"))]
         CollisionEngine::Collide => Err(CrccError::Unsupported),
     }
@@ -202,26 +238,27 @@ impl Default for CollisionEngine {
 }
 
 #[cfg(feature = "parry")]
-fn default_collision_engine() -> CollisionEngine {
+const fn default_collision_engine() -> CollisionEngine {
     CollisionEngine::Parry
 }
 
 #[cfg(all(not(feature = "parry"), feature = "rhusics"))]
-fn default_collision_engine() -> CollisionEngine {
+const fn default_collision_engine() -> CollisionEngine {
     CollisionEngine::Rhusics
 }
 
 #[cfg(all(not(feature = "parry"), not(feature = "rhusics"), feature = "collide"))]
-fn default_collision_engine() -> CollisionEngine {
+const fn default_collision_engine() -> CollisionEngine {
     CollisionEngine::Collide
 }
 
 #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-fn default_collision_engine() -> CollisionEngine {
+const fn default_collision_engine() -> CollisionEngine {
     CollisionEngine::Parry
 }
 
-#[cfg(all(test, feature = "parry", feature = "rhusics", feature = "collide"))]
+#[cfg(all(test, feature = "parry", feature = "rhusics", feature = "collide",))]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::{CollisionEngine, collides, collides_continuous, distance};
     use crate::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
@@ -265,6 +302,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::too_many_lines)]
     fn discrete_engines_match_for_basic_shapes() {
         let empty = CollisionObject::empty();
         let full = CollisionObject::full_space();
@@ -774,7 +812,7 @@ mod tests {
                     engine,
                 )
                 .unwrap()
-            )
+            );
         }
     }
 
@@ -795,7 +833,7 @@ mod tests {
                     engine,
                 )
                 .unwrap()
-            )
+            );
         }
     }
 
@@ -815,7 +853,7 @@ mod tests {
                 CollisionEngine::Parry,
             )
             .unwrap()
-        )
+        );
     }
 
     #[test]
@@ -870,9 +908,12 @@ mod tests {
             CollisionEngine::Rhusics,
             CollisionEngine::Collide,
         ] {
-            assert_eq!(
-                distance(&full, DPose2::IDENTITY, &circle, DPose2::IDENTITY, engine).unwrap(),
-                0.0
+            let separation =
+                distance(&full, DPose2::IDENTITY, &circle, DPose2::IDENTITY, engine).unwrap();
+
+            assert!(
+                separation.abs() < 1e-9,
+                "expected zero distance for {engine:?}, got {separation}",
             );
         }
     }
@@ -893,7 +934,7 @@ mod tests {
                 CollisionEngine::Parry,
             )
             .unwrap()
-        )
+        );
     }
 
     #[test]

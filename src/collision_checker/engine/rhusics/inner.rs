@@ -10,11 +10,9 @@ use glamx::{DPose2, DVec2};
 use rhusics_core::Pose;
 use rhusics_core::collide2d::BodyPose2;
 use std::fmt;
+use std::ops::{Add, Mul, Neg, Sub};
 
 const HALF_SPACE_EPSILON: f64 = 1e-9;
-
-#[derive(Debug, Clone)]
-pub struct Unsupported(pub String);
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
@@ -25,11 +23,13 @@ pub enum RhusicsCoreCollisionObjectInner {
 }
 
 impl fmt::Debug for RhusicsCoreCollisionObjectInner {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Empty => write!(f, "Empty"),
-            Self::FullSpace => write!(f, "FullSpace"),
-            Self::NonTrivial(_) => write!(f, "NonTrivial([Components])"),
+            Self::Empty => write!(formatter, "Empty"),
+            Self::FullSpace => write!(formatter, "FullSpace"),
+            Self::NonTrivial(_) => {
+                write!(formatter, "NonTrivial([Components])")
+            }
         }
     }
 }
@@ -49,24 +49,20 @@ fn glam_to_cgmath_pose(pose: &DPose2) -> BodyPose2<f64> {
 }
 
 impl RhusicsCoreCollisionObjectInner {
-    pub fn collides(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-    ) -> Result<bool, Unsupported> {
+    #[must_use]
+    pub fn collides(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> bool {
         match (self, other) {
-            (RhusicsCoreCollisionObjectInner::Empty, _)
-            | (_, RhusicsCoreCollisionObjectInner::Empty) => Ok(false),
-            (RhusicsCoreCollisionObjectInner::FullSpace, _)
-            | (_, RhusicsCoreCollisionObjectInner::FullSpace) => Ok(true),
-            (
-                RhusicsCoreCollisionObjectInner::NonTrivial(slf),
-                RhusicsCoreCollisionObjectInner::NonTrivial(other),
-            ) => slf.collides(pos_self, other, pos_other),
+            (Self::Empty, _) | (_, Self::Empty) => false,
+
+            (Self::FullSpace, _) | (_, Self::FullSpace) => true,
+
+            (Self::NonTrivial(left), Self::NonTrivial(right)) => {
+                left.collides(pos_self, right, pos_other)
+            }
         }
     }
 
+    #[must_use]
     pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
@@ -74,19 +70,16 @@ impl RhusicsCoreCollisionObjectInner {
         other: &Self,
         start_pos_other: DPose2,
         end_pos_other: DPose2,
-    ) -> Result<bool, Unsupported> {
+    ) -> bool {
         match (self, other) {
-            (RhusicsCoreCollisionObjectInner::Empty, _)
-            | (_, RhusicsCoreCollisionObjectInner::Empty) => Ok(false),
-            (RhusicsCoreCollisionObjectInner::FullSpace, _)
-            | (_, RhusicsCoreCollisionObjectInner::FullSpace) => Ok(true),
-            (
-                RhusicsCoreCollisionObjectInner::NonTrivial(slf),
-                RhusicsCoreCollisionObjectInner::NonTrivial(other),
-            ) => slf.collides_continuous(
+            (Self::Empty, _) | (_, Self::Empty) => false,
+
+            (Self::FullSpace, _) | (_, Self::FullSpace) => true,
+
+            (Self::NonTrivial(left), Self::NonTrivial(right)) => left.collides_continuous(
                 start_pos_self,
                 end_pos_self,
-                other,
+                right,
                 start_pos_other,
                 end_pos_other,
             ),
@@ -95,15 +88,12 @@ impl RhusicsCoreCollisionObjectInner {
 }
 
 impl NonTrivial {
-    pub fn collides(
-        &self,
-        pos_self: DPose2,
-        other: &Self,
-        pos_other: DPose2,
-    ) -> Result<bool, Unsupported> {
+    #[must_use]
+    pub fn collides(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> bool {
         let gjk = GJK2::new();
         let self_pose = glam_to_cgmath_pose(&pos_self);
         let other_pose = glam_to_cgmath_pose(&pos_other);
+
         if !self.finite.is_empty()
             && !other.finite.is_empty()
             && gjk
@@ -116,11 +106,13 @@ impl NonTrivial {
                 )
                 .is_some()
         {
-            return Ok(true);
+            return true;
         }
-        Ok(self.half_spaces_collide(pos_self, other, pos_other))
+
+        self.half_spaces_collide(pos_self, other, pos_other)
     }
 
+    #[must_use]
     pub fn collides_continuous(
         &self,
         start_pos_self: DPose2,
@@ -128,45 +120,55 @@ impl NonTrivial {
         other: &Self,
         start_pos_other: DPose2,
         end_pos_other: DPose2,
-    ) -> Result<bool, Unsupported> {
-        if self.collides(start_pos_self, other, start_pos_other)?
-            || self.collides(end_pos_self, other, end_pos_other)?
+    ) -> bool {
+        if self.collides(start_pos_self, other, start_pos_other)
+            || self.collides(end_pos_self, other, end_pos_other)
         {
-            return Ok(true);
+            return true;
         }
+
         let moves = start_pos_self != end_pos_self || start_pos_other != end_pos_other;
+
         if !moves {
-            return Ok(false);
+            return false;
         }
+
+        /*
+         * Continuous collision handling for analytic half-spaces
+         * is conservative. If either object contains one and no
+         * endpoint collision was found, report a possible collision.
+         */
         if !self.half_spaces.is_empty() || !other.half_spaces.is_empty() {
-            return Ok(true);
+            return true;
         }
+
         if rotation_changed(start_pos_self, end_pos_self)
             || rotation_changed(start_pos_other, end_pos_other)
         {
-            return Ok(self.finite_motion_bounds_overlap(
+            return self.finite_motion_bounds_overlap(
                 start_pos_self,
                 end_pos_self,
                 other,
                 start_pos_other,
                 end_pos_other,
-            ));
+            );
         }
 
         let gjk = GJK2::new();
+
         let self_start = glam_to_cgmath_pose(&start_pos_self);
         let self_end = glam_to_cgmath_pose(&end_pos_self);
         let other_start = glam_to_cgmath_pose(&start_pos_other);
         let other_end = glam_to_cgmath_pose(&end_pos_other);
-        Ok(gjk
-            .intersection_complex_time_of_impact(
-                &CollisionStrategy::CollisionOnly,
-                &self.finite,
-                &self_start..&self_end,
-                &other.finite,
-                &other_start..&other_end,
-            )
-            .is_some())
+
+        gjk.intersection_complex_time_of_impact(
+            &CollisionStrategy::CollisionOnly,
+            &self.finite,
+            &self_start..&self_end,
+            &other.finite,
+            &other_start..&other_end,
+        )
+        .is_some()
     }
 
     fn half_spaces_collide(&self, self_pose: DPose2, other: &Self, other_pose: DPose2) -> bool {
@@ -199,6 +201,7 @@ impl NonTrivial {
             .zip(&self.finite_motion_radii)
             .any(|(finite, radius)| {
                 let (left_min, left_max) = finite_motion_bound(finite, *radius, start, end);
+
                 other.finite.iter().zip(&other.finite_motion_radii).any(
                     |(other_finite, other_radius)| {
                         let (right_min, right_max) = finite_motion_bound(
@@ -207,6 +210,7 @@ impl NonTrivial {
                             other_start,
                             other_end,
                         );
+
                         left_min.x <= right_max.x
                             && right_min.x <= left_max.x
                             && left_min.y <= right_max.y
@@ -224,14 +228,17 @@ fn finite_motion_bound(
     end: DPose2,
 ) -> (DVec2, DVec2) {
     if rotation_changed(start, end) {
+        let radius = DVec2::splat(radius);
+
         return (
-            start.translation.min(end.translation) - DVec2::splat(radius),
-            start.translation.max(end.translation) + DVec2::splat(radius),
+            start.translation.min(end.translation).sub(radius),
+            start.translation.max(end.translation).add(radius),
         );
     }
 
     let (start_min, start_max) = finite_aabb(finite, start);
     let (end_min, end_max) = finite_aabb(finite, end);
+
     (start_min.min(end_min), start_max.max(end_max))
 }
 
@@ -243,6 +250,7 @@ fn finite_aabb(
     let left = finite_support_point(finite, pose, DVec2::NEG_X);
     let top = finite_support_point(finite, pose, DVec2::Y);
     let bottom = finite_support_point(finite, pose, DVec2::NEG_Y);
+
     (DVec2::new(left.x, bottom.y), DVec2::new(right.x, top.y))
 }
 
@@ -253,9 +261,12 @@ fn half_space_hits_finite(
     finite_pose: DPose2,
 ) -> bool {
     let world_half_space = transform_half_space(half_space, half_space_pose);
-    let support_point = finite_support_point(finite, finite_pose, -world_half_space.outward_normal);
+
+    let support_point =
+        finite_support_point(finite, finite_pose, world_half_space.outward_normal.neg());
+
     world_half_space.outward_normal.dot(support_point)
-        <= world_half_space.offset + HALF_SPACE_EPSILON
+        <= world_half_space.offset.add(HALF_SPACE_EPSILON)
 }
 
 fn half_spaces_collide(
@@ -267,18 +278,22 @@ fn half_spaces_collide(
     let left = transform_half_space(left, left_pose);
     let right = transform_half_space(right, right_pose);
 
-    if (left.outward_normal + right.outward_normal).length() <= HALF_SPACE_EPSILON {
-        left.offset + right.offset >= -HALF_SPACE_EPSILON
+    let normals_are_opposite =
+        left.outward_normal.add(right.outward_normal).length() <= HALF_SPACE_EPSILON;
+
+    if normals_are_opposite {
+        left.offset.add(right.offset) >= HALF_SPACE_EPSILON.neg()
     } else {
         true
     }
 }
 
 fn transform_half_space(half_space: &HalfSpaceComponent, pose: DPose2) -> HalfSpaceComponent {
-    let outward_normal = pose.rotation * half_space.outward_normal;
+    let outward_normal = pose.rotation.mul(half_space.outward_normal);
+
     HalfSpaceComponent {
         outward_normal,
-        offset: half_space.offset + outward_normal.dot(pose.translation),
+        offset: half_space.offset.add(outward_normal.dot(pose.translation)),
     }
 }
 
@@ -288,9 +303,11 @@ fn finite_support_point(
     direction: DVec2,
 ) -> DVec2 {
     let world_pose = glam_to_cgmath_pose(&pose).concat(&finite.1);
+
     let point = finite
         .0
         .support_point(&Vector2::new(direction.x, direction.y), &world_pose);
+
     DVec2::new(point.x, point.y)
 }
 
@@ -302,18 +319,23 @@ impl From<CollisionObject> for RhusicsCoreCollisionObjectInner {
 
         for simple in value {
             let converted = RhusicsCoreSimpleCollisionObject::from(simple);
+
             match converted {
                 RhusicsCoreSimpleCollisionObject::Empty => {}
+
                 RhusicsCoreSimpleCollisionObject::FullSpace => {
                     return Self::FullSpace;
                 }
+
                 other => {
                     for component in other.into_components() {
                         match component {
                             RhusicsCoreCollisionComponent::Finite(shape) => {
                                 finite_motion_radii.push(shape.motion_radius);
+
                                 finite.push((shape.primitive, shape.position));
                             }
+
                             RhusicsCoreCollisionComponent::HalfSpace(half_space) => {
                                 half_spaces.push(half_space);
                             }
