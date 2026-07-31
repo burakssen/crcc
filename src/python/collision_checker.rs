@@ -18,7 +18,7 @@ use std::ops::RangeInclusive;
 /// `collides` is true for static and dynamic collisions. `time_step` is set only
 /// for a dynamic collision and contains the first colliding step.
 #[pyclass]
-#[derive(Debug, PartialEq, Eq, Copy, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum CollisionStatus {
     NoCollision(),
     CollidesStatic(),
@@ -28,23 +28,23 @@ pub enum CollisionStatus {
 #[pymethods]
 impl CollisionStatus {
     #[getter]
-    pub fn collides(&self) -> bool {
+    pub const fn collides(&self) -> bool {
         match self {
-            CollisionStatus::NoCollision() => false,
-            CollisionStatus::CollidesStatic() | CollisionStatus::CollidesDynamic(_) => true,
+            Self::NoCollision() => false,
+            Self::CollidesStatic() | Self::CollidesDynamic(_) => true,
         }
     }
 
     #[getter]
-    pub fn time_step(&self) -> Option<TimeStepInner> {
+    pub const fn time_step(&self) -> Option<TimeStepInner> {
         match self {
-            CollisionStatus::CollidesDynamic(t) => Some(*t),
-            CollisionStatus::NoCollision() | CollisionStatus::CollidesStatic() => None,
+            Self::CollidesDynamic(time_step) => Some(*time_step),
+            Self::NoCollision() | Self::CollidesStatic() => None,
         }
     }
 
     pub fn __str__(&self) -> String {
-        format!("{}", self)
+        format!("{self}")
     }
 
     pub fn __repr__(&self) -> String {
@@ -53,11 +53,13 @@ impl CollisionStatus {
 }
 
 impl Display for CollisionStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CollisionStatus::NoCollision() => write!(f, "NoCollision"),
-            CollisionStatus::CollidesStatic() => write!(f, "CollidesStatic"),
-            CollisionStatus::CollidesDynamic(t) => write!(f, "CollidesDynamic({})", t),
+            Self::NoCollision() => write!(formatter, "NoCollision"),
+            Self::CollidesStatic() => write!(formatter, "CollidesStatic"),
+            Self::CollidesDynamic(time_step) => {
+                write!(formatter, "CollidesDynamic({time_step})")
+            }
         }
     }
 }
@@ -65,17 +67,16 @@ impl Display for CollisionStatus {
 impl From<RustCollisionStatus> for CollisionStatus {
     fn from(value: RustCollisionStatus) -> Self {
         match value {
-            RustCollisionStatus::NoCollision => CollisionStatus::NoCollision(),
-            RustCollisionStatus::CollidesStatic => CollisionStatus::CollidesStatic(),
-            RustCollisionStatus::CollidesDynamic(t) => CollisionStatus::CollidesDynamic(t.0),
+            RustCollisionStatus::NoCollision => Self::NoCollision(),
+            RustCollisionStatus::CollidesStatic => Self::CollidesStatic(),
+            RustCollisionStatus::CollidesDynamic(time_step) => Self::CollidesDynamic(time_step.0),
         }
     }
 }
-
 /// An immutable scene containing merged static geometry and dynamic trajectories.
 ///
-/// Construct instances with CollisionCheckerBuilder. Time bounds are inclusive;
-/// omitted bounds leave that side unbounded.
+/// Construct instances with `CollisionCheckerBuilder`. Time bounds are
+/// inclusive; omitted bounds leave that side unbounded.
 #[pyclass]
 pub struct CollisionChecker(RustCollisionChecker);
 
@@ -89,14 +90,14 @@ impl AsRef<RustCollisionChecker> for CollisionChecker {
 impl CollisionChecker {
     #[getter]
     /// The runtime collision backend used by this checker.
-    pub fn engine(&self) -> CollisionEngine {
+    pub const fn engine(&self) -> CollisionEngine {
         self.0.engine()
     }
 
-    #[pyo3(signature = (query_shape, position=None, min_time=None, max_time=None))]
+    #[pyo3(signature = (query_shape, position = None, min_time = None, max_time = None))]
     /// Checks a fixed shape against the scene.
     ///
-    /// Raises ValueError when min_time exceeds max_time or an operation is
+    /// Raises `ValueError` when `min_time` exceeds `max_time` or an operation is
     /// unsupported.
     pub fn collides_static(
         &self,
@@ -105,23 +106,33 @@ impl CollisionChecker {
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<CollisionStatus> {
-        let position = match position {
-            Some(position) => position.0,
-            None => DPose2::IDENTITY,
-        };
-        let res = self.0.collides_static_range(
+        let position = position.map_or(DPose2::IDENTITY, |position| position.0);
+
+        let result = self.0.collides_static_range(
             query_shape.as_ref(),
             position,
             min_max_to_range(min_time, max_time)?,
         )?;
-        Ok(res.into())
+
+        Ok(result.into())
     }
 
-    #[pyo3(signature = (positioned_query_shapes, min_time=None, max_time=None))]
+    #[pyo3(
+    signature = (
+        positioned_query_shapes,
+        min_time = None,
+        max_time = None
+    )
+)]
     /// Checks positioned fixed shapes and returns statuses in input order.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Python exception when the time range is invalid or a collision
+    /// query fails.
     pub fn collides_static_batch(
         &self,
-        py: Python<'_>,
+        python: Python<'_>,
         positioned_query_shapes: Vec<(CollisionObject, Pose)>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
@@ -130,32 +141,60 @@ impl CollisionChecker {
             .into_iter()
             .map(|(obstacle, position)| (obstacle.as_ref().clone(), position.0))
             .collect::<Vec<_>>();
+
         let time_range = min_max_to_range(min_time, max_time)?;
-        let res = py.detach(|| {
+
+        python.detach(|| {
             self.0
                 .collides_static_batch(&positioned_query_shapes, time_range)
                 .into_iter()
                 .map(|result| result.map(CollisionStatus::from))
                 .collect::<Result<Vec<_>, _>>()
-        })?;
-        Ok(res)
+                .map_err(Into::into)
+        })
     }
 
-    #[pyo3(signature = (positioned_query_shapes, min_time=None, max_time=None))]
+    #[pyo3(
+    signature = (
+        positioned_query_shapes,
+        min_time = None,
+        max_time = None
+    )
+)]
+    /// Alias for [`Self::collides_static_batch`].
+    ///
+    /// # Errors
+    ///
+    /// Returns a Python exception when the time range is invalid or a collision
+    /// query fails.
     pub fn par_static(
         &self,
-        py: Python<'_>,
+        python: Python<'_>,
         positioned_query_shapes: Vec<(CollisionObject, Pose)>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Vec<CollisionStatus>> {
-        self.collides_static_batch(py, positioned_query_shapes, min_time, max_time)
+        self.collides_static_batch(python, positioned_query_shapes, min_time, max_time)
     }
 
-    #[pyo3(signature = (positioned_query_shapes, threads, min_time=None, max_time=None))]
-    pub fn _collides_static_batch_threads(
+    #[pyo3(
+    name = "_collides_static_batch_threads",
+    signature = (
+        positioned_query_shapes,
+        threads,
+        min_time = None,
+        max_time = None
+    )
+)]
+    /// Checks positioned fixed shapes using a dedicated Rayon thread pool.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Python exception when the thread pool cannot be constructed, the
+    /// time range is invalid, or a collision query fails.
+    pub fn collides_static_batch_with_threads(
         &self,
-        py: Python<'_>,
+        python: Python<'_>,
         positioned_query_shapes: Vec<(CollisionObject, Pose)>,
         threads: usize,
         min_time: Option<TimeStepInner>,
@@ -165,12 +204,15 @@ impl CollisionChecker {
             .into_iter()
             .map(|(obstacle, position)| (obstacle.as_ref().clone(), position.0))
             .collect::<Vec<_>>();
+
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(threads.max(1))
             .build()
             .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))?;
+
         let time_range = min_max_to_range(min_time, max_time)?;
-        Ok(py.detach(|| {
+
+        python.detach(|| {
             pool.install(|| {
                 self.0
                     .collides_static_batch(&positioned_query_shapes, time_range)
@@ -178,20 +220,34 @@ impl CollisionChecker {
                     .map(|result| result.map(CollisionStatus::from))
                     .collect::<Result<Vec<_>, _>>()
             })
-        })?)
+            .map_err(Into::into)
+        })
     }
 
-    #[pyo3(signature = (positioned_query_shapes, threads, min_time=None, max_time=None))]
+    #[pyo3(
+    signature = (
+        positioned_query_shapes,
+        threads,
+        min_time = None,
+        max_time = None
+    )
+)]
+    /// Checks positioned fixed shapes using a dedicated Rayon thread pool.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Python exception when the thread pool cannot be constructed, the
+    /// time range is invalid, or a collision query fails.
     pub fn par_static_threads(
         &self,
-        py: Python<'_>,
+        python: Python<'_>,
         positioned_query_shapes: Vec<(CollisionObject, Pose)>,
         threads: usize,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Vec<CollisionStatus>> {
-        self._collides_static_batch_threads(
-            py,
+        self.collides_static_batch_with_threads(
+            python,
             positioned_query_shapes,
             threads,
             min_time,
@@ -267,11 +323,11 @@ fn min_max_to_range(
     })
 }
 
-/// A fluent builder for an immutable CollisionChecker.
+/// A fluent builder for an immutable `CollisionChecker`.
 ///
-/// The constructor defaults to Parry in Python. Builder methods mutate and
-/// return the same builder so calls may be chained. `build()` raises ValueError
-/// if the selected engine is unavailable.
+/// The constructor defaults to `Parry` in Python. Builder methods mutate and
+/// return the same builder so calls may be chained. `build()` raises
+/// `ValueError` if the selected engine is unavailable.
 #[pyclass]
 pub struct CollisionCheckerBuilder {
     pub(crate) builder: RustCollisionCheckerBuilder,
@@ -291,10 +347,7 @@ impl CollisionCheckerBuilder {
     }
 
     /// Selects the backend used by the checker.
-    pub fn with_engine<'a>(
-        mut slf: PyRefMut<'a, Self>,
-        engine: CollisionEngine,
-    ) -> PyRefMut<'a, Self> {
+    pub fn with_engine(mut slf: PyRefMut<'_, Self>, engine: CollisionEngine) -> PyRefMut<'_, Self> {
         slf.engine = engine;
         slf
     }
@@ -307,6 +360,7 @@ impl CollisionCheckerBuilder {
         replace_with(&mut slf.builder, Default::default, |builder| {
             builder.with_static_obstacle(collision_object.as_ref().clone())
         });
+
         slf
     }
 
@@ -318,24 +372,26 @@ impl CollisionCheckerBuilder {
         replace_with(&mut slf.builder, Default::default, |builder| {
             builder.with_dynamic_obstacle(dynamic_obstacle.as_ref().clone())
         });
+
         slf
     }
 
-    /// Builds an immutable checker.
-    pub fn with_road_boundary<'a>(
-        mut slf: PyRefMut<'a, Self>,
+    /// Adds geometry representing the space outside the supplied lanelets.
+    pub fn with_road_boundary(
+        mut slf: PyRefMut<'_, Self>,
         lanelets: Vec<Vec<(f64, f64)>>,
-    ) -> PyRefMut<'a, Self> {
+    ) -> PyRefMut<'_, Self> {
         let lanelets = lanelets
             .into_iter()
-            .map(|exterior| geo::Polygon::new(exterior.into(), vec![]))
+            .map(|exterior| geo::Polygon::new(exterior.into(), Vec::new()))
             .collect::<Vec<_>>();
+
         replace_with(&mut slf.builder, Default::default, |builder| {
             builder.with_road_boundary(&lanelets)
         });
+
         slf
     }
-
     #[pyo3(signature = (engine = None))]
     pub fn build(&self, engine: Option<CollisionEngine>) -> PyResult<CollisionChecker> {
         Ok(CollisionChecker(
@@ -353,14 +409,13 @@ impl Default for CollisionCheckerBuilder {
 }
 
 #[pyfunction]
-pub fn road_boundary(lanelets: Vec<Vec<(f64, f64)>>) -> PyResult<CollisionObject> {
+pub fn road_boundary(lanelets: Vec<Vec<(f64, f64)>>) -> CollisionObject {
     let lanelets = lanelets
         .into_iter()
-        .map(|exterior| geo::Polygon::new(exterior.into(), vec![]))
+        .map(|exterior| geo::Polygon::new(exterior.into(), Vec::new()))
         .collect::<Vec<_>>();
-    Ok(CollisionObject::from(
-        crate::collision_checker::road_boundary(&lanelets),
-    ))
+
+    CollisionObject::from(crate::collision_checker::road_boundary(&lanelets))
 }
 
 #[pymodule]
@@ -372,7 +427,7 @@ pub(super) mod collision_checker {
         CollisionChecker, CollisionCheckerBuilder, CollisionEngine, CollisionStatus, road_boundary,
     };
 
-    /// Hack: workaround for https://github.com/PyO3/pyo3/issues/759
+    /// Hack: workaround for <https://github.com/PyO3/pyo3/issues/759>.
     #[pymodule_init]
     fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {
         Python::attach(|py| {

@@ -1,5 +1,6 @@
 use glamx::{DPose2, DVec2};
 use pyo3::prelude::*;
+use std::ops::Mul;
 
 /// A rigid 2D transform with translation in metres and rotation in radians.
 ///
@@ -13,27 +14,27 @@ pub struct Pose(pub(crate) DPose2);
 #[pymethods]
 impl Pose {
     #[new]
-    /// Creates a pose from `(x, y)` translation and a counter-clockwise angle.
+    /// Creates a pose from an `(x, y)` translation and a counter-clockwise angle.
     pub fn new(translation: (f64, f64), angle: f64) -> Self {
-        Pose(DPose2::new(DVec2::new(translation.0, translation.1), angle))
+        Self(DPose2::new(DVec2::new(translation.0, translation.1), angle))
     }
 
     #[staticmethod]
     /// Returns the identity transform.
-    pub fn identity() -> Self {
-        Pose(DPose2::IDENTITY)
+    pub const fn identity() -> Self {
+        Self(DPose2::IDENTITY)
     }
 
     #[staticmethod]
     /// Returns a pure translation.
     pub fn from_translation(translation: (f64, f64)) -> Self {
-        Pose(DPose2::translation(translation.0, translation.1))
+        Self(DPose2::translation(translation.0, translation.1))
     }
 
     #[staticmethod]
     /// Returns a pure counter-clockwise rotation in radians.
     pub fn from_rotation(angle: f64) -> Self {
-        Pose(DPose2::rotation(angle))
+        Self(DPose2::rotation(angle))
     }
 
     #[getter]
@@ -49,10 +50,12 @@ impl Pose {
     }
 
     /// Composes this transform with `other`.
+    #[must_use]
     pub fn compose(&self, other: &Self) -> Self {
-        Pose(self.0 * other.0)
+        Self(self.0.mul(other.0))
     }
 
+    #[must_use]
     pub fn __mul__(&self, other: &Self) -> Self {
         self.compose(other)
     }
@@ -71,13 +74,14 @@ pub(super) mod pose {
     #[pymodule_export]
     use super::Pose;
 
-    /// Hack: workaround for https://github.com/PyO3/pyo3/issues/759
+    /// Hack: workaround for <https://github.com/PyO3/pyo3/issues/759>.
     #[pymodule_init]
-    fn init(m: &Bound<'_, PyModule>) -> PyResult<()> {
-        Python::attach(|py| {
-            py.import("sys")?
+    fn init(module: &Bound<'_, PyModule>) -> PyResult<()> {
+        Python::attach(|python| {
+            python
+                .import("sys")?
                 .getattr("modules")?
-                .set_item("crcc._core.pose", m)
+                .set_item("crcc._core.pose", module)
         })
     }
 }
