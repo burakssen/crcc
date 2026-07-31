@@ -1,6 +1,8 @@
 import argparse
+from collections.abc import Callable, Sequence
 from enum import Enum
 from pathlib import Path
+from typing import Any, cast
 
 from crcc import CollisionEngine
 
@@ -33,7 +35,7 @@ ENGINE_CHOICES = {
 ACTION_CHOICES = {action.value: action for action in ExampleAction}
 
 
-def parse_args(argv=None):
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run deterministic CRCC tutorials and research benchmarks.")
     parser.add_argument("action", nargs="?", choices=sorted(ACTION_CHOICES), help="tutorial or research action")
     parser.add_argument("--engine", choices=sorted(ENGINE_CHOICES), default="rhusics", type=str.lower)
@@ -57,7 +59,7 @@ def parse_args(argv=None):
     return args
 
 
-def prompt_for_action(prompt=input):
+def prompt_for_action(prompt: Callable[[str], str] = input) -> ExampleAction:
     actions = list(ExampleAction)
     print("Select an action:")
     for index, action in enumerate(actions, start=1):
@@ -71,13 +73,13 @@ def prompt_for_action(prompt=input):
         print(f"Choose 1-{len(actions)} or: {', '.join(ACTION_CHOICES)}")
 
 
-def benchmark_scenario_paths(selection):
+def benchmark_scenario_paths(selection: Sequence[Any] | None) -> Any:
     if not selection or "all" in selection:
         return benchmark.discover_scenario_paths()
     return selection
 
 
-def run_action(action, scenario_path: str, engine: CollisionEngine, **benchmark_options):
+def run_action(action: ExampleAction, scenario_path: str, engine: CollisionEngine, **benchmark_options: Any) -> Any:
     if action in {ExampleAction.BASIC, ExampleAction.CONCEPTS, ExampleAction.SHAPES}:
         from examples.basic import run
 
@@ -88,16 +90,18 @@ def run_action(action, scenario_path: str, engine: CollisionEngine, **benchmark_
         return run(engine)
     if action == ExampleAction.PLAYGROUND:
         from examples.utils import load_collision_checker, scenario_pose_bounds
-        from tools.playground import run
+        from tools.playground import run as run_playground
 
         scenario, checker = load_collision_checker(scenario_path, engine)
-        return run(scenario, checker, scenario_path, scenario_pose_bounds(scenario))
+        bounds = cast(Any, scenario_pose_bounds(scenario))
+        return cast(Any, run_playground)(scenario, checker, scenario_path, bounds)
     if action in {ExampleAction.COMMONROAD, ExampleAction.SCENARIO}:
-        from examples.commonroad import run
+        from examples.commonroad import run as run_cr
         from examples.utils import load_collision_checker, scenario_pose_bounds
 
         scenario, checker = load_collision_checker(scenario_path, engine)
-        return run(scenario, checker, scenario_path, scenario_pose_bounds(scenario))
+        bounds = cast(Any, scenario_pose_bounds(scenario))
+        return cast(Any, run_cr)(scenario, checker, scenario_path, bounds)
     if action == ExampleAction.ALL:
         from examples.basic import run as run_basic
         from examples.commonroad import run as run_commonroad
@@ -107,9 +111,10 @@ def run_action(action, scenario_path: str, engine: CollisionEngine, **benchmark_
         run_basic(engine)
         run_continuous(engine)
         scenario, checker = load_collision_checker(scenario_path, engine)
-        return run_commonroad(scenario, checker, scenario_path, scenario_pose_bounds(scenario))
+        bounds = cast(Any, scenario_pose_bounds(scenario))
+        return cast(Any, run_commonroad)(scenario, checker, scenario_path, bounds)
     if action in {ExampleAction.STUDY, ExampleAction.REPORT}:
-        options = dict(benchmark_options)
+        options: dict[str, Any] = dict(benchmark_options)
         options["scenario_paths"] = benchmark_scenario_paths(options.pop("benchmark_scenarios", None))
         options["sample_count"] = options.pop("benchmark_samples", benchmark.BENCHMARK_SAMPLE_COUNT)
         options["output_dir"] = options.pop("benchmark_output", str(benchmark.DEFAULT_OUTPUT_DIR))
@@ -122,11 +127,11 @@ def run_action(action, scenario_path: str, engine: CollisionEngine, **benchmark_
         options["profile"] = options.pop("benchmark_profile", "smoke")
         options["suites"] = options.pop("benchmark_suite", ["all"])
         options["include_stress"] = options.pop("benchmark_include_stress", False)
-        return benchmark.run_all(**options)
+        return cast(Any, benchmark.run_all)(**options)
     raise ValueError(f"Unsupported action: {action}")
 
 
-def main(argv=None):
+def main(argv: Sequence[str] | None = None) -> Any:
     args = parse_args(argv)
     action = args.action or prompt_for_action()
     values = vars(args)

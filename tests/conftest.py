@@ -5,5 +5,5 @@ ENGINES = [CollisionEngine.Parry, CollisionEngine.Rhusics, CollisionEngine.Colli
 
 
 @pytest.fixture(params=ENGINES, ids=["parry", "rhusics", "collide"])
-def engine(request):
+def engine(request: pytest.FixtureRequest) -> CollisionEngine:
     return request.param

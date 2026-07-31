@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from numbers import Real
-from typing import cast
+from typing import Any, cast
 
 import commonroad.scenario.obstacle as cr_obstacle
 import numpy as np
@@ -34,8 +34,9 @@ def _exact_time_step(value: object) -> int:
     return value
 
 
-def _point(vertex) -> tuple[float, float]:
-    return float(vertex[0]), float(vertex[1])
+def _point(vertex: Any) -> tuple[float, float]:
+    v: Any = vertex
+    return float(v[0]), float(v[1])
 
 
 def scenario_builder(

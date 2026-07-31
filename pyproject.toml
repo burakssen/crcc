@@ -103,8 +103,7 @@ filterwarnings = [
 ]
 
 [tool.pyright]
-include = ["python", "tests", "main.py"]
-exclude = ["examples", "tools"]
+include = ["python", "examples", "tools", "tests", "main.py"]
 extraPaths = ["."]
 pythonVersion = "3.10"
 typeCheckingMode = "strict"
@@ -112,7 +111,9 @@ reportMissingTypeStubs = false
 reportUnknownMemberType = false
 reportUnknownArgumentType = false
 reportUnknownVariableType = false
-reportUnknownParameterType = false
-reportMissingParameterType = false
 reportUnknownLambdaType = false
 reportPrivateUsage = false
+reportMissingParameterType = false
+reportUnknownParameterType = false
+reportAttributeAccessIssue = false
+reportUnusedFunction = false

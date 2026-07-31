@@ -2,7 +2,7 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 from itertools import pairwise
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import numpy as np
 from commonroad.scenario.scenario import Scenario
@@ -45,7 +45,7 @@ class Verdict(Enum):
 @dataclass(frozen=True)
 class ShapeDefinition:
     kind: str
-    values: tuple = ()
+    values: tuple[Any, ...] = ()
 
     def collision_object(self):
         if self.kind == "circle":
@@ -750,8 +750,8 @@ def run(scenario, checker, scenario_path, pose_bounds):
     fig.canvas.mpl_connect("button_press_event", press)
     fig.canvas.mpl_connect("motion_notify_event", motion)
     fig.canvas.mpl_connect("button_release_event", release)
-    fig._crcc_widgets = preset, tool, shape, mode, engine, role, play, step, delete, finalize, reset_view, timeline  # pyright: ignore[reportAttributeAccessIssue]
-    fig._crcc_timer = timer  # pyright: ignore[reportAttributeAccessIssue]
+    fig._crcc_widgets = preset, tool, shape, mode, engine, role, play, step, delete, finalize, reset_view, timeline
+    fig._crcc_timer = timer
     redraw(reset=True)
     plt.show()
     return state

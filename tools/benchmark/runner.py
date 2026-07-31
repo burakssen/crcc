@@ -6,7 +6,7 @@ import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar, cast
 
 from crcc import Circle, Compound, DynamicObstacle, Pose, Rectangle, Triangle
 
@@ -258,7 +258,8 @@ def _run_scene_scaling_suite(config, engine_items, scene_sizes):
                     run_res = _measure_scene_with_checker(
                         backend, engine, workload, checker, repetition, shape=shape_family
                     )
-                    run_res = RunResult(**{**run_res.__dict__, "build_ns": build_ns})
+                    run_kwargs: dict[str, Any] = {**run_res.__dict__, "build_ns": build_ns}
+                    run_res = RunResult(**cast(Any, run_kwargs))
                     group_results.append(run_res)
                     if shape_family == "circle":
                         parallel_rows.extend(
@@ -290,7 +291,8 @@ def _run_capacity_point(config, engine_items):
                 checker = _build_checker(engine, workload.static_objects)
                 build_ns = time.perf_counter_ns() - start
                 result = _measure_scene_with_checker(backend, engine, workload, checker, repetition, shape="circle")
-                runs.append(RunResult(**{**result.__dict__, "workload": "capacity_static_scene", "build_ns": build_ns}))
+                kwargs: dict[str, Any] = {**result.__dict__, "workload": "capacity_static_scene", "build_ns": build_ns}
+                runs.append(RunResult(**cast(Any, kwargs)))
             except Exception:
                 total_ns = time.perf_counter_ns() - start
                 runs.append(
@@ -1624,9 +1626,9 @@ def _rss_worker(connection, backend: str, objects: int):
         builder = CollisionCheckerBuilder(engine=engines[backend])
         for index in range(objects):
             builder.with_static_obstacle(Circle(0.75, (float(index) * 4.0, 0.0)))
-        checker = builder.build()
+        _ = builder.build()
         delta = max(0, _current_rss_bytes() - baseline)
-        connection.send((delta, checker is not None))
+        connection.send((delta, True))
     except Exception as error:
         connection.send((0, str(error)))
     finally:
