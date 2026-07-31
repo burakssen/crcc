@@ -133,6 +133,7 @@ jobs:
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs |
             sh -s -- --default-toolchain stable --profile minimal -y
           CIBW_ENVIRONMENT_LINUX: PATH=$HOME/.cargo/bin:$PATH
+          CIBW_ENVIRONMENT_MACOS: MACOSX_DEPLOYMENT_TARGET=11.0
         with:
           output-dir: wheelhouse
       - name: Upload wheel
