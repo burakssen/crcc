@@ -33,7 +33,7 @@ from tools.benchmark.workloads import (
 
 
 def _row(fields, **values):
-    row = {field: "" for field in fields}
+    row = dict.fromkeys(fields, "")
     row.update({"schema_version": SCHEMA_VERSION, **values})
     return row
 

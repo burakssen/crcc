@@ -21,6 +21,7 @@ from commonroad.scenario.state import InitialState, TraceState
 from shapely.geometry import MultiPolygon, Polygon as ShapelyPolygon
 from shapely.geometry.base import BaseGeometry
 
+import crcc._core.collision_checker as core
 from crcc import Circle, CollisionCheckerBuilder, CollisionObject, Compound, DynamicObstacle, Polygon, Pose, Rectangle
 
 ROAD_BOUNDARY_SIMPLIFY_TOLERANCE = 0.01
@@ -79,7 +80,7 @@ def to_dynamic_obstacle(dynamic_obstacle: cr_obstacle.DynamicObstacle) -> Dynami
     initial_time = _exact_time_step(dynamic_obstacle.initial_state.time_step)
     if isinstance(dynamic_obstacle.prediction, TrajectoryPrediction):
         trajectory = dynamic_obstacle.prediction.trajectory
-        states = [dynamic_obstacle.initial_state] + trajectory.state_list
+        states = [dynamic_obstacle.initial_state, *trajectory.state_list]
         poses = [to_pose(state) for state in states]
         shape = to_shape(dynamic_obstacle.obstacle_shape)
         return DynamicObstacle(shape, poses, initial_time)
@@ -114,8 +115,6 @@ def add_road_boundary(
 
 def road_boundary(lanelet_network: LaneletNetwork) -> CollisionObject:
     """Creates an obstacle for all space outside the lanelet network."""
-    import crcc._core.collision_checker as core
-
     lanelets = [[_point(vertex) for vertex in lanelet.polygon.vertices] for lanelet in lanelet_network.lanelets]
     return core.road_boundary(lanelets)
 

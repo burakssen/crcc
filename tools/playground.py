@@ -750,12 +750,8 @@ def run(scenario, checker, scenario_path, pose_bounds):
     fig.canvas.mpl_connect("button_press_event", press)
     fig.canvas.mpl_connect("motion_notify_event", motion)
     fig.canvas.mpl_connect("button_release_event", release)
-    setattr(
-        fig,
-        "_crcc_widgets",
-        (preset, tool, shape, mode, engine, role, play, step, delete, finalize, reset_view, timeline),
-    )
-    setattr(fig, "_crcc_timer", timer)
+    fig._crcc_widgets = preset, tool, shape, mode, engine, role, play, step, delete, finalize, reset_view, timeline  # pyright: ignore[reportAttributeAccessIssue]
+    fig._crcc_timer = timer  # pyright: ignore[reportAttributeAccessIssue]
     redraw(reset=True)
     plt.show()
     return state
