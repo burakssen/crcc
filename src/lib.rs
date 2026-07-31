@@ -58,24 +58,30 @@ pub type Compound = CollisionObject;
 #[doc(hidden)]
 pub mod benchmark_support {
     pub use crate::collision_checker::CollisionChecker as EngineChecker;
+
     #[cfg(feature = "collide")]
     pub use crate::collision_checker::engine::collide::CollideCollisionObject;
+
     #[cfg(feature = "parry")]
     pub use crate::collision_checker::engine::parry::ParryCollisionObject;
+
     #[cfg(feature = "rhusics")]
     pub use crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject;
+
     pub use crate::collision_checker::engine::{
         EngineCollisionObject, collides, collides_continuous, distance,
     };
     pub use crate::collision_object::dynamic::GenericDynamicObstacle as EngineDynamicObstacle;
     pub use crate::collision_object::simple::SimpleCollisionObject;
 
+    #[must_use]
     pub fn build_typed<E: EngineCollisionObject>(
         builder: crate::CollisionCheckerBuilder,
     ) -> EngineChecker<E> {
         builder.build()
     }
 
+    #[must_use]
     pub fn convert_dynamic<E: EngineCollisionObject>(
         obstacle: crate::DynamicObstacle,
     ) -> EngineDynamicObstacle<E> {

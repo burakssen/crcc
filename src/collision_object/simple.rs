@@ -6,13 +6,15 @@ use geo::{
 };
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
-use std::ops::Deref;
+use std::ops::{Deref, Mul, Sub};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 /// Geometry representing the empty set.
 pub struct Empty;
 
 impl Empty {
+    /// Creates empty geometry.
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }
@@ -23,6 +25,8 @@ impl Empty {
 pub struct FullSpace;
 
 impl FullSpace {
+    /// Creates geometry representing the entire plane.
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }
@@ -34,7 +38,12 @@ pub struct Triangle(pub(super) GeoTriangle);
 
 impl Triangle {
     /// Creates a finite, non-empty triangle.
-    pub fn new(triangle: GeoTriangle) -> CrccResult<Triangle> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when any coordinate is not
+    /// finite, or [`CrccError::EmptyShape`] when the triangle is degenerate.
+    pub fn new(triangle: GeoTriangle) -> CrccResult<Self> {
         if [triangle.0, triangle.1, triangle.2]
             .iter()
             .any(|coord| !coord.x.is_finite() || !coord.y.is_finite())
@@ -46,7 +55,7 @@ impl Triangle {
         if triangle.is_empty() {
             return Err(CrccError::EmptyShape);
         }
-        Ok(Triangle(triangle))
+        Ok(Self(triangle))
     }
 }
 
@@ -67,7 +76,13 @@ pub struct Rectangle {
 
 impl Rectangle {
     /// Creates a finite, non-empty oriented rectangle.
-    pub fn new(rect: Rect, orientation: f64) -> CrccResult<Rectangle> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when a coordinate or the
+    /// orientation is not finite, or [`CrccError::EmptyShape`] when the
+    /// rectangle is empty.
+    pub fn new(rect: Rect, orientation: f64) -> CrccResult<Self> {
         if !rect.min().x.is_finite()
             || !rect.min().y.is_finite()
             || !rect.max().x.is_finite()
@@ -81,31 +96,36 @@ impl Rectangle {
         if rect.is_empty() {
             return Err(CrccError::EmptyShape);
         }
-        Ok(Rectangle { rect, orientation })
+        Ok(Self { rect, orientation })
     }
 
     /// Returns the underlying axis-aligned local rectangle.
-    pub fn rect(&self) -> &Rect {
+    #[must_use]
+    pub const fn rect(&self) -> &Rect {
         &self.rect
     }
 
     /// Returns the local-space center.
+    #[must_use]
     pub fn center(&self) -> (f64, f64) {
         self.rect.center().into()
     }
 
     /// Returns the local x extent.
+    #[must_use]
     pub fn width(&self) -> f64 {
         self.rect.width()
     }
 
     /// Returns the local y extent.
+    #[must_use]
     pub fn height(&self) -> f64 {
         self.rect.height()
     }
 
     /// Returns the local orientation in radians.
-    pub fn orientation(&self) -> f64 {
+    #[must_use]
+    pub const fn orientation(&self) -> f64 {
         self.orientation
     }
 }
@@ -114,17 +134,25 @@ impl Rectangle {
 pub struct ConvexPolygon(pub(super) Polygon);
 
 impl ConvexPolygon {
-    pub fn new(polygon: Polygon) -> CrccResult<ConvexPolygon> {
+    /// Creates a convex polygon without interior rings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::HasHoles`] when the polygon has interior rings, or
+    /// [`CrccError::NotConvex`] when its exterior ring is not convex.
+    pub fn new(polygon: Polygon) -> CrccResult<Self> {
         if !polygon.interiors().is_empty() {
             return Err(CrccError::HasHoles);
         }
         if !polygon.exterior().is_convex() {
             return Err(CrccError::NotConvex);
         }
-        Ok(ConvexPolygon(polygon))
+        Ok(Self(polygon))
     }
 
-    pub fn polygon(&self) -> &Polygon {
+    /// Returns the underlying polygon.
+    #[must_use]
+    pub const fn polygon(&self) -> &Polygon {
         &self.0
     }
 }
@@ -141,14 +169,21 @@ impl Deref for ConvexPolygon {
 pub struct NonConvexPolygon(pub(super) Polygon);
 
 impl NonConvexPolygon {
-    pub fn new(polygon: Polygon) -> CrccResult<NonConvexPolygon> {
+    /// Creates a polygon without interior rings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::HasHoles`] when the polygon has interior rings.
+    pub fn new(polygon: Polygon) -> CrccResult<Self> {
         if !polygon.interiors().is_empty() {
             return Err(CrccError::HasHoles);
         }
-        Ok(NonConvexPolygon(polygon))
+        Ok(Self(polygon))
     }
 
-    pub fn polygon(&self) -> &Polygon {
+    /// Returns the underlying polygon.
+    #[must_use]
+    pub const fn polygon(&self) -> &Polygon {
         &self.0
     }
 }
@@ -165,8 +200,10 @@ impl Deref for NonConvexPolygon {
 pub struct PolygonWithHoles(pub(super) Polygon);
 
 impl PolygonWithHoles {
-    pub fn new(polygon: Polygon) -> PolygonWithHoles {
-        PolygonWithHoles(polygon)
+    /// Creates a polygon that may contain interior rings.
+    #[must_use]
+    pub const fn new(polygon: Polygon) -> Self {
+        Self(polygon)
     }
 }
 
@@ -187,20 +224,27 @@ pub struct Circle {
 
 impl Circle {
     /// Creates a circle with a finite center and strictly positive radius.
-    pub fn new(center: (f64, f64), radius: f64) -> CrccResult<Circle> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidRadius`] when the center or radius is not
+    /// finite, or when the radius is not strictly positive.
+    pub fn new(center: (f64, f64), radius: f64) -> CrccResult<Self> {
         if !center.0.is_finite() || !center.1.is_finite() || !radius.is_finite() || radius <= 0.0 {
             return Err(CrccError::InvalidRadius(radius));
         }
-        Ok(Circle { center, radius })
+        Ok(Self { center, radius })
     }
 
     /// Returns the local-space center.
-    pub fn center(&self) -> (f64, f64) {
+    #[must_use]
+    pub const fn center(&self) -> (f64, f64) {
         self.center
     }
 
     /// Returns the radius.
-    pub fn radius(&self) -> f64 {
+    #[must_use]
+    pub const fn radius(&self) -> f64 {
         self.radius
     }
 }
@@ -216,10 +260,15 @@ pub struct HalfSpace {
 
 impl HalfSpace {
     /// Creates a half-space from a directed boundary line.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when either point is not finite
+    /// or when both points are equal.
     pub fn from_points(p1: impl Into<DVec2>, p2: impl Into<DVec2>) -> CrccResult<Self> {
         let p1 = p1.into();
         let p2 = p2.into();
-        let dir = p2 - p1;
+        let dir = p2.sub(p1);
         if !p1.is_finite() || !p2.is_finite() || dir.length_squared() == 0.0 {
             return Err(CrccError::InvalidGeometry(
                 "half-space points must be finite and distinct",
@@ -234,6 +283,11 @@ impl HalfSpace {
     }
 
     /// Creates the half-space `a*x + b*y <= c`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when a coefficient is not finite
+    /// or when `(a, b)` is the zero vector.
     pub fn from_coeffs(a: f64, b: f64, c: f64) -> CrccResult<Self> {
         let normal = DVec2::new(a, b);
         if !normal.is_finite() || !c.is_finite() || normal.length_squared() == 0.0 {
@@ -249,13 +303,15 @@ impl HalfSpace {
     }
 
     /// Compares two normalized half-spaces with the default tolerance.
-    pub fn almost_equal(&self, other: &HalfSpace) -> bool {
+    #[must_use]
+    pub fn almost_equal(&self, other: &Self) -> bool {
         self.almost_equal_with_tol(other, 1e-9)
     }
 
     /// Compares two normalized half-spaces with `tol`.
-    pub fn almost_equal_with_tol(&self, other: &HalfSpace, tol: f64) -> bool {
-        (self.outward_normal - other.outward_normal).length().abs() < tol
+    #[must_use]
+    pub fn almost_equal_with_tol(&self, other: &Self, tol: f64) -> bool {
+        self.outward_normal.sub(other.outward_normal).length().abs() < tol
             && (self.offset - other.offset).abs() < tol
     }
 }
@@ -275,14 +331,24 @@ pub enum SimpleCollisionObject {
 }
 
 impl SimpleCollisionObject {
-    pub fn empty() -> Self {
+    /// Creates an empty collision object.
+    #[must_use]
+    pub const fn empty() -> Self {
         Self::Empty(Empty)
     }
 
-    pub fn full_space() -> Self {
+    /// Creates a collision object occupying the entire plane.
+    #[must_use]
+    pub const fn full_space() -> Self {
         Self::FullSpace(FullSpace)
     }
 
+    /// Creates a half-space from a normal and offset.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when the normal is zero or when
+    /// the normal or offset is not finite.
     pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> CrccResult<Self> {
         let outward_normal = outward_normal.into();
         if !outward_normal.is_finite()
@@ -299,26 +365,63 @@ impl SimpleCollisionObject {
         }))
     }
 
+    /// Creates a half-space from a directed boundary line.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when either point is not finite
+    /// or when both points are equal.
     pub fn half_space_from_points(p1: (f64, f64), p2: (f64, f64)) -> CrccResult<Self> {
         Ok(Self::HalfSpace(HalfSpace::from_points(p1, p2)?))
     }
 
+    /// Creates the half-space `a*x + b*y <= c`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when a coefficient is not finite
+    /// or when `(a, b)` is the zero vector.
     pub fn half_space_from_coeffs(a: f64, b: f64, c: f64) -> CrccResult<Self> {
         Ok(Self::HalfSpace(HalfSpace::from_coeffs(a, b, c)?))
     }
 
+    /// Creates a circle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidRadius`] when the center or radius is not
+    /// finite, or when the radius is not strictly positive.
     pub fn circle(center: (f64, f64), radius: f64) -> CrccResult<Self> {
         Ok(Self::Circle(Circle::new(center, radius)?))
     }
 
+    /// Creates an oriented rectangle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when a coordinate or orientation
+    /// is not finite, or [`CrccError::EmptyShape`] when the rectangle is empty.
     pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> CrccResult<Self> {
         Ok(Self::Rectangle(Rectangle::new(rect.into(), orientation)?))
     }
 
+    /// Creates a non-degenerate triangle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when a coordinate is not finite,
+    /// or [`CrccError::EmptyShape`] when the triangle is degenerate.
     pub fn triangle(triangle: impl Into<GeoTriangle>) -> CrccResult<Self> {
         Ok(Self::Triangle(Triangle::new(triangle.into())?))
     }
 
+    /// Creates a validated polygon collision object.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the polygon contains non-finite coordinates, is
+    /// topologically invalid, is empty, or cannot be classified as supported
+    /// collision geometry.
     pub fn polygon(polygon: impl Into<Polygon>) -> CrccResult<Self> {
         let polygon = polygon.into();
         if polygon
@@ -350,11 +453,15 @@ impl SimpleCollisionObject {
         }
     }
 
-    pub fn is_empty(&self) -> bool {
+    /// Returns whether this object represents the empty set.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
         matches!(self, Self::Empty(_))
     }
 
-    pub fn is_full_space(&self) -> bool {
+    /// Returns whether this object represents the entire plane.
+    #[must_use]
+    pub const fn is_full_space(&self) -> bool {
         matches!(self, Self::FullSpace(_))
     }
 }
@@ -362,18 +469,16 @@ impl SimpleCollisionObject {
 #[enum_dispatch]
 pub trait SweptArea {
     /// Overapproximates the area the object covers while moving through the given positions.
-    /// The returned vector has length `positions.len() - 1`, with each entry corresponding to
-    /// the swept area between two consecutive positions.
+    ///
+    /// The returned vector has length `positions.len() - 1`, with each entry
+    /// corresponding to the swept area between two consecutive positions.
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject>;
 
     #[cfg(test)]
-    fn swept_area(&self, start_pos: DPose2, end_pos: DPose2) -> SimpleCollisionObject {
-        self.swept_areas(&[start_pos, end_pos])
-            .pop()
-            .expect("two positions produce one swept area")
+    fn swept_area(&self, start_pos: DPose2, end_pos: DPose2) -> Option<SimpleCollisionObject> {
+        self.swept_areas(&[start_pos, end_pos]).pop()
     }
 }
-
 impl SweptArea for Empty {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         vec![SimpleCollisionObject::empty(); positions.len().saturating_sub(1)]
@@ -418,49 +523,47 @@ impl SweptArea for PolygonWithHoles {
     }
 }
 
+fn conservative_result(result: CrccResult<SimpleCollisionObject>) -> SimpleCollisionObject {
+    result.unwrap_or_else(|_| SimpleCollisionObject::full_space())
+}
+
 impl SweptArea for Circle {
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject> {
         let mut swept_areas = Vec::with_capacity(positions.len().saturating_sub(1));
         for (start_pos, end_pos) in positions.iter().tuple_windows() {
             if rotation_changed(*start_pos, *end_pos) && self.center != (0.0, 0.0) {
                 let bound_radius = DVec2::from(self.center).length() + self.radius;
-                swept_areas.push(
-                    SimpleCollisionObject::rectangle(
-                        Rect::new(
-                            (
-                                start_pos.translation.x.min(end_pos.translation.x) - bound_radius,
-                                start_pos.translation.y.min(end_pos.translation.y) - bound_radius,
-                            ),
-                            (
-                                start_pos.translation.x.max(end_pos.translation.x) + bound_radius,
-                                start_pos.translation.y.max(end_pos.translation.y) + bound_radius,
-                            ),
-                        ),
-                        0.0,
-                    )
-                    .expect("a finite circle has a valid rotational swept bound"),
-                );
-                continue;
-            }
-            let center = DVec2::from(self.center);
-            let start = start_pos * center;
-            let end = end_pos * center;
-            swept_areas.push(
-                SimpleCollisionObject::rectangle(
+                swept_areas.push(conservative_result(SimpleCollisionObject::rectangle(
                     Rect::new(
                         (
-                            start.x.min(end.x) - self.radius,
-                            start.y.min(end.y) - self.radius,
+                            start_pos.translation.x.min(end_pos.translation.x) - bound_radius,
+                            start_pos.translation.y.min(end_pos.translation.y) - bound_radius,
                         ),
                         (
-                            start.x.max(end.x) + self.radius,
-                            start.y.max(end.y) + self.radius,
+                            start_pos.translation.x.max(end_pos.translation.x) + bound_radius,
+                            start_pos.translation.y.max(end_pos.translation.y) + bound_radius,
                         ),
                     ),
                     0.0,
-                )
-                .expect("a finite circle has a valid swept bounding rectangle"),
-            );
+                )));
+                continue;
+            }
+            let center = DVec2::from(self.center);
+            let start = (*start_pos).mul(center);
+            let end = (*end_pos).mul(center);
+            swept_areas.push(conservative_result(SimpleCollisionObject::rectangle(
+                Rect::new(
+                    (
+                        start.x.min(end.x) - self.radius,
+                        start.y.min(end.y) - self.radius,
+                    ),
+                    (
+                        start.x.max(end.x) + self.radius,
+                        start.y.max(end.y) + self.radius,
+                    ),
+                ),
+                0.0,
+            )));
         }
         swept_areas
     }
@@ -473,21 +576,21 @@ impl SweptArea for HalfSpace {
             if (start_pos.rotation.angle() - end_pos.rotation.angle()).abs() > 1e-9 {
                 swept_areas.push(SimpleCollisionObject::full_space());
             } else {
-                let outward_normal = start_pos.rotation * self.outward_normal;
+                let outward_normal = start_pos.rotation.mul(self.outward_normal);
                 let start_offset = outward_normal.dot(start_pos.translation);
                 let end_offset = outward_normal.dot(end_pos.translation);
                 let offset = start_offset.max(end_offset) + self.offset;
-                swept_areas.push(
-                    SimpleCollisionObject::half_space(outward_normal, offset)
-                        .expect("a transformed valid half-space remains valid"),
-                );
+                swept_areas.push(conservative_result(SimpleCollisionObject::half_space(
+                    outward_normal,
+                    offset,
+                )));
             }
         }
         swept_areas
     }
 }
 
-/// Common helper function for the swept_areas implementations
+/// Common helper function for the `swept_areas` implementations
 fn swept_areas(
     shape: &(impl AffineOps<f64> + Clone + Into<Polygon>),
     positions: &[DPose2],
@@ -507,8 +610,9 @@ fn swept_areas(
             if rotation_changed(*start_pose, *end_pose) {
                 rotational_swept_bound(shape, *start_pose, *end_pose)
             } else {
-                SimpleCollisionObject::polygon(start.union(end).convex_hull())
-                    .expect("Swept area polygon should be valid")
+                conservative_result(SimpleCollisionObject::polygon(
+                    start.union(end).convex_hull(),
+                ))
             }
         })
         .collect()
@@ -527,7 +631,7 @@ fn rotational_swept_bound(
         .chain(polygon.interiors().iter().flat_map(|ring| ring.0.iter()))
         .map(|coord| coord.x.hypot(coord.y))
         .fold(0.0, f64::max);
-    SimpleCollisionObject::rectangle(
+    conservative_result(SimpleCollisionObject::rectangle(
         Rect::new(
             (
                 start.translation.x.min(end.translation.x) - radius,
@@ -539,8 +643,7 @@ fn rotational_swept_bound(
             ),
         ),
         0.0,
-    )
-    .expect("a finite shape has a valid rotational swept bound")
+    ))
 }
 
 pub(crate) fn rotation_changed(start: DPose2, end: DPose2) -> bool {
@@ -551,34 +654,96 @@ pub(crate) fn pose_to_affine(pose: DPose2) -> AffineTransform {
     AffineTransform::rotate(pose.rotation.angle().to_degrees(), (0.0, 0.0))
         .translated(pose.translation.x, pose.translation.y)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::collision_object::CollisionObject;
     use glamx::approx::assert_relative_eq;
+    use itertools::Itertools;
     use rstest::rstest;
     use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
+    use std::ops::Div;
+
+    #[derive(Debug, Clone, Copy)]
+    enum ShapeCase {
+        Circle,
+        Rectangle,
+        Triangle,
+        HalfSpace,
+        ConvexPolygon,
+        NonConvexPolygon,
+        PolygonWithHoles,
+        FullSpace,
+    }
+
+    impl ShapeCase {
+        fn build(self) -> CrccResult<SimpleCollisionObject> {
+            match self {
+                Self::Circle => SimpleCollisionObject::circle((0.0, 0.0), 1.0),
+                Self::Rectangle => {
+                    SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0)
+                }
+                Self::Triangle => SimpleCollisionObject::triangle(GeoTriangle::new(
+                    (0.0, 0.0).into(),
+                    (1.0, 0.0).into(),
+                    (0.0, 1.0).into(),
+                )),
+                Self::HalfSpace => SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0),
+                Self::ConvexPolygon => SimpleCollisionObject::polygon(Polygon::new(
+                    vec![(0.0, 0.0), (2.0, 0.0), (1.0, 1.0)].into(),
+                    Vec::new(),
+                )),
+                Self::NonConvexPolygon => SimpleCollisionObject::polygon(Polygon::new(
+                    vec![(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (1.0, 1.0), (0.0, 2.0)].into(),
+                    Vec::new(),
+                )),
+                Self::PolygonWithHoles => SimpleCollisionObject::polygon(Polygon::new(
+                    vec![(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)].into(),
+                    vec![vec![(1.0, 1.0), (3.0, 1.0), (2.0, 3.0)].into()],
+                )),
+                Self::FullSpace => Ok(SimpleCollisionObject::full_space()),
+            }
+        }
+    }
 
     #[test]
     fn pose_to_affine_matches_pose_transform() {
         let pose = DPose2::new(DVec2::new(1.0, 2.0), FRAC_PI_2);
         let affine = pose_to_affine(pose);
         let point = (1.0, 2.0);
-        let pose_point = pose * DVec2::from(point);
+
+        let pose_point = pose.mul(DVec2::from(point));
         let affine_point = affine.apply(point.into());
+
         assert_relative_eq!(pose_point.x, affine_point.x);
         assert_relative_eq!(pose_point.y, affine_point.y);
     }
 
     #[test]
     fn rotating_finite_shape_uses_finite_conservative_sweep() {
-        let rectangle =
-            SimpleCollisionObject::rectangle(Rect::new((-10.0, -0.1), (10.0, 0.1)), 0.0).unwrap();
-        let sweep = rectangle.swept_area(DPose2::IDENTITY, DPose2::new(DVec2::ZERO, FRAC_PI_2));
-        let SimpleCollisionObject::Rectangle(bound) = sweep else {
-            panic!("expected a finite rectangular bound");
+        let rectangle_result =
+            SimpleCollisionObject::rectangle(Rect::new((-10.0, -0.1), (10.0, 0.1)), 0.0);
+
+        assert!(
+            rectangle_result.is_ok(),
+            "failed to create test rectangle: {rectangle_result:?}",
+        );
+
+        let Ok(rectangle) = rectangle_result else {
+            return;
         };
+
+        let sweep = rectangle.swept_area(DPose2::IDENTITY, DPose2::new(DVec2::ZERO, FRAC_PI_2));
+
+        assert!(
+            matches!(&sweep, Some(SimpleCollisionObject::Rectangle(_))),
+            "expected a finite rectangular bound, got {sweep:?}",
+        );
+
+        let Some(SimpleCollisionObject::Rectangle(bound)) = sweep else {
+            return;
+        };
+
         assert!(bound.rect().min().x <= -10.0);
         assert!(bound.rect().max().x >= 10.0);
         assert!(bound.rect().min().y <= -10.0);
@@ -589,81 +754,96 @@ mod tests {
     fn polygon_rejects_self_intersection() {
         let bow_tie = Polygon::new(
             vec![(0.0, 0.0), (2.0, 2.0), (0.0, 2.0), (2.0, 0.0), (0.0, 0.0)].into(),
-            vec![],
+            Vec::new(),
         );
+
         assert!(SimpleCollisionObject::polygon(bow_tie).is_err());
     }
 
     #[rstest]
     fn swept_areas_cover_interpolated_shape_positions(
         #[values(
-            SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap(),
-            SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0).unwrap(),
-            SimpleCollisionObject::triangle(GeoTriangle::new(
-                (0.0, 0.0).into(),
-                (1.0, 0.0).into(),
-                (0.0, 1.0).into(),
-            )).unwrap(),
-            SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap(),
-            // Convex polygon
-            SimpleCollisionObject::polygon(Polygon::new(
-                vec![(0.0, 0.0), (2.0, 0.0), (1.0, 1.0)].into(),
-                vec![],
-            )).unwrap(),
-            // Non-convex polygon
-            SimpleCollisionObject::polygon(Polygon::new(
-                vec![
-                    (0.0, 0.0),
-                    (2.0, 0.0),
-                    (2.0, 2.0),
-                    (1.0, 1.0),
-                    (0.0, 2.0),
-                ]
-                .into(),
-                vec![],
-            )).unwrap(),
-            // Polygon with holes
-            SimpleCollisionObject::polygon(Polygon::new(
-                vec![(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)].into(),
-                vec![vec![(1.0, 1.0), (3.0, 1.0), (2.0, 3.0)].into()],
-            )).unwrap(),
-            SimpleCollisionObject::full_space(),
+            ShapeCase::Circle,
+            ShapeCase::Rectangle,
+            ShapeCase::Triangle,
+            ShapeCase::HalfSpace,
+            ShapeCase::ConvexPolygon,
+            ShapeCase::NonConvexPolygon,
+            ShapeCase::PolygonWithHoles,
+            ShapeCase::FullSpace
         )]
-        shape: SimpleCollisionObject,
+        shape_case: ShapeCase,
         #[values(&[
             DPose2::IDENTITY,
-            DPose2::new(DVec2::new(10.0, 20.0), FRAC_PI_4),
-            DPose2::new(DVec2::new(20.0, 40.0), FRAC_PI_2),
+            DPose2::new(
+                DVec2::new(10.0, 20.0),
+                FRAC_PI_4,
+            ),
+            DPose2::new(
+                DVec2::new(20.0, 40.0),
+                FRAC_PI_2,
+            ),
         ])]
         positions: &[DPose2],
     ) {
+        let shape_result = shape_case.build();
+
+        assert!(
+            shape_result.is_ok(),
+            "failed to create {shape_case:?}: {shape_result:?}",
+        );
+
+        let Ok(shape) = shape_result else {
+            return;
+        };
+
         let swept_areas = shape
             .swept_areas(positions)
             .into_iter()
             .map(CollisionObject::from)
             .collect_vec();
-        let shape_collision_object = CollisionObject::from(shape.clone());
-        assert_eq!(swept_areas.len(), positions.len().saturating_sub(1));
-        for ((start_pos, end_pos), swept_area) in
-            positions.iter().tuple_windows().zip(swept_areas.iter())
+
+        let shape_collision_object = CollisionObject::from(shape);
+
+        assert_eq!(swept_areas.len(), positions.len().saturating_sub(1),);
+
+        for ((start_position, end_position), swept_area) in
+            positions.iter().tuple_windows().zip(&swept_areas)
         {
-            // Interpolate 5 points between start_pos and end_pos
-            for i in 0..=5 {
-                let t = i as f64 / 5.0;
+            for sample_index in 0..=5 {
+                let interpolation = f64::from(sample_index).div(5.0);
+
                 let interpolated_position = DPose2::from_parts(
-                    start_pos.translation.lerp(end_pos.translation, t),
-                    start_pos.rotation.slerp(&end_pos.rotation, t),
+                    start_position
+                        .translation
+                        .lerp(end_position.translation, interpolation),
+                    start_position
+                        .rotation
+                        .slerp(&end_position.rotation, interpolation),
                 );
-                // Check that the swept area collides with the shape at the interpolated position
+
+                let collision_result = crate::collision_checker::engine::collides(
+                    swept_area,
+                    DPose2::IDENTITY,
+                    &shape_collision_object,
+                    interpolated_position,
+                    crate::collision_checker::engine::CollisionEngine::default(),
+                );
+
                 assert!(
-                    crate::collision_checker::engine::collides(
-                        swept_area,
-                        DPose2::IDENTITY,
-                        &shape_collision_object,
-                        interpolated_position,
-                        crate::collision_checker::engine::CollisionEngine::default()
-                    )
-                    .unwrap()
+                    collision_result.is_ok(),
+                    "collision query failed for {shape_case:?}: \
+                     {collision_result:?}",
+                );
+
+                let Ok(collides) = collision_result else {
+                    return;
+                };
+
+                assert!(
+                    collides,
+                    "swept area did not cover {shape_case:?} \
+                     at interpolation {interpolation}",
                 );
             }
         }
@@ -671,15 +851,56 @@ mod tests {
 
     #[test]
     fn swept_area_for_translated_half_space_keeps_expected_boundary() {
-        let hs = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap(); // x <= 0.0
-        let swept_area = hs.swept_area(DPose2::IDENTITY, DPose2::translation(-1.0, 0.0));
-        // The swept area should be x <= 0.0
-        let expected_hs = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap();
-        match (swept_area, expected_hs) {
-            (SimpleCollisionObject::HalfSpace(sa), SimpleCollisionObject::HalfSpace(ea)) => {
-                assert!(sa.almost_equal(&ea), "Expected {:?}, got {:?}", ea, sa);
-            }
-            _ => panic!("Swept area is not a half space"),
-        }
+        let half_space_result = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
+
+        assert!(
+            half_space_result.is_ok(),
+            "failed to create test half-space: \
+             {half_space_result:?}",
+        );
+
+        let Ok(half_space) = half_space_result else {
+            return;
+        };
+
+        let swept_area = half_space.swept_area(DPose2::IDENTITY, DPose2::translation(-1.0, 0.0));
+
+        let expected_result = SimpleCollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0);
+
+        assert!(
+            expected_result.is_ok(),
+            "failed to create expected half-space: \
+             {expected_result:?}",
+        );
+
+        let Ok(expected) = expected_result else {
+            return;
+        };
+
+        let pair = (swept_area, expected);
+
+        assert!(
+            matches!(
+                &pair,
+                (
+                    Some(SimpleCollisionObject::HalfSpace(_)),
+                    SimpleCollisionObject::HalfSpace(_),
+                )
+            ),
+            "expected two half-spaces, got {pair:?}",
+        );
+
+        let (
+            Some(SimpleCollisionObject::HalfSpace(swept)),
+            SimpleCollisionObject::HalfSpace(expected),
+        ) = pair
+        else {
+            return;
+        };
+
+        assert!(
+            swept.almost_equal(&expected),
+            "expected {expected:?}, got {swept:?}",
+        );
     }
 }

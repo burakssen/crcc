@@ -18,19 +18,24 @@ impl TimeStep {
     pub const ZERO: Self = Self(0);
 
     /// Returns the preceding step, saturating at [`TimeStep::MIN`].
-    pub fn pred(&self) -> Self {
+    #[must_use]
+    pub const fn pred(&self) -> Self {
         Self(self.0.saturating_sub(1))
     }
 
     /// Returns the following step, saturating at [`TimeStep::MAX`].
-    pub fn succ(&self) -> Self {
+    #[must_use]
+    pub const fn succ(&self) -> Self {
         Self(self.0.saturating_add(1))
     }
 
     /// Advances by `steps`, saturating at [`TimeStep::MAX`].
+    #[must_use]
     pub fn add_steps(&self, steps: usize) -> Self {
         let steps = i64::try_from(steps).unwrap_or(i64::MAX);
-        Self((i64::from(self.0) + steps).min(i64::from(i32::MAX)) as i32)
+        let value = i64::from(self.0).saturating_add(steps);
+
+        Self(i32::try_from(value).unwrap_or(i32::MAX))
     }
 
     /// Iterates over the discrete steps selected by a Rust range.
@@ -103,6 +108,11 @@ mod tests {
     fn add_steps_saturates_without_wrapping() {
         assert_eq!(TimeStep(0).add_steps(usize::MAX), TimeStep::MAX);
         assert_eq!(TimeStep::MAX.add_steps(1), TimeStep::MAX);
-        assert_eq!(TimeStep::MIN.add_steps(i32::MAX as usize + 1), TimeStep(0));
+
+        let steps = usize::try_from(i32::MAX)
+            .unwrap_or(usize::MAX)
+            .saturating_add(1);
+
+        assert_eq!(TimeStep::MIN.add_steps(steps), TimeStep(0));
     }
 }

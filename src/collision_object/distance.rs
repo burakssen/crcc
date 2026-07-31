@@ -1,8 +1,9 @@
 use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::{SimpleCollisionObject, pose_to_affine};
-use crate::error::CrccError;
+use crate::error::{CrccError, CrccResult};
 use geo::{AffineOps, Distance, Euclidean, Point, Polygon, Rotate};
 use glamx::{DPose2, DVec2};
+use std::ops::{Add, Mul, Neg, Sub};
 
 #[derive(Debug)]
 pub(crate) enum GeoRepresentation {
@@ -13,80 +14,107 @@ pub(crate) enum GeoRepresentation {
     FullSpace,
 }
 
-pub(crate) fn to_geo(obj: &SimpleCollisionObject, pose: DPose2) -> GeoRepresentation {
+/// Converts a collision object into its global geometric representation.
+#[must_use]
+pub(crate) fn to_geo(object: &SimpleCollisionObject, pose: DPose2) -> GeoRepresentation {
     let affine = pose_to_affine(pose);
-    match obj {
+
+    match object {
         SimpleCollisionObject::Empty(..) => GeoRepresentation::Empty,
         SimpleCollisionObject::FullSpace(..) => GeoRepresentation::FullSpace,
-        SimpleCollisionObject::HalfSpace(hs) => {
-            let normal_new = pose.rotation * hs.outward_normal;
-            let offset_new = hs.offset + normal_new.dot(pose.translation);
+
+        SimpleCollisionObject::HalfSpace(half_space) => {
+            let outward_normal = pose.rotation.mul(half_space.outward_normal);
+
+            let offset = half_space.offset.add(outward_normal.dot(pose.translation));
+
             GeoRepresentation::HalfSpace {
-                outward_normal: normal_new,
-                offset: offset_new,
+                outward_normal,
+                offset,
             }
         }
-        SimpleCollisionObject::Circle(c) => {
-            let global_center = pose * DVec2::from(c.center());
+
+        SimpleCollisionObject::Circle(circle) => {
+            let center = pose.mul(DVec2::from(circle.center()));
+
             GeoRepresentation::Circle {
-                center: Point::new(global_center.x, global_center.y),
-                radius: c.radius(),
+                center: Point::new(center.x, center.y),
+                radius: circle.radius(),
             }
         }
-        SimpleCollisionObject::Rectangle(r) => {
-            let mut poly = Polygon::from(*r.rect());
-            poly.rotate_around_center_mut(r.orientation().to_degrees());
-            GeoRepresentation::Polygon(poly.affine_transform(&affine))
+
+        SimpleCollisionObject::Rectangle(rectangle) => {
+            let mut polygon = Polygon::from(*rectangle.rect());
+
+            polygon.rotate_around_center_mut(rectangle.orientation().to_degrees());
+
+            GeoRepresentation::Polygon(polygon.affine_transform(&affine))
         }
-        SimpleCollisionObject::Triangle(t) => {
-            let poly = Polygon::from(**t);
-            GeoRepresentation::Polygon(poly.affine_transform(&affine))
+
+        SimpleCollisionObject::Triangle(triangle) => {
+            let polygon = Polygon::from(**triangle);
+
+            GeoRepresentation::Polygon(polygon.affine_transform(&affine))
         }
-        SimpleCollisionObject::ConvexPolygon(cp) => {
-            GeoRepresentation::Polygon((**cp).clone().affine_transform(&affine))
+
+        SimpleCollisionObject::ConvexPolygon(polygon) => {
+            GeoRepresentation::Polygon((**polygon).clone().affine_transform(&affine))
         }
-        SimpleCollisionObject::NonConvexPolygon(ncp) => {
-            GeoRepresentation::Polygon((**ncp).clone().affine_transform(&affine))
+
+        SimpleCollisionObject::NonConvexPolygon(polygon) => {
+            GeoRepresentation::Polygon((**polygon).clone().affine_transform(&affine))
         }
-        SimpleCollisionObject::PolygonWithHoles(pwh) => {
-            GeoRepresentation::Polygon((**pwh).clone().affine_transform(&affine))
+
+        SimpleCollisionObject::PolygonWithHoles(polygon) => {
+            GeoRepresentation::Polygon((**polygon).clone().affine_transform(&affine))
         }
     }
 }
 
-pub(crate) fn distance_geo(
-    g1: &GeoRepresentation,
-    g2: &GeoRepresentation,
-) -> Result<f64, CrccError> {
-    match (g1, g2) {
+/// Calculates the distance between two geometric representations.
+///
+/// # Errors
+///
+/// Returns [`CrccError::Unsupported`] when either representation is empty.
+pub(crate) fn distance_geo(left: &GeoRepresentation, right: &GeoRepresentation) -> CrccResult<f64> {
+    match (left, right) {
         (GeoRepresentation::Empty, _) | (_, GeoRepresentation::Empty) => {
             Err(CrccError::Unsupported)
         }
+
         (GeoRepresentation::FullSpace, _) | (_, GeoRepresentation::FullSpace) => Ok(0.0),
+
         (
             GeoRepresentation::Circle {
-                center: c1,
-                radius: r1,
+                center: left_center,
+                radius: left_radius,
             },
             GeoRepresentation::Circle {
-                center: c2,
-                radius: r2,
+                center: right_center,
+                radius: right_radius,
             },
         ) => {
-            let d = Euclidean.distance(c1, c2);
-            Ok((d - r1 - r2).max(0.0))
+            let center_distance = Euclidean.distance(left_center, right_center);
+
+            let distance = center_distance.sub(*left_radius).sub(*right_radius);
+
+            Ok(distance.max(0.0))
         }
-        (GeoRepresentation::Circle { center, radius }, GeoRepresentation::Polygon(poly))
-        | (GeoRepresentation::Polygon(poly), GeoRepresentation::Circle { center, radius }) => {
-            let d = Euclidean.distance(center, poly);
-            Ok((d - radius).max(0.0))
+
+        (GeoRepresentation::Circle { center, radius }, GeoRepresentation::Polygon(polygon))
+        | (GeoRepresentation::Polygon(polygon), GeoRepresentation::Circle { center, radius }) => {
+            let center_distance = Euclidean.distance(center, polygon);
+
+            Ok(center_distance.sub(*radius).max(0.0))
         }
-        (GeoRepresentation::Polygon(p1), GeoRepresentation::Polygon(p2)) => {
-            Ok(Euclidean.distance(p1, p2))
+
+        (GeoRepresentation::Polygon(left_polygon), GeoRepresentation::Polygon(right_polygon)) => {
+            Ok(Euclidean.distance(left_polygon, right_polygon))
         }
+
         (
             GeoRepresentation::HalfSpace {
-                outward_normal: n,
+                outward_normal,
                 offset,
             },
             GeoRepresentation::Circle { center, radius },
@@ -94,51 +122,59 @@ pub(crate) fn distance_geo(
         | (
             GeoRepresentation::Circle { center, radius },
             GeoRepresentation::HalfSpace {
-                outward_normal: n,
+                outward_normal,
                 offset,
             },
         ) => {
-            let center_vec = DVec2::new(center.x(), center.y());
-            let proj = n.dot(center_vec);
-            let d = proj - offset;
-            Ok((d - radius).max(0.0))
+            let center = DVec2::new(center.x(), center.y());
+            let projection = outward_normal.dot(center);
+            let boundary_distance = projection.sub(*offset);
+
+            Ok(boundary_distance.sub(*radius).max(0.0))
         }
+
         (
             GeoRepresentation::HalfSpace {
-                outward_normal: n,
+                outward_normal,
                 offset,
             },
-            GeoRepresentation::Polygon(poly),
+            GeoRepresentation::Polygon(polygon),
         )
         | (
-            GeoRepresentation::Polygon(poly),
+            GeoRepresentation::Polygon(polygon),
             GeoRepresentation::HalfSpace {
-                outward_normal: n,
+                outward_normal,
                 offset,
             },
         ) => {
-            let mut min_d = f64::INFINITY;
-            for p in poly.exterior().points() {
-                let p_vec = DVec2::new(p.x(), p.y());
-                let proj = n.dot(p_vec);
-                let d = proj - offset;
-                min_d = min_d.min(d);
-            }
-            Ok(min_d.max(0.0))
+            let minimum_distance = polygon
+                .exterior()
+                .points()
+                .map(|point| {
+                    let point = DVec2::new(point.x(), point.y());
+
+                    outward_normal.dot(point).sub(*offset)
+                })
+                .fold(f64::INFINITY, f64::min);
+
+            Ok(minimum_distance.max(0.0))
         }
+
         (
             GeoRepresentation::HalfSpace {
-                outward_normal: n1,
-                offset: o1,
+                outward_normal: left_normal,
+                offset: left_offset,
             },
             GeoRepresentation::HalfSpace {
-                outward_normal: n2,
-                offset: o2,
+                outward_normal: right_normal,
+                offset: right_offset,
             },
         ) => {
-            let dot = n1.dot(*n2);
-            if (dot + 1.0).abs() < 1e-9 {
-                let gap = -o2 - o1;
+            let dot = left_normal.dot(*right_normal);
+
+            if dot.add(1.0).abs() < 1e-9 {
+                let gap = (*right_offset).neg().sub(*left_offset);
+
                 Ok(gap.max(0.0))
             } else {
                 Ok(0.0)
@@ -148,35 +184,48 @@ pub(crate) fn distance_geo(
 }
 
 impl CollisionObject {
+    /// Calculates the distance to another object at the supplied poses.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] when no supported geometry pair
+    /// can be evaluated.
     pub(crate) fn distance_at(
         &self,
         pos_self: DPose2,
         other: &Self,
         pos_other: DPose2,
-    ) -> Result<f64, CrccError> {
-        let left: Vec<_> = self
+    ) -> CrccResult<f64> {
+        let left = self
             .collision_objects
             .iter()
             .map(|object| to_geo(object, pos_self))
-            .collect();
-        let right: Vec<_> = other
+            .collect::<Vec<_>>();
+
+        let right = other
             .collision_objects
             .iter()
             .map(|object| to_geo(object, pos_other))
-            .collect();
-        let mut min_distance = f64::INFINITY;
-        for geo_self in &left {
-            for geo_other in &right {
-                min_distance = min_distance.min(distance_geo(geo_self, geo_other)?);
-                if min_distance == 0.0 {
+            .collect::<Vec<_>>();
+
+        let mut minimum_distance = f64::INFINITY;
+
+        for left_geometry in &left {
+            for right_geometry in &right {
+                minimum_distance =
+                    minimum_distance.min(distance_geo(left_geometry, right_geometry)?);
+
+                // All supported distances are clamped to be non-negative.
+                // Using `<=` avoids Clippy's floating-point equality lint.
+                if minimum_distance <= 0.0 {
                     return Ok(0.0);
                 }
             }
         }
-        if min_distance.is_finite() {
-            Ok(min_distance)
-        } else {
-            Err(CrccError::Unsupported)
-        }
+
+        minimum_distance
+            .is_finite()
+            .then_some(minimum_distance)
+            .ok_or(CrccError::Unsupported)
     }
 }
