@@ -65,23 +65,33 @@ target-version = "py310"
 [tool.ruff.lint]
 ignore = ["E203", "PLR2004"]
 select = [
-    "E", "F", "W",      # Pycodestyle errors/warnings & Pyflakes
-    "I",                # Import sorting
-    "B",                # Bugbear (catches bugs & design flaws)
-    "C4",               # Comprehension checks
-    "UP",               # Pyupgrade (modern Python syntax)
-    "SIM",              # Code simplification suggestions
-    "ARG",              # Unused arguments
-    "PTH",              # Use pathlib instead of os.path
-    "PL",               # Pylint (refactoring, complexity, warnings)
-    "PERF",             # Performance checks
-    "RUF",              # Ruff-native rules
+    "E",
+    "F",
+    "W",    # Pycodestyle errors/warnings & Pyflakes
+    "I",    # Import sorting
+    "B",    # Bugbear (catches bugs & design flaws)
+    "C4",   # Comprehension checks
+    "UP",   # Pyupgrade (modern Python syntax)
+    "SIM",  # Code simplification suggestions
+    "ARG",  # Unused arguments
+    "PTH",  # Use pathlib instead of os.path
+    "PL",   # Pylint (refactoring, complexity, warnings)
+    "PERF", # Performance checks
+    "RUF",  # Ruff-native rules
 ]
 isort.combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]
-"*.pyi" = ["N802", "B008"]  # Allow PascalCase factory methods & default calls in Rust stub files
-"tests/*" = ["PLC0415", "SLF001", "RUF043", "PLR0913"] # Allow lazy imports, private member access, regex matches & helper arg count in test suite
+"*.pyi" = [
+    "N802",
+    "B008",
+] # Allow PascalCase factory methods & default calls in Rust stub files
+"tests/*" = [
+    "PLC0415",
+    "SLF001",
+    "RUF043",
+    "PLR0913",
+] # Allow lazy imports, private member access, regex matches & helper arg count in test suite
 "main.py" = ["PLC0415"] # Allow lazy action dispatcher imports
 "tools/*" = ["ALL"]
 "examples/*" = ["ALL"]
@@ -93,6 +103,16 @@ filterwarnings = [
 ]
 
 [tool.pyright]
-include = ["python", "examples", "tools", "tests", "main.py"]
+include = ["python", "tests", "main.py"]
+exclude = ["examples", "tools"]
+extraPaths = ["."]
 pythonVersion = "3.10"
-typeCheckingMode = "basic"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+reportUnknownParameterType = false
+reportMissingParameterType = false
+reportUnknownLambdaType = false
+reportPrivateUsage = false
