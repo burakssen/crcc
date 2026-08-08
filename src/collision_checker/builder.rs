@@ -121,7 +121,7 @@ pub fn road_boundary(lanelets: &[Polygon]) -> CollisionObject {
     let road = unary_union(lanelets).simplify(0.01);
 
     if road.is_empty() {
-        return CollisionObject::empty();
+        return CollisionObject::full_space();
     }
 
     let road_convex_hull = road.convex_hull();
@@ -142,4 +142,112 @@ pub fn road_boundary(lanelets: &[Polygon]) -> CollisionObject {
         .filter_map(|hole| SimpleCollisionObject::polygon(hole).ok());
 
     outer_half_spaces.chain(holes).collect()
+}
+
+#[cfg(test)]
+#[allow(clippy::panic_in_result_fn)]
+mod tests {
+    use super::road_boundary;
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    use crate::collision_checker::engine::CollisionEngine;
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    use crate::collision_object::CollisionObject;
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    use crate::error::CrccResult;
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    use geo::Polygon;
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    use glamx::DPose2;
+
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    fn assert_road_points(
+        lanelets: &[Polygon],
+        inside: &[(f64, f64)],
+        outside: &[(f64, f64)],
+    ) -> CrccResult<()> {
+        let boundary = road_boundary(lanelets);
+        // Small circles exercise existing cross-engine APIs without point-shape support.
+        let probe = CollisionObject::circle((0.0, 0.0), 0.1)?;
+
+        for point in inside {
+            assert!(!boundary.collides(
+                &probe,
+                DPose2::IDENTITY,
+                DPose2::translation(point.0, point.1),
+                CollisionEngine::default(),
+            )?);
+        }
+        for point in outside {
+            assert!(boundary.collides(
+                &probe,
+                DPose2::IDENTITY,
+                DPose2::translation(point.0, point.1),
+                CollisionEngine::default(),
+            )?);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn empty_road_has_full_space_boundary() {
+        assert!(road_boundary(&[]).is_full_space());
+    }
+
+    #[test]
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    fn rectangular_road_boundary_separates_inside_from_outside() -> CrccResult<()> {
+        let road = Polygon::new(
+            vec![(0.0, 0.0), (6.0, 0.0), (6.0, 4.0), (0.0, 4.0), (0.0, 0.0)].into(),
+            Vec::new(),
+        );
+
+        assert_road_points(
+            &[road],
+            &[(1.0, 1.0), (5.0, 3.0)],
+            &[(-1.0, 2.0), (3.0, 5.0)],
+        )
+    }
+
+    #[test]
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    fn concave_road_boundary_rejects_convex_hull_notch() -> CrccResult<()> {
+        let road = Polygon::new(
+            vec![
+                (0.0, 0.0),
+                (6.0, 0.0),
+                (6.0, 2.0),
+                (2.0, 2.0),
+                (2.0, 6.0),
+                (0.0, 6.0),
+                (0.0, 0.0),
+            ]
+            .into(),
+            Vec::new(),
+        );
+
+        assert_road_points(
+            &[road],
+            &[(1.0, 5.0), (5.0, 1.0)],
+            &[(4.0, 4.0), (7.0, 1.0)],
+        )
+    }
+
+    #[test]
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    fn disconnected_road_boundary_rejects_gap() -> CrccResult<()> {
+        let left = Polygon::new(
+            vec![(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (0.0, 2.0), (0.0, 0.0)].into(),
+            Vec::new(),
+        );
+        let right = Polygon::new(
+            vec![(5.0, 0.0), (7.0, 0.0), (7.0, 2.0), (5.0, 2.0), (5.0, 0.0)].into(),
+            Vec::new(),
+        );
+
+        assert_road_points(
+            &[left, right],
+            &[(1.0, 1.0), (6.0, 1.0)],
+            &[(3.5, 1.0), (8.0, 1.0)],
+        )
+    }
 }

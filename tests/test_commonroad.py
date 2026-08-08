@@ -3,13 +3,17 @@ from typing import cast
 
 import commonroad.scenario.obstacle as cr_obstacle
 import numpy as np
+from collision_helpers import collision_status
 from commonroad.common.util import Interval
+from commonroad.geometry.obstacle_shapes.circle_obstacle_shape import CircleObstacleShape
+from commonroad.geometry.obstacle_shapes.polygon_obstacle_shape import PolygonObstacleShape
 from commonroad.geometry.obstacle_shapes.rect_obstacle_shape import RectObstacleShape
 from commonroad.geometry.occupancy.circle_occupancy import CircleOccupancy
 from commonroad.geometry.occupancy.occupancy_group import OccupancyGroup
 from commonroad.geometry.occupancy.polygon_occupancy import PolygonOccupancy
 from commonroad.geometry.occupancy.rect_occupancy import RectOccupancy
 from commonroad.prediction.prediction import SetBasedPrediction, TrajectoryPrediction
+from commonroad.scenario.lanelet import LaneletNetwork
 from commonroad.scenario.obstacle import ObstacleType, StaticObstacle
 from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import InitialState
@@ -17,9 +21,11 @@ from commonroad.scenario.trajectory import Trajectory
 from crcc import Circle, CollisionCheckerBuilder, DynamicObstacle, Pose, Rectangle
 from crcc.commonroad import (
     add_static_obstacle,
+    road_boundary,
     scenario_builder,
     to_dynamic_obstacle,
     to_occupancy,
+    to_shape,
 )
 from shapely.geometry import Point, Polygon as ShapelyPolygon
 
@@ -65,9 +71,7 @@ def test_occupancy_group_time_variant_dynamic_obstacle(engine):
     )
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.5)).build()
 
-    result = checker.collides_dynamic(trajectory, min_time=5, max_time=5)
-    assert result.collides
-    assert result.time_step == 5
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=5, max_time=5)) == (True, 5)
 
 
 def test_static_obstacle_conversion():
@@ -82,8 +86,34 @@ def test_static_obstacle_conversion():
     add_static_obstacle(builder, static_obstacle)
     checker = builder.build()
 
-    assert checker.collides_static(Rectangle(1.0, 1.0), Pose((10.0, 0.0), 0.0)).collides
-    assert not checker.collides_static(Rectangle(1.0, 1.0), Pose((20.0, 0.0), 0.0)).collides
+    assert collision_status(checker.collides_static(Rectangle(1.0, 1.0), Pose((10.0, 0.0), 0.0))) == (
+        True,
+        None,
+    )
+    assert collision_status(checker.collides_static(Rectangle(1.0, 1.0), Pose((20.0, 0.0), 0.0))) == (
+        False,
+        None,
+    )
+
+
+def test_commonroad_shape_converters_preserve_geometry():
+    circle = to_shape(CircleObstacleShape(2.0))
+    shifted_rectangle = to_shape(RectObstacleShape(width=2.0, length=4.0, origin_x_shift=1.0))
+    polygon = to_shape(PolygonObstacleShape(((0.0, 0.0), (2.0, 0.0), (0.0, 2.0))))
+
+    assert circle.collides(Circle(0.1, (1.9, 0.0)))
+    assert shifted_rectangle.collides(Circle(0.1, (-2.5, 0.0)))
+    assert not shifted_rectangle.collides(Circle(0.1, (1.5, 0.0)))
+    assert polygon.collides(Circle(0.1, (0.5, 0.5)))
+
+
+def test_commonroad_road_boundary_uses_lanelet_vertices(engine):
+    vertices = np.array(((-2.0, -2.0), (2.0, -2.0), (2.0, 2.0), (-2.0, 2.0), (-2.0, -2.0)))
+    network = SimpleNamespace(lanelets=[SimpleNamespace(polygon=SimpleNamespace(vertices=vertices))])
+    boundary = road_boundary(cast(LaneletNetwork, network))
+
+    assert not boundary.collides(Circle(0.1), engine=engine)
+    assert boundary.collides(Circle(0.1, (3.0, 0.0)), engine=engine)
 
 
 def set_based_commonroad_obstacle():
@@ -109,21 +139,30 @@ def test_set_based_prediction_dynamic_obstacle_conversion(engine):
     trajectory = to_dynamic_obstacle(set_based_commonroad_obstacle())
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75)).build()
 
-    assert not checker.collides_dynamic(trajectory, min_time=3, max_time=3).collides
-    assert not checker.collides_dynamic(trajectory, min_time=4, max_time=4).collides
-    assert checker.collides_dynamic(trajectory, min_time=5, max_time=5).time_step == 5
-    assert checker.collides_dynamic(trajectory, min_time=7, max_time=7).time_step == 7
-    assert checker.collides_dynamic(trajectory, min_time=8, max_time=8).time_step == 8
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=3, max_time=3)) == (False, None)
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=4, max_time=4)) == (False, None)
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=5, max_time=5)) == (True, 5)
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=7, max_time=7)) == (True, 7)
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=8, max_time=8)) == (True, 8)
 
 
 def test_set_based_prediction_keeps_initial_occupancy_and_gap(engine):
     trajectory = to_dynamic_obstacle(set_based_commonroad_obstacle())
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75, (10.0, 0.0))).build()
 
-    assert checker.collides_dynamic(trajectory, min_time=0, max_time=0).time_step == 0
-    assert not checker.collides_dynamic(trajectory, min_time=1, max_time=1).collides
-    assert not checker.collides_dynamic(trajectory, min_time=2, max_time=2).collides
-    assert checker.collides_dynamic(trajectory, min_time=3, max_time=3).time_step == 3
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=0, max_time=0)) == (True, 0)
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=1, max_time=1)) == (False, None)
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=2, max_time=2)) == (False, None)
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=3, max_time=3)) == (True, 3)
+
+
+def test_set_based_prediction_gap_has_no_phantom_continuous_motion(engine):
+    trajectory = to_dynamic_obstacle(set_based_commonroad_obstacle())
+    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.25, (5.0, 0.0))).build()
+
+    assert collision_status(checker.collides_dynamic(trajectory, min_time=0, max_time=3)) == (False, None)
+    prepared = checker.prepare_dynamic(trajectory)
+    assert collision_status(checker.collides_dynamic_prepared(prepared, min_time=0, max_time=3)) == (False, None)
 
 
 def test_trajectory_prediction_keeps_between_step_motion(engine):
@@ -145,7 +184,7 @@ def test_trajectory_prediction_keeps_between_step_motion(engine):
     trajectory = to_dynamic_obstacle(obstacle)
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.25)).build()
 
-    assert checker.collides_dynamic(trajectory).time_step == 0
+    assert collision_status(checker.collides_dynamic(trajectory)) == (True, 0)
 
 
 def test_scenario_builder_includes_set_based_dynamic_obstacles(engine):
@@ -156,5 +195,5 @@ def test_scenario_builder_includes_set_based_dynamic_obstacles(engine):
     )
     checker = scenario_builder(cast(Scenario, scenario), CollisionCheckerBuilder(engine=engine)).build()
 
-    assert checker.collides_static(Circle(0.75), min_time=5, max_time=5).time_step == 5
-    assert not checker.collides_static(Circle(0.75), min_time=4, max_time=4).collides
+    assert collision_status(checker.collides_static(Circle(0.75), min_time=5, max_time=5)) == (True, 5)
+    assert collision_status(checker.collides_static(Circle(0.75), min_time=4, max_time=4)) == (False, None)

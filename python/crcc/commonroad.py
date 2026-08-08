@@ -124,7 +124,9 @@ def add_road_boundary(
     lanelet_network: LaneletNetwork,
 ) -> CollisionCheckerBuilder:
     """Adds the road boundary from a lanelet network to the builder."""
-    builder.with_static_obstacle(road_boundary(lanelet_network))
+    if lanelet_network.lanelets:
+        # An absent map supplies no road-boundary constraint.
+        builder.with_static_obstacle(road_boundary(lanelet_network))
     return builder
 
 

@@ -1,4 +1,8 @@
-from crcc import CollisionEngine, CollisionObject, Pose, Rectangle
+from crcc import CollisionEngine, CollisionObject, CollisionStatus, Pose, Rectangle
+
+
+def collision_status(result: CollisionStatus) -> tuple[bool, int | None]:
+    return result.collides, result.time_step
 
 
 def assert_collides(
