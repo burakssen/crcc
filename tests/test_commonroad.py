@@ -9,10 +9,11 @@ from commonroad.geometry.occupancy.circle_occupancy import CircleOccupancy
 from commonroad.geometry.occupancy.occupancy_group import OccupancyGroup
 from commonroad.geometry.occupancy.polygon_occupancy import PolygonOccupancy
 from commonroad.geometry.occupancy.rect_occupancy import RectOccupancy
-from commonroad.prediction.prediction import SetBasedPrediction
+from commonroad.prediction.prediction import SetBasedPrediction, TrajectoryPrediction
 from commonroad.scenario.obstacle import ObstacleType, StaticObstacle
 from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import InitialState
+from commonroad.scenario.trajectory import Trajectory
 from crcc import Circle, CollisionCheckerBuilder, DynamicObstacle, Pose, Rectangle
 from crcc.commonroad import (
     add_static_obstacle,
@@ -113,6 +114,38 @@ def test_set_based_prediction_dynamic_obstacle_conversion(engine):
     assert checker.collides_dynamic(trajectory, min_time=5, max_time=5).time_step == 5
     assert checker.collides_dynamic(trajectory, min_time=7, max_time=7).time_step == 7
     assert checker.collides_dynamic(trajectory, min_time=8, max_time=8).time_step == 8
+
+
+def test_set_based_prediction_keeps_initial_occupancy_and_gap(engine):
+    trajectory = to_dynamic_obstacle(set_based_commonroad_obstacle())
+    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75, (10.0, 0.0))).build()
+
+    assert checker.collides_dynamic(trajectory, min_time=0, max_time=0).time_step == 0
+    assert not checker.collides_dynamic(trajectory, min_time=1, max_time=1).collides
+    assert not checker.collides_dynamic(trajectory, min_time=2, max_time=2).collides
+    assert checker.collides_dynamic(trajectory, min_time=3, max_time=3).time_step == 3
+
+
+def test_trajectory_prediction_keeps_between_step_motion(engine):
+    shape = RectObstacleShape(width=1.0, length=1.0)
+    prediction = TrajectoryPrediction(
+        Trajectory(
+            1,
+            [InitialState(time_step=1, position=np.array((2.0, 0.0)), orientation=0.0)],
+        ),
+        shape,
+    )
+    obstacle = cr_obstacle.DynamicObstacle(
+        obstacle_id=3,
+        obstacle_type=ObstacleType.CAR,
+        obstacle_shape=shape,
+        initial_state=InitialState(time_step=0, position=np.array((-2.0, 0.0)), orientation=0.0),
+        prediction=prediction,
+    )
+    trajectory = to_dynamic_obstacle(obstacle)
+    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.25)).build()
+
+    assert checker.collides_dynamic(trajectory).time_step == 0
 
 
 def test_scenario_builder_includes_set_based_dynamic_obstacles(engine):

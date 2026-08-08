@@ -14,7 +14,7 @@ from commonroad.geometry.occupancy.circle_occupancy import CircleOccupancy
 from commonroad.geometry.occupancy.occupancy import Occupancy
 from commonroad.geometry.occupancy.polygon_occupancy import PolygonOccupancy
 from commonroad.geometry.occupancy.rect_occupancy import RectOccupancy
-from commonroad.prediction.prediction import SetBasedPrediction, TrajectoryPrediction
+from commonroad.prediction.prediction import TrajectoryPrediction
 from commonroad.scenario.lanelet import LaneletNetwork
 from commonroad.scenario.scenario import Scenario
 from commonroad.scenario.state import InitialState, TraceState
@@ -79,26 +79,40 @@ def add_dynamic_obstacle(
 def to_dynamic_obstacle(dynamic_obstacle: cr_obstacle.DynamicObstacle) -> DynamicObstacle:
     """Converts a CommonRoad dynamic obstacle to a local crcc DynamicObstacle."""
     initial_time = _exact_time_step(dynamic_obstacle.initial_state.time_step)
-    if isinstance(dynamic_obstacle.prediction, TrajectoryPrediction):
-        trajectory = dynamic_obstacle.prediction.trajectory
-        states = [dynamic_obstacle.initial_state, *trajectory.state_list]
-        poses = [to_pose(state) for state in states]
-        shape = to_shape(dynamic_obstacle.obstacle_shape)
-        return DynamicObstacle(shape, poses, initial_time)
-    if isinstance(dynamic_obstacle.prediction, SetBasedPrediction):
-        prediction = dynamic_obstacle.prediction
-        time_steps = range(prediction.initial_time_step, _prediction_final_time_step(prediction) + 1)
-        obstacles = [
-            to_occupancy(occupancy) if (occupancy := prediction.occupancy_at_time_step(time_step)) else Compound([])
-            for time_step in time_steps
-        ]
-        return DynamicObstacle.from_time_variant(obstacles, prediction.initial_time_step)
+    prediction: Any = dynamic_obstacle.prediction
+    if isinstance(prediction, TrajectoryPrediction):
+        final_time = _prediction_final_time_step(prediction)
+        states = {_exact_time_step(state.time_step): state for state in prediction.trajectory.state_list}
+        initial_shape = to_shape(dynamic_obstacle.obstacle_shape)
+        predicted_shape = to_shape(prediction.shape)
+        obstacles: list[CollisionObject] = []
+        positions: list[Pose] = []
 
-    prediction_type = type(dynamic_obstacle.prediction).__name__
-    raise NotImplementedError(f"Unsupported dynamic obstacle prediction type: {prediction_type}")
+        for time_step in range(initial_time, final_time + 1):
+            if time_step == initial_time:
+                obstacles.append(initial_shape)
+                positions.append(to_pose(dynamic_obstacle.initial_state))
+            elif (state := states.get(time_step)) is not None:
+                obstacles.append(predicted_shape)
+                positions.append(to_pose(state))
+            else:
+                obstacles.append(Compound([]))
+                positions.append(Pose.identity())
+
+        return DynamicObstacle.from_time_variant(obstacles, initial_time, positions)
+
+    final_time = initial_time if prediction is None else _prediction_final_time_step(prediction)
+    if final_time < initial_time:
+        raise ValueError("CommonRoad prediction ends before the obstacle's initial state")
+
+    obstacles = [
+        to_occupancy(occupancy) if (occupancy := dynamic_obstacle.occupancy_at_time(time_step)) else Compound([])
+        for time_step in range(initial_time, final_time + 1)
+    ]
+    return DynamicObstacle.from_time_variant(obstacles, initial_time)
 
 
-def _prediction_final_time_step(prediction: SetBasedPrediction) -> int:
+def _prediction_final_time_step(prediction: Any) -> int:
     final_time_step = prediction.final_time_step
     if isinstance(final_time_step, Interval):
         final_time_step = final_time_step.end
