@@ -85,6 +85,11 @@ impl DynamicObstacle {
                     return None;
                 };
 
+                if shape_t.is_empty() || shape_t1.is_empty() {
+                    // Missing occupancy means no motion across this interval.
+                    return Some(CollisionObject::empty());
+                }
+
                 shape_t
                     .swept_area(*pos_t, *pos_t1)
                     .zip(shape_t1.swept_area(*pos_t, *pos_t1))
@@ -215,13 +220,14 @@ impl<E> GenericDynamicObstacle<E> {
     }
 }
 #[cfg(test)]
+#[allow(clippy::panic_in_result_fn)]
 mod tests {
     use super::*;
     use geo::Rect;
-    use std::ops::Div;
+    use glamx::approx::assert_relative_eq;
 
-    fn dynamic_obstacle() -> Option<DynamicObstacle> {
-        let shape = CollisionObject::rectangle(Rect::new((-2.0, -0.5), (2.0, 0.5)), 0.0).ok()?;
+    fn dynamic_obstacle() -> CrccResult<DynamicObstacle> {
+        let shape = CollisionObject::rectangle(Rect::new((-2.0, -0.5), (2.0, 0.5)), 0.0)?;
 
         let positions = vec![
             DPose2::new((0.0, 0.0).into(), 0.0),
@@ -229,21 +235,12 @@ mod tests {
             DPose2::new((2.0, 2.0).into(), std::f64::consts::FRAC_PI_2),
         ];
 
-        DynamicObstacle::new(shape, positions, TimeStep(5)).ok()
+        DynamicObstacle::new(shape, positions, TimeStep(5))
     }
 
     #[test]
-    fn obstacle_at_returns_pose_for_active_time() {
-        let dynamic_obstacle = dynamic_obstacle();
-
-        assert!(
-            dynamic_obstacle.is_some(),
-            "failed to create dynamic-obstacle fixture",
-        );
-
-        let Some(dynamic_obstacle) = dynamic_obstacle else {
-            return;
-        };
+    fn obstacle_at_returns_pose_for_active_time() -> CrccResult<()> {
+        let dynamic_obstacle = dynamic_obstacle()?;
 
         assert_eq!(
             dynamic_obstacle
@@ -267,20 +264,12 @@ mod tests {
         );
 
         assert!(dynamic_obstacle.obstacle_at(TimeStep(8)).is_none(),);
+        Ok(())
     }
 
     #[test]
-    fn active_times_cover_trajectory_range() {
-        let dynamic_obstacle = dynamic_obstacle();
-
-        assert!(
-            dynamic_obstacle.is_some(),
-            "failed to create dynamic-obstacle fixture",
-        );
-
-        let Some(dynamic_obstacle) = dynamic_obstacle else {
-            return;
-        };
+    fn active_times_cover_trajectory_range() -> CrccResult<()> {
+        let dynamic_obstacle = dynamic_obstacle()?;
 
         let active_times = dynamic_obstacle.active_times();
 
@@ -288,179 +277,186 @@ mod tests {
             active_times,
             TimeStep::iter_range(TimeStep(5)..=TimeStep(7),).collect(),
         );
+        Ok(())
     }
 
     #[test]
-    fn trajectories_reject_unrepresentable_end_times() {
-        let shape = CollisionObject::circle((0.0, 0.0), 1.0);
-        assert!(shape.is_ok());
-        let Ok(shape) = shape else {
-            return;
-        };
+    fn trajectories_report_exact_unrepresentable_end_time_error() -> CrccResult<()> {
+        let shape = CollisionObject::circle((0.0, 0.0), 1.0)?;
 
-        assert!(
+        assert!(matches!(
             DynamicObstacle::new(
                 shape.clone(),
                 vec![DPose2::IDENTITY, DPose2::IDENTITY],
                 TimeStep::MAX,
-            )
-            .is_err()
+            ),
+            Err(CrccError::InvalidGeometry(
+                "trajectory exceeds the representable time-step range"
+            ))
+        ));
+        let obstacle = DynamicObstacle::new(shape, vec![DPose2::IDENTITY], TimeStep::MAX)?;
+        assert_eq!(
+            obstacle.active_times(),
+            std::iter::once(TimeStep::MAX).collect()
         );
-        assert!(DynamicObstacle::new(shape, vec![DPose2::IDENTITY], TimeStep::MAX).is_ok());
+        Ok(())
     }
 
     #[test]
-    fn trajectories_reject_non_finite_poses() {
-        let shape = CollisionObject::circle((0.0, 0.0), 1.0);
-        assert!(shape.is_ok());
-        let Ok(shape) = shape else {
-            return;
-        };
+    fn trajectories_report_exact_non_finite_pose_error() -> CrccResult<()> {
+        let shape = CollisionObject::circle((0.0, 0.0), 1.0)?;
 
-        assert!(
+        assert!(matches!(
             DynamicObstacle::new(
                 shape,
                 vec![DPose2::translation(f64::NAN, 0.0)],
                 TimeStep::ZERO,
-            )
-            .is_err()
-        );
+            ),
+            Err(CrccError::InvalidGeometry(
+                "trajectory poses must contain only finite values"
+            ))
+        ));
+        Ok(())
     }
 
     #[test]
-    fn len_fixture_matches() {
-        let dynamic_obstacle = dynamic_obstacle();
+    fn time_variant_reports_exact_shape_pose_count_error() {
+        assert!(matches!(
+            DynamicObstacle::time_variant(
+                vec![CollisionObject::empty()],
+                Vec::new(),
+                TimeStep::ZERO,
+            ),
+            Err(CrccError::InvalidGeometry(
+                "time-variant obstacle shape and pose counts must match"
+            ))
+        ));
+    }
 
-        assert!(
-            dynamic_obstacle.is_some(),
-            "failed to create dynamic-obstacle fixture",
-        );
+    #[test]
+    fn time_variant_selects_shapes_at_extreme_times() -> CrccResult<()> {
+        let small = CollisionObject::circle((0.0, 0.0), 1.0)?;
+        let large = CollisionObject::circle((0.0, 0.0), 2.0)?;
+        let obstacle = DynamicObstacle::time_variant(
+            vec![small, large],
+            vec![DPose2::IDENTITY, DPose2::translation(1.0, 0.0)],
+            TimeStep::MAX.pred(),
+        )?;
 
-        let Some(dynamic_obstacle) = dynamic_obstacle else {
-            return;
+        let Some((shape, pose)) = obstacle.obstacle_at(TimeStep::MAX) else {
+            return Err(CrccError::InvalidGeometry(
+                "test expected an obstacle at TimeStep::MAX",
+            ));
         };
+        let [crate::collision_object::simple::SimpleCollisionObject::Circle(circle)] =
+            shape.collision_objects()
+        else {
+            return Err(CrccError::InvalidGeometry(
+                "test expected the second circle shape",
+            ));
+        };
+
+        assert_relative_eq!(circle.radius(), 2.0);
+        assert_eq!(pose, DPose2::translation(1.0, 0.0));
+        assert_eq!(
+            obstacle.active_times(),
+            [TimeStep::MAX.pred(), TimeStep::MAX].into_iter().collect(),
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn time_variant_empty_endpoint_has_empty_interval_sweep() -> CrccResult<()> {
+        let obstacle = DynamicObstacle::time_variant(
+            vec![
+                CollisionObject::empty(),
+                CollisionObject::circle((0.0, 0.0), 1.0)?,
+            ],
+            vec![DPose2::IDENTITY, DPose2::translation(1.0, 0.0)],
+            TimeStep::MIN,
+        )?;
+        let DynamicObstacleTrajectory::VaryingShape { convex_hulls, .. } = &obstacle.0.trajectory
+        else {
+            return Err(CrccError::InvalidGeometry(
+                "test expected a time-variant trajectory",
+            ));
+        };
+        let [convex_hull] = convex_hulls.as_slice() else {
+            return Err(CrccError::InvalidGeometry(
+                "test expected exactly one swept hull",
+            ));
+        };
+
+        assert!(convex_hull.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn len_fixture_matches() -> CrccResult<()> {
+        let dynamic_obstacle = dynamic_obstacle()?;
 
         assert_eq!(dynamic_obstacle.0.len(), 3);
+        Ok(())
     }
 
     #[test]
-    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide",))]
-    fn convex_hull_covers_interpolated_motion() {
-        let dynamic_obstacle = dynamic_obstacle();
-
-        assert!(
-            dynamic_obstacle.is_some(),
-            "failed to create dynamic-obstacle fixture",
-        );
-
-        let Some(dynamic_obstacle) = dynamic_obstacle else {
-            return;
-        };
-
-        assert!(
-            matches!(
-                dynamic_obstacle.0.trajectory,
-                DynamicObstacleTrajectory::FixedShape { .. }
-            ),
-            "fixture should be a fixed-shape dynamic obstacle",
-        );
-
+    fn convex_hull_uses_motion_radius_and_translation_extrema() -> CrccResult<()> {
+        let dynamic_obstacle = dynamic_obstacle()?;
         let DynamicObstacleTrajectory::FixedShape {
-            shape,
             positions,
             convex_hulls,
+            ..
         } = &dynamic_obstacle.0.trajectory
         else {
-            return;
+            return Err(CrccError::InvalidGeometry(
+                "test expected a fixed-shape trajectory",
+            ));
         };
-
-        let motion_data = convex_hulls
-            .first()
-            .zip(positions.first())
-            .zip(positions.get(1));
-
-        assert!(
-            motion_data.is_some(),
-            "fixture should contain one swept hull and two poses",
-        );
-
-        let Some(((convex_hull, start_position), end_position)) = motion_data else {
-            return;
+        let Some(convex_hull) = convex_hulls.first() else {
+            return Err(CrccError::InvalidGeometry("test expected a swept hull"));
         };
+        let [crate::collision_object::simple::SimpleCollisionObject::Rectangle(bound)] =
+            convex_hull.collision_objects()
+        else {
+            return Err(CrccError::InvalidGeometry(
+                "test expected a rectangular swept bound",
+            ));
+        };
+        let [start, end, ..] = positions.as_slice() else {
+            return Err(CrccError::InvalidGeometry(
+                "test expected at least two trajectory poses",
+            ));
+        };
+        let radius = 2.0_f64.hypot(0.5);
 
-        for sample_index in 0..=5 {
-            let interpolation = f64::from(sample_index).div(5.0);
-
-            let interpolated_position = DPose2::from_parts(
-                start_position
-                    .translation
-                    .lerp(end_position.translation, interpolation),
-                start_position
-                    .rotation
-                    .slerp(&end_position.rotation, interpolation),
-            );
-
-            let collision_result = crate::collision_checker::engine::collides(
-                convex_hull,
-                DPose2::IDENTITY,
-                shape,
-                interpolated_position,
-                crate::collision_checker::engine::CollisionEngine::default(),
-            );
-
-            assert!(
-                collision_result.is_ok(),
-                "collision query failed: {collision_result:?}",
-            );
-
-            let Ok(collides) = collision_result else {
-                return;
-            };
-
-            assert!(
-                collides,
-                "convex hull did not contain the shape at \
-                 interpolation {interpolation}",
-            );
-        }
+        assert_relative_eq!(bound.rect().min().x, start.translation.x - radius);
+        assert_relative_eq!(bound.rect().min().y, start.translation.y - radius);
+        assert_relative_eq!(bound.rect().max().x, end.translation.x + radius);
+        assert_relative_eq!(bound.rect().max().y, end.translation.y + radius);
+        Ok(())
     }
 
     #[test]
-    fn convex_hulls_exist_between_positions_only() {
-        let dynamic_obstacle = dynamic_obstacle();
-
-        assert!(
-            dynamic_obstacle.is_some(),
-            "failed to create dynamic-obstacle fixture",
-        );
-
-        let Some(dynamic_obstacle) = dynamic_obstacle else {
-            return;
-        };
-
-        assert!(
-            matches!(
-                dynamic_obstacle.0.trajectory,
-                DynamicObstacleTrajectory::FixedShape { .. }
-            ),
-            "fixture should be a fixed-shape dynamic obstacle",
-        );
-
+    fn convex_hulls_exist_between_positions_only() -> CrccResult<()> {
+        let dynamic_obstacle = dynamic_obstacle()?;
         let DynamicObstacleTrajectory::FixedShape { convex_hulls, .. } =
             &dynamic_obstacle.0.trajectory
         else {
-            return;
+            return Err(CrccError::InvalidGeometry(
+                "test expected a fixed-shape trajectory",
+            ));
         };
 
         assert_eq!(convex_hulls.len(), 2);
+        Ok(())
     }
 
     #[test]
     #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide",))]
-    fn convert_repr_preserves_trajectory_metadata() {
+    fn convert_repr_preserves_trajectory_metadata() -> CrccResult<()> {
         fn check<E: crate::collision_checker::engine::EngineCollisionObject>(
             dynamic_obstacle: &DynamicObstacle,
-        ) {
+        ) -> CrccResult<()> {
             let converted = dynamic_obstacle.clone().convert_repr::<E>();
 
             assert_eq!(
@@ -470,54 +466,43 @@ mod tests {
 
             assert_eq!(converted.time_offset, dynamic_obstacle.0.time_offset,);
 
-            let hull_lengths = match (&converted.trajectory, &dynamic_obstacle.0.trajectory) {
-                (
-                    DynamicObstacleTrajectory::FixedShape {
-                        convex_hulls: converted_hulls,
-                        ..
-                    },
-                    DynamicObstacleTrajectory::FixedShape {
-                        convex_hulls: original_hulls,
-                        ..
-                    },
-                ) => Some((converted_hulls.len(), original_hulls.len())),
-                _ => None,
-            };
-
-            assert!(
-                hull_lengths.is_some(),
-                "fixture and converted obstacle should be fixed-shape",
-            );
-
-            let Some((converted_hull_count, original_hull_count)) = hull_lengths else {
-                return;
-            };
+            let (converted_hull_count, original_hull_count) =
+                match (&converted.trajectory, &dynamic_obstacle.0.trajectory) {
+                    (
+                        DynamicObstacleTrajectory::FixedShape {
+                            convex_hulls: converted_hulls,
+                            ..
+                        },
+                        DynamicObstacleTrajectory::FixedShape {
+                            convex_hulls: original_hulls,
+                            ..
+                        },
+                    ) => (converted_hulls.len(), original_hulls.len()),
+                    _ => {
+                        return Err(CrccError::InvalidGeometry(
+                            "test expected matching fixed-shape trajectories",
+                        ));
+                    }
+                };
 
             assert_eq!(converted_hull_count, original_hull_count,);
+            Ok(())
         }
 
-        let dynamic_obstacle = dynamic_obstacle();
-
-        assert!(
-            dynamic_obstacle.is_some(),
-            "failed to create dynamic-obstacle fixture",
-        );
-
-        let Some(dynamic_obstacle) = dynamic_obstacle else {
-            return;
-        };
+        let dynamic_obstacle = dynamic_obstacle()?;
 
         #[cfg(feature = "parry")]
-        check::<crate::collision_checker::engine::parry::ParryCollisionObject>(&dynamic_obstacle);
+        check::<crate::collision_checker::engine::parry::ParryCollisionObject>(&dynamic_obstacle)?;
 
         #[cfg(feature = "rhusics")]
         check::<crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject>(
             &dynamic_obstacle,
-        );
+        )?;
 
         #[cfg(feature = "collide")]
         check::<crate::collision_checker::engine::collide::CollideCollisionObject>(
             &dynamic_obstacle,
-        );
+        )?;
+        Ok(())
     }
 }

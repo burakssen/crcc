@@ -202,11 +202,13 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         time_step: TimeStep,
         next_step_active: bool,
     ) -> Result<bool, CrccError> {
-        if next_step_active && let Some(ccd_collider) = dynamic_obstacle.ccd_collider_at(time_step)
-        {
-            return Ok(self.check_collision_static_ccd(&ccd_collider)?
+        if next_step_active
+            && let Some(ccd_collider) = dynamic_obstacle.ccd_collider_at(time_step)
+            && (self.check_collision_static_ccd(&ccd_collider)?
                 || (self.active_times.contains(&time_step)
-                    && self.check_collision_dynamic_ccd(&ccd_collider, time_step)?));
+                    && self.check_collision_dynamic_ccd(&ccd_collider, time_step)?))
+        {
+            return Ok(true);
         }
 
         let Some((shape, position)) = dynamic_obstacle.obstacle_at(time_step) else {
@@ -348,7 +350,13 @@ mod tests {
                 .build_with_engine(engine)
                 .unwrap();
 
-            for (time, expected) in [(0, false), (1, true), (2, false), (3, false), (4, false)] {
+            for (time, expected) in [
+                (0, CollisionStatus::NoCollision),
+                (1, CollisionStatus::CollidesDynamic(TimeStep(1))),
+                (2, CollisionStatus::NoCollision),
+                (3, CollisionStatus::NoCollision),
+                (4, CollisionStatus::NoCollision),
+            ] {
                 assert_eq!(
                     checker
                         .collides_static_range(
@@ -356,8 +364,7 @@ mod tests {
                             DPose2::IDENTITY,
                             TimeStep(time)..=TimeStep(time),
                         )
-                        .unwrap()
-                        .collides(),
+                        .unwrap(),
                     expected,
                     "{engine:?}, t={time}"
                 );
@@ -430,26 +437,58 @@ mod tests {
         let start = DPose2::IDENTITY;
         let end = DPose2::new((0.0, 0.0).into(), FRAC_PI_2);
         let moving_query =
-            DynamicObstacle::new(moving_shape.clone(), vec![start, end], TimeStep(0)).unwrap();
+            DynamicObstacle::new(moving_shape, vec![start, end], TimeStep(0)).unwrap();
 
         for engine in engines() {
             let checker = CollisionCheckerBuilder::new()
                 .with_static_obstacle(static_obstacle.clone())
                 .build_with_engine(engine)
                 .unwrap();
+            let expected = match engine {
+                CollisionEngine::Parry => CollisionStatus::NoCollision,
+                CollisionEngine::Rhusics | CollisionEngine::Collide => {
+                    CollisionStatus::CollidesDynamic(TimeStep(0))
+                }
+            };
             assert_eq!(
-                checker.collides_dynamic(&moving_query).unwrap().collides(),
-                crate::collision_checker::engine::collides_continuous(
-                    &moving_shape,
-                    start,
-                    end,
-                    &static_obstacle,
-                    DPose2::IDENTITY,
-                    DPose2::IDENTITY,
-                    engine,
-                )
-                .unwrap(),
+                checker.collides_dynamic(&moving_query).unwrap(),
+                expected,
                 "{engine:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn varying_shape_gaps_preserve_occupancy_without_phantom_motion() {
+        let moving_shape = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
+        let separated_query = DynamicObstacle::time_variant(
+            vec![moving_shape.clone(), CollisionObject::empty()],
+            vec![DPose2::translation(-2.0, 0.0), DPose2::IDENTITY],
+            TimeStep::ZERO,
+        )
+        .unwrap();
+        let colliding_query = DynamicObstacle::time_variant(
+            vec![moving_shape, CollisionObject::empty()],
+            vec![DPose2::IDENTITY; 2],
+            TimeStep::ZERO,
+        )
+        .unwrap();
+
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 0.25).unwrap())
+                .build_with_engine(engine)
+                .unwrap();
+
+            assert_eq!(
+                checker.collides_dynamic(&separated_query).unwrap(),
+                CollisionStatus::NoCollision,
+                "{engine:?}",
+            );
+            assert_eq!(
+                checker.collides_dynamic(&colliding_query).unwrap(),
+                CollisionStatus::CollidesDynamic(TimeStep::ZERO),
+                "{engine:?}",
             );
         }
     }
@@ -494,8 +533,13 @@ mod tests {
                 .unwrap_or(CollisionStatus::NoCollision);
 
             assert_eq!(
-                checker.collides_dynamic(&compound).unwrap(),
                 expanded,
+                CollisionStatus::CollidesDynamic(TimeStep(0)),
+                "{engine:?}"
+            );
+            assert_eq!(
+                checker.collides_dynamic(&compound).unwrap(),
+                CollisionStatus::CollidesDynamic(TimeStep(0)),
                 "{engine:?}"
             );
         }
@@ -512,11 +556,11 @@ mod tests {
                 .with_static_obstacle(rect1.clone())
                 .build_with_engine(engine)
                 .unwrap();
-            assert_ne!(
+            assert_eq!(
                 checker
                     .collides_static(&CollisionObject::from(rect2.clone()))
                     .unwrap(),
-                CollisionStatus::NoCollision,
+                CollisionStatus::CollidesStatic,
                 "{engine:?}"
             );
         }
@@ -529,11 +573,11 @@ mod tests {
                 .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
                 .build_with_engine(engine)
                 .unwrap();
-            assert_ne!(
+            assert_eq!(
                 checker
                     .collides_static(&CollisionObject::from(SimpleCollisionObject::full_space()))
                     .unwrap(),
-                CollisionStatus::NoCollision,
+                CollisionStatus::CollidesStatic,
                 "{engine:?}"
             );
         }
@@ -657,6 +701,7 @@ impl PreparedDynamicQuery {
 pub struct SelectedCollisionChecker(SelectedCollisionCheckerInner);
 
 impl SelectedCollisionChecker {
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
     pub(crate) const fn new(inner: SelectedCollisionCheckerInner) -> Self {
         Self(inner)
     }
@@ -855,6 +900,12 @@ impl SelectedCollisionChecker {
                 SelectedCollisionCheckerInner::Collide(checker),
                 PreparedStaticQueryInner::Collide(query),
             ) => checker.collides_static_range(query, position, time_range),
+            #[cfg(any(
+                not(any(feature = "parry", feature = "rhusics", feature = "collide")),
+                all(feature = "parry", feature = "rhusics"),
+                all(feature = "parry", feature = "collide"),
+                all(feature = "rhusics", feature = "collide"),
+            ))]
             _ => Err(CrccError::Unsupported),
         }
     }
@@ -915,6 +966,12 @@ impl SelectedCollisionChecker {
                 SelectedCollisionCheckerInner::Collide(checker),
                 PreparedDynamicQueryInner::Collide(query),
             ) => checker.collides_dynamic_range(query, time_range),
+            #[cfg(any(
+                not(any(feature = "parry", feature = "rhusics", feature = "collide")),
+                all(feature = "parry", feature = "rhusics"),
+                all(feature = "parry", feature = "collide"),
+                all(feature = "rhusics", feature = "collide"),
+            ))]
             _ => Err(CrccError::Unsupported),
         }
     }
@@ -1149,15 +1206,23 @@ mod selected_tests {
                         ..,
                     )
                     .unwrap(),
-                checker
-                    .collides_static_pos(&query, DPose2::translation(0.5, 0.0))
-                    .unwrap(),
+                CollisionStatus::CollidesStatic,
             );
             assert_eq!(
                 checker
                     .collides_dynamic_prepared(&prepared_dynamic)
                     .unwrap(),
+                CollisionStatus::CollidesDynamic(TimeStep(5)),
+            );
+            assert_eq!(
+                checker
+                    .collides_static_pos(&query, DPose2::translation(0.5, 0.0))
+                    .unwrap(),
+                CollisionStatus::CollidesStatic,
+            );
+            assert_eq!(
                 checker.collides_dynamic(&dynamic).unwrap(),
+                CollisionStatus::CollidesDynamic(TimeStep(5)),
             );
         }
     }
@@ -1172,10 +1237,21 @@ mod selected_tests {
         let rhusics = CollisionCheckerBuilder::new()
             .build_with_engine(CollisionEngine::Rhusics)
             .unwrap();
-        let prepared = parry.prepare_static(&query).unwrap();
+        let dynamic = DynamicObstacle::new(
+            query.clone(),
+            vec![DPose2::translation(2.0, 0.0), DPose2::IDENTITY],
+            TimeStep::ZERO,
+        )
+        .unwrap();
+        let prepared_static = parry.prepare_static(&query).unwrap();
+        let prepared_dynamic = parry.prepare_dynamic(&dynamic).unwrap();
 
         assert_eq!(
-            rhusics.collides_static_prepared(&prepared),
+            rhusics.collides_static_prepared(&prepared_static),
+            Err(CrccError::Unsupported),
+        );
+        assert_eq!(
+            rhusics.collides_dynamic_prepared(&prepared_dynamic),
             Err(CrccError::Unsupported),
         );
     }
@@ -1210,10 +1286,20 @@ mod selected_tests {
                     .iter()
                     .map(|(query, position)| checker.collides_static_range(query, *position, ..))
                     .collect::<Vec<_>>();
+                let expected = (0..count)
+                    .map(|index| {
+                        Ok(if index % 2 == 0 {
+                            CollisionStatus::CollidesStatic
+                        } else {
+                            CollisionStatus::NoCollision
+                        })
+                    })
+                    .collect::<Vec<_>>();
 
+                assert_eq!(sequential, expected, "{engine:?}, {count}");
                 assert_eq!(
                     pool.install(|| checker.collides_static_batch(&queries, ..)),
-                    sequential,
+                    expected,
                     "{engine:?}, {count}"
                 );
             }
@@ -1252,12 +1338,14 @@ mod selected_tests {
                     .iter()
                     .map(|query| checker.collides_dynamic_range(query, TimeStep(5)..=TimeStep(6)))
                     .collect::<Vec<_>>();
+                let expected = vec![Ok(CollisionStatus::CollidesDynamic(TimeStep(5))); count];
 
+                assert_eq!(sequential, expected, "{engine:?}, {count}");
                 assert_eq!(
                     pool.install(
                         || checker.collides_dynamic_batch(&queries, TimeStep(5)..=TimeStep(6))
                     ),
-                    sequential,
+                    expected,
                     "{engine:?}, {count}"
                 );
             }
