@@ -1,0 +1,13 @@
+/* Center Mermaid diagrams on MkDocs pages */
+.mermaid {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 1.5rem auto;
+  text-align: center;
+}
+
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
