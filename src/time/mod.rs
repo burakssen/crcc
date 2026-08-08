@@ -141,6 +141,28 @@ mod tests {
     }
 
     #[test]
+    fn predecessor_and_successor_saturate_at_extremes() {
+        assert_eq!(TimeStep::MIN.pred(), TimeStep::MIN);
+        assert_eq!(TimeStep::MAX.succ(), TimeStep::MAX);
+        assert_eq!(TimeStep::MIN.succ(), TimeStep(TimeStepInner::MIN + 1));
+        assert_eq!(TimeStep::MAX.pred(), TimeStep(TimeStepInner::MAX - 1));
+    }
+
+    #[test]
+    fn checked_add_spans_the_full_representable_range() {
+        let full_span = usize::try_from(u32::MAX).unwrap_or(usize::MAX);
+
+        assert_eq!(
+            TimeStep::MIN.checked_add_steps(full_span),
+            Some(TimeStep::MAX)
+        );
+        assert_eq!(
+            TimeStep::MIN.checked_add_steps(full_span.saturating_add(1)),
+            None
+        );
+    }
+
+    #[test]
     fn excluded_extreme_bounds_are_empty() {
         use std::ops::Bound::{Excluded, Unbounded};
 
@@ -151,6 +173,14 @@ mod tests {
         assert_eq!(
             TimeStep::iter_range((Unbounded, Excluded(TimeStep::MIN))).count(),
             0
+        );
+        assert_eq!(
+            TimeStep::iter_range(TimeStep::MAX..=TimeStep::MAX).collect::<Vec<_>>(),
+            vec![TimeStep::MAX],
+        );
+        assert_eq!(
+            TimeStep::iter_range(TimeStep::MIN..=TimeStep::MIN).collect::<Vec<_>>(),
+            vec![TimeStep::MIN],
         );
     }
 }
