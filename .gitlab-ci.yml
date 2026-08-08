@@ -1,0 +1,105 @@
+# GitLab validates Linux; GitHub alone owns public documentation and releases.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
+
+stages:
+  - validate
+  - package
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  UV_FROZEN: "1"
+
+.rust-python-setup: &rust-python-setup
+  - apt-get update
+  - apt-get install --yes --no-install-recommends build-essential curl git git-lfs
+  - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain stable --profile minimal -y
+  - . "$HOME/.cargo/env"
+  - python -m pip install uv
+
+quality:
+  stage: validate
+  image: python:3.12-slim-bookworm
+  timeout: 20 minutes
+  before_script: *rust-python-setup
+  script:
+    - rustup component add rustfmt clippy
+    - uv run pre-commit run --all-files --show-diff-on-failure
+    - uv run pyright
+
+rust:
+  stage: validate
+  image: python:3.12-slim-bookworm
+  timeout: 30 minutes
+  before_script: *rust-python-setup
+  script:
+    # Match GitHub's smallest complete feature coverage instead of duplicating builds.
+    - cargo test --locked --no-default-features
+    - cargo test --locked --no-default-features --features parry
+    - cargo test --locked --no-default-features --features rhusics
+    - cargo test --locked --no-default-features --features collide
+    - cargo test --locked --all-features
+
+python:
+  stage: validate
+  image: python:${PYTHON_VERSION}-slim-bookworm
+  timeout: 30 minutes
+  parallel:
+    matrix:
+      # ABI3 needs only the oldest and newest declared Python versions in routine CI.
+      - PYTHON_VERSION: ["3.10", "3.13"]
+  before_script: *rust-python-setup
+  script:
+    - git lfs pull
+    - uv run --with "maturin>=1.0,<2.0" maturin develop
+    - uv run pytest
+
+docs:
+  stage: validate
+  image: python:3.12-slim-bookworm
+  timeout: 10 minutes
+  before_script:
+    - python -m pip install mkdocs==1.6.1
+  script:
+    - mkdocs build --strict
+  artifacts:
+    paths:
+      - site/
+    expire_in: 1 day
+
+package:
+  stage: package
+  image: python:3.12-slim-bookworm
+  timeout: 30 minutes
+  needs: [quality, rust, python, docs]
+  before_script: *rust-python-setup
+  script:
+    - |
+      python - <<'PY'
+      import os
+      import re
+      import tomllib
+      from pathlib import Path
+
+      def version(path: str) -> str:
+          with Path(path).open("rb") as file:
+              return tomllib.load(file)["project" if path == "pyproject.toml" else "package"]["version"]
+
+      python_version = version("pyproject.toml")
+      rust_version = version("Cargo.toml")
+      if python_version != rust_version:
+          raise SystemExit(f"version mismatch: pyproject.toml={python_version}, Cargo.toml={rust_version}")
+
+      tag = os.environ.get("CI_COMMIT_TAG", "")
+      if tag and (not re.fullmatch(r"v\d+\.\d+\.\d+", tag) or tag[1:] != python_version):
+          raise SystemExit(f"release tag {tag!r} does not match version {python_version!r}")
+      PY
+    - uv build --sdist
+    - uv build --wheel dist/*.tar.gz
+    - uv venv /tmp/crcc-smoke
+    - uv pip install --python /tmp/crcc-smoke/bin/python dist/*.whl
+    - /tmp/crcc-smoke/bin/python -c "import crcc"
