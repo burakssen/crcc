@@ -8,11 +8,12 @@
 //! # Quick start
 //!
 //! ```
+//! # #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+//! # fn main() -> Result<(), crcc::error::CrccError> {
 //! use crcc::collision_checker::CollisionCheckerBuilder;
 //! use crcc::collision_checker::engine::CollisionEngine;
 //! use crcc::collision_object::CollisionObject;
 //!
-//! # fn main() -> Result<(), crcc::error::CrccError> {
 //! let wall = CollisionObject::rectangle(
 //!     geo::Rect::new((-1.0, -1.0), (1.0, 1.0)),
 //!     0.0,
@@ -26,6 +27,8 @@
 //! assert!(status.collides());
 //! # Ok(())
 //! # }
+//! # #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+//! # fn main() {}
 //! ```
 //!
 //! Pair-query continuous collision detection is conservative: `false` certifies

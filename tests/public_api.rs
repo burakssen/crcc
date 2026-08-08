@@ -1,10 +1,10 @@
-#![allow(clippy::unwrap_used)]
+#[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+use crcc::CrccError;
+use crcc::{CollisionCheckerBuilder, CollisionEngine};
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+use crcc::{CollisionObject, CollisionStatus, Compound, DynamicObstacle, Polygon, Pose, TimeStep};
 
-use crcc::{
-    CollisionCheckerBuilder, CollisionEngine, CollisionObject, CollisionStatus, Compound,
-    DynamicObstacle, Polygon, Pose, TimeStep,
-};
-
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
 fn engines() -> Vec<CollisionEngine> {
     vec![
         #[cfg(feature = "parry")]
@@ -17,6 +17,7 @@ fn engines() -> Vec<CollisionEngine> {
 }
 
 #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide",))]
+#[allow(clippy::unwrap_used)]
 fn check_generic_engine<E>(obstacle: &CollisionObject, query: &CollisionObject)
 where
     E: crcc::collision_checker::engine::EngineCollisionObject,
@@ -27,15 +28,15 @@ where
         .with_static_obstacle(obstacle.clone())
         .build();
 
-    assert!(
-        checker
-            .collides_static(&query.clone().into())
-            .unwrap()
-            .collides(),
+    assert_eq!(
+        checker.collides_static(&query.clone().into()).unwrap(),
+        CollisionStatus::CollidesStatic,
     );
 }
 
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
 #[test]
+#[allow(clippy::unwrap_used)]
 fn root_api_covers_pair_and_checker_queries() {
     let _: Option<Polygon> = None;
 
@@ -53,12 +54,10 @@ fn root_api_covers_pair_and_checker_queries() {
     .unwrap();
 
     for engine in engines() {
-        assert!(
-            obstacle
-                .collides(&query, Pose::IDENTITY, Pose::IDENTITY, engine,)
-                .unwrap(),
-            "{engine:?}",
-        );
+        let pair_collision = obstacle
+            .collides(&query, Pose::IDENTITY, Pose::IDENTITY, engine)
+            .unwrap();
+        assert!(pair_collision, "{engine:?}: expected pair collision");
 
         let checker = CollisionCheckerBuilder::new()
             .with_static_obstacle(obstacle.clone())
@@ -71,8 +70,9 @@ fn root_api_covers_pair_and_checker_queries() {
             "{engine:?}",
         );
 
-        assert!(
-            checker.collides_dynamic(&dynamic).unwrap().collides(),
+        assert_eq!(
+            checker.collides_dynamic(&dynamic).unwrap(),
+            CollisionStatus::CollidesDynamic(TimeStep(0)),
             "{engine:?}",
         );
 
@@ -87,6 +87,7 @@ fn root_api_covers_pair_and_checker_queries() {
 
 #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide",))]
 #[test]
+#[allow(clippy::unwrap_used)]
 fn module_api_supports_generic_checkers_for_each_engine() {
     let obstacle = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
 
@@ -106,4 +107,22 @@ fn module_api_supports_generic_checkers_for_each_engine() {
     check_generic_engine::<crcc::collision_checker::engine::collide::CollideCollisionObject>(
         &obstacle, &query,
     );
+}
+
+#[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+#[test]
+fn runtime_checker_rejects_engines_without_backend_features() {
+    for engine in [
+        CollisionEngine::Parry,
+        CollisionEngine::Rhusics,
+        CollisionEngine::Collide,
+    ] {
+        assert_eq!(
+            CollisionCheckerBuilder::new()
+                .build_with_engine(engine)
+                .err(),
+            Some(CrccError::Unsupported),
+            "{engine:?}",
+        );
+    }
 }
