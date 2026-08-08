@@ -6,7 +6,30 @@ See [Concepts and engines](concepts.md) for the shared semantic contract and [Py
 
 ## Install
 
-CRCC is not currently published to PyPI. The reliable development path is a source checkout:
+CRCC is not currently published to PyPI. You can install it directly from GitHub as a Git dependency:
+
+```bash
+uv pip install git+https://github.com/burakssen/crcc
+# or with pip
+pip install git+https://github.com/burakssen/crcc
+# or add to a uv project
+uv add git+https://github.com/burakssen/crcc
+```
+
+Or declare it in `pyproject.toml`:
+
+```toml
+[project]
+dependencies = [
+    "crcc @ git+https://github.com/burakssen/crcc",
+]
+```
+
+Installing as a Git dependency builds the native extension during installation and requires a Rust toolchain.
+
+### Source Checkout
+
+For development or running tutorials:
 
 ```bash
 git clone https://github.com/burakssen/crcc.git
@@ -21,6 +44,8 @@ This installs project dependencies and builds the native `crcc._core` extension 
 ```bash
 uv run python -c "import crcc; print(crcc.CollisionEngine.Parry)"
 ```
+
+### Pre-built Release Wheel
 
 To install a compatible wheel downloaded from a GitHub release:
 

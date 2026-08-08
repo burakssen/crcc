@@ -19,6 +19,27 @@ The MkDocs site is configured for `https://burakssen.com/crcc/`. Until GitHub Pa
 
 CRCC is not currently published to PyPI or crates.io. Use a source checkout, a wheel attached to a GitHub release, or a Git dependency.
 
+### Python As a Git Dependency
+
+Install directly from GitHub into a environment (requires a Rust toolchain for the Maturin build step):
+
+```bash
+uv pip install git+https://github.com/burakssen/crcc
+# or with pip
+pip install git+https://github.com/burakssen/crcc
+# or add to a uv project
+uv add git+https://github.com/burakssen/crcc
+```
+
+Or add it to `pyproject.toml`:
+
+```toml
+[project]
+dependencies = [
+    "crcc @ git+https://github.com/burakssen/crcc",
+]
+```
+
 ### Python From Source
 
 Prerequisites are Git, Git LFS, a recent stable Rust toolchain, Python 3.10 or newer, and [`uv`](https://docs.astral.sh/uv/).
