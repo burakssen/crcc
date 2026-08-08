@@ -11,18 +11,13 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 
 const ROTATION_EPSILON: f64 = 1e-12;
 const LOCAL_OFFSET_EPSILON_SQUARED: f64 = 1e-24;
-const QUADRATIC_EPSILON: f64 = 1e-12;
-
-// Most collision objects will be non-trivial, so boxing them would be
-// counterproductive.
-#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum ParryCollisionObjectInner {
     Empty,
     FullSpace,
-    // ponytail: Keep conversion infallible while surfacing invalid prepared geometry on use.
+    // Keep conversion infallible while surfacing invalid prepared geometry on use.
     Invalid,
-    NonTrivial(NonTrivial),
+    NonTrivial(Box<NonTrivial>),
 }
 
 #[derive(Clone, Debug)]
@@ -294,27 +289,20 @@ fn moving_ball_pair_collides(
     let velocity_other = end_other.sub(start_other);
     let relative_velocity = velocity_self.sub(velocity_other);
 
-    let quadratic_a = relative_velocity.length_squared();
+    let velocity_squared = relative_velocity.length_squared();
 
-    if quadratic_a <= QUADRATIC_EPSILON {
+    if velocity_squared <= 0.0 {
         return Some(false);
     }
 
-    let quadratic_b = 2.0_f64.mul(relative_start.dot(relative_velocity));
-    let quadratic_c = relative_start.length_squared().sub(radius_squared);
+    let closest_time = relative_start
+        .dot(relative_velocity)
+        .neg()
+        .div(velocity_squared)
+        .clamp(0.0, 1.0);
+    let closest = relative_start.add(relative_velocity.mul(closest_time));
 
-    let discriminant = quadratic_b
-        .mul(quadratic_b)
-        .sub(4.0_f64.mul(quadratic_a).mul(quadratic_c));
-
-    if discriminant < 0.0 {
-        return Some(false);
-    }
-
-    let denominator = 2.0_f64.mul(quadratic_a);
-    let collision_time = quadratic_b.neg().sub(discriminant.sqrt()).div(denominator);
-
-    Some((0.0..=1.0).contains(&collision_time))
+    Some(closest.length_squared() <= radius_squared)
 }
 
 fn motion_from_start_end(start: DPose2, end: DPose2) -> NonlinearRigidMotion {
@@ -376,10 +364,10 @@ impl From<CollisionObject> for ParryCollisionObjectInner {
         if tri_mesh_compound.is_none() && generic_compound.is_none() {
             Self::Empty
         } else {
-            Self::NonTrivial(NonTrivial {
+            Self::NonTrivial(Box::new(NonTrivial {
                 tri_mesh_compound,
                 generic_compound,
-            })
+            }))
         }
     }
 }

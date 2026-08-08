@@ -15,17 +15,15 @@ use std::ops::{Add, Div, Mul, Neg, Sub};
 const HALF_SPACE_EPSILON: f64 = 1e-9;
 const ROTATION_EPSILON: f64 = 1e-12;
 const LOCAL_OFFSET_EPSILON_SQUARED: f64 = 1e-24;
-const QUADRATIC_EPSILON: f64 = 1e-12;
 const TOI_TIME_TOLERANCE: f64 = 1e-9;
 const TOI_MAX_DEPTH: usize = 10;
 const TOI_SAMPLE_TIMES: [f64; 8] = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1.0];
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
 pub enum CollideCollisionObjectInner {
     Empty,
     FullSpace,
-    NonTrivial(NonTrivial),
+    NonTrivial(Box<NonTrivial>),
 }
 
 impl fmt::Debug for CollideCollisionObjectInner {
@@ -213,26 +211,20 @@ fn moving_circle_pair_collides(
     let velocity_self = end_self.sub(start_self);
     let velocity_other = end_other.sub(start_other);
     let relative_velocity = velocity_self.sub(velocity_other);
-    let quadratic_a = relative_velocity.length_squared();
+    let velocity_squared = relative_velocity.length_squared();
 
-    if quadratic_a <= QUADRATIC_EPSILON {
+    if velocity_squared <= 0.0 {
         return Some(false);
     }
 
-    let quadratic_b = 2.0_f64.mul(relative_start.dot(relative_velocity));
-    let quadratic_c = relative_start.length_squared().sub(combined_radius_squared);
-    let discriminant = quadratic_b
-        .mul(quadratic_b)
-        .sub(4.0_f64.mul(quadratic_a).mul(quadratic_c));
+    let closest_time = relative_start
+        .dot(relative_velocity)
+        .neg()
+        .div(velocity_squared)
+        .clamp(0.0, 1.0);
+    let closest = relative_start.add(relative_velocity.mul(closest_time));
 
-    if discriminant < 0.0 {
-        return Some(false);
-    }
-
-    let denominator = 2.0_f64.mul(quadratic_a);
-    let collision_time = quadratic_b.neg().sub(discriminant.sqrt()).div(denominator);
-
-    Some((0.0..=1.0).contains(&collision_time))
+    Some(closest.length_squared() <= combined_radius_squared)
 }
 
 fn finite_components_collide(
@@ -483,7 +475,11 @@ fn half_spaces_collide(
     let left = transform_half_space(left, left_pose);
     let right = transform_half_space(right, right_pose);
 
-    if left.outward_normal.add(right.outward_normal).length() <= HALF_SPACE_EPSILON {
+    // A tolerance here changes nonparallel, intersecting sets into parallel ones.
+    let normals_are_opposite = left.outward_normal.perp_dot(right.outward_normal).abs() <= 0.0
+        && left.outward_normal.dot(right.outward_normal) < 0.0;
+
+    if normals_are_opposite {
         left.offset.add(right.offset) >= HALF_SPACE_EPSILON.neg()
     } else {
         true
@@ -637,7 +633,7 @@ impl From<CollisionObject> for CollideCollisionObjectInner {
         if components.is_empty() {
             Self::Empty
         } else {
-            Self::NonTrivial(NonTrivial { components })
+            Self::NonTrivial(Box::new(NonTrivial { components }))
         }
     }
 }

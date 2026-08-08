@@ -170,9 +170,11 @@ pub(crate) fn distance_geo(left: &GeoRepresentation, right: &GeoRepresentation) 
                 offset: right_offset,
             },
         ) => {
-            let dot = left_normal.dot(*right_normal);
+            // Only exact parallelism permits a positive set distance.
+            let normals_are_opposite = left_normal.perp_dot(*right_normal).abs() <= 0.0
+                && left_normal.dot(*right_normal) < 0.0;
 
-            if dot.add(1.0).abs() < 1e-9 {
+            if normals_are_opposite {
                 let gap = (*right_offset).neg().sub(*left_offset);
 
                 Ok(gap.max(0.0))

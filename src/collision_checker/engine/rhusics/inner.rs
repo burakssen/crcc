@@ -14,12 +14,11 @@ use std::ops::{Add, Mul, Neg, Sub};
 
 const HALF_SPACE_EPSILON: f64 = 1e-9;
 
-#[allow(clippy::large_enum_variant)]
 #[derive(Clone)]
 pub enum RhusicsCoreCollisionObjectInner {
     Empty,
     FullSpace,
-    NonTrivial(NonTrivial),
+    NonTrivial(Box<NonTrivial>),
 }
 
 impl fmt::Debug for RhusicsCoreCollisionObjectInner {
@@ -278,8 +277,9 @@ fn half_spaces_collide(
     let left = transform_half_space(left, left_pose);
     let right = transform_half_space(right, right_pose);
 
-    let normals_are_opposite =
-        left.outward_normal.add(right.outward_normal).length() <= HALF_SPACE_EPSILON;
+    // A tolerance here changes nonparallel, intersecting sets into parallel ones.
+    let normals_are_opposite = left.outward_normal.perp_dot(right.outward_normal).abs() <= 0.0
+        && left.outward_normal.dot(right.outward_normal) < 0.0;
 
     if normals_are_opposite {
         left.offset.add(right.offset) >= HALF_SPACE_EPSILON.neg()
@@ -348,11 +348,11 @@ impl From<CollisionObject> for RhusicsCoreCollisionObjectInner {
         if finite.is_empty() && half_spaces.is_empty() {
             Self::Empty
         } else {
-            Self::NonTrivial(NonTrivial {
+            Self::NonTrivial(Box::new(NonTrivial {
                 finite,
                 finite_motion_radii,
                 half_spaces,
-            })
+            }))
         }
     }
 }
