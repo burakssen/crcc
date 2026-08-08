@@ -4,22 +4,21 @@ CRCC keeps one backend-independent geometry model and converts it at the query b
 
 ## Layer Map
 
-```text
-Python users                 Rust users
-     |                           |
-python/crcc wrappers        src/lib.rs exports
-     |                           |
-     +------ PyO3 bindings ------+
-                 |
-      collision_object + time
-                 |
-       collision_checker builder
-                 |
-        selected/generic checker
-                 |
-      +----------+----------+
-      |          |          |
-    Parry     Rhusics     Collide
+```mermaid
+graph TD
+    PY[Python users] --> WRAP[python/crcc wrappers]
+    RS[Rust users] --> LIB[src/lib.rs exports]
+
+    WRAP --> PYO3[PyO3 bindings]
+    PYO3 --> CORE[collision_object + time]
+    LIB --> CORE
+
+    CORE --> BUILDER[collision_checker builder]
+    BUILDER --> CHECKER[selected / generic checker]
+
+    CHECKER --> PARRY[Parry]
+    CHECKER --> RHUSICS[Rhusics]
+    CHECKER --> COLLIDE[Collide]
 ```
 
 ## Domain Geometry
