@@ -1,43 +1,78 @@
 # CRCC
 
-CRCC is a 2D collision-checking library for Rust and Python. It supports primitive and compound geometry, discrete and continuous collision queries, dynamic obstacles, ordered batch queries, and CommonRoad scenarios.
+CRCC is a two-dimensional collision-checking library for Rust and Python. It provides validated primitive and polygon geometry, discrete and continuous pair queries, immutable static/dynamic scenes, prepared queries, ordered native batches, and CommonRoad conversion utilities.
 
-Continuous collision detection (CCD) is conservative: a negative result certifies separation, while a positive result may be an over-approximation.
+Continuous collision detection is conservative: `False` certifies separation for the complete interval, while `True` may represent either a collision or a conservative positive.
 
-## Choose your language
+## Documentation
 
-| Language | Start here | API reference |
-| --- | --- | --- |
-| Python | [Python guide](docs/python-guide.md) | [Python API](docs/python-api.md) |
-| Rust | [Rust guide](docs/rust-guide.md) | [Rust API](docs/rust-api.md) |
+- [Documentation home](docs/index.md)
+- [Core concepts and engine behavior](docs/concepts.md)
+- [Python guide](docs/python-guide.md) and [Python API](docs/python-api.md)
+- [Rust guide](docs/rust-guide.md) and [Rust API](docs/rust-api.md)
+- [Architecture](docs/architecture.md)
+- [Development and benchmarks](docs/development.md)
 
-Additional documentation:
+The MkDocs site is configured for `https://burakssen.com/crcc/`. Until GitHub Pages is enabled for the repository, use the checked-in pages linked above.
 
-- [Benchmark tool](tools/benchmark/README.md)
-- [Broad-phase acceleration design note](docs/future-work.md)
+## Quick Start
 
-## Development setup
+CRCC is not currently published to PyPI or crates.io. Use a source checkout, a wheel attached to a GitHub release, or a Git dependency.
 
-The repository uses `uv` for the Python environment and Cargo for Rust:
+### Python From Source
+
+Prerequisites are Git, Git LFS, a recent stable Rust toolchain, Python 3.10 or newer, and [`uv`](https://docs.astral.sh/uv/).
 
 ```bash
-git clone <repository-url> crcc
+git clone https://github.com/burakssen/crcc.git
 cd crcc
-uv sync
+git lfs install
+git lfs pull
+uv sync --frozen
 ```
 
-Run the standard checks with:
+```python
+from crcc import Circle, CollisionEngine, Pose
 
-```bash
-uv run ruff check .
-uv run pytest -q
-cargo test --all-features
-cargo clippy --all-targets --all-features -- -D warnings
+robot = Circle(0.5)
+obstacle = Circle(1.0)
+obstacle_pose = Pose.from_translation((3.0, 0.0))
+
+assert not robot.collides(obstacle, pos_other=obstacle_pose, engine=CollisionEngine.Parry)
+assert robot.distance(obstacle, pos_other=obstacle_pose) == 1.5
 ```
 
-## Tutorials and playground
+### Rust As a Git Dependency
 
-The CLI exposes deterministic examples for the supported engines:
+Choose only the backend features the application needs:
+
+```toml
+[dependencies]
+crcc = { git = "https://github.com/burakssen/crcc", default-features = false, features = ["parry"] }
+geo = "0.32"
+```
+
+```rust
+use crcc::{CollisionEngine, CollisionObject, Pose};
+
+fn main() -> Result<(), crcc::CrccError> {
+    let robot = CollisionObject::circle((0.0, 0.0), 0.5)?;
+    let obstacle = CollisionObject::circle((0.0, 0.0), 1.0)?;
+    let obstacle_pose = Pose::translation(3.0, 0.0);
+
+    assert!(!robot.collides(
+        &obstacle,
+        Pose::IDENTITY,
+        obstacle_pose,
+        CollisionEngine::Parry,
+    )?);
+    Ok(())
+}
+```
+
+## Repository Tutorials
+
+`main.py` is a repository launcher; installing a wheel does not install a `crcc` command.
 
 ```bash
 uv run main.py basic --engine parry
@@ -46,4 +81,17 @@ uv run main.py commonroad --engine collide
 uv run main.py playground
 ```
 
-Run `uv run main.py` without an action to choose interactively.
+The launcher defaults to Rhusics. The compiled library API defaults to Parry when Parry is enabled.
+
+## Development Checks
+
+```bash
+uv run --frozen pre-commit run --all-files --show-diff-on-failure
+uv run --frozen pyright
+uv run --frozen pytest -q
+cargo test --locked --no-default-features
+cargo test --locked --all-features
+uvx --from mkdocs==1.6.1 mkdocs build --strict
+```
+
+See [Development and benchmarks](docs/development.md) for the complete feature matrix, package smoke test, CLI, playground, benchmark profiles, and release behavior.

@@ -1,68 +1,123 @@
-# Python Guide
+# Python Usage Guide
 
-This guide covers the usual CRCC workflow in Python: create geometry, choose a collision engine, build a scene, and query it.
+This guide follows the usual Python workflow: install CRCC, construct geometry, choose an engine, query pairs, build a scene, add trajectories, reuse prepared queries, batch work, and convert CommonRoad scenarios.
 
-For signatures and the full list of classes, see the [Python API reference](python-api.md).
+See [Concepts and engines](concepts.md) for the shared semantic contract and [Python API reference](python-api.md) for signatures.
 
-## Setup
+## Install
 
-From the repository root:
+CRCC is not currently published to PyPI. The reliable development path is a source checkout:
 
 ```bash
-uv sync
-uv run python
+git clone https://github.com/burakssen/crcc.git
+cd crcc
+git lfs install
+git lfs pull
+uv sync --frozen
 ```
 
-All core classes are available from `crcc`:
+This installs project dependencies and builds the native `crcc._core` extension through Maturin. Verify the import:
 
-```python
-from crcc import Circle, CollisionCheckerBuilder, Pose, Rectangle
+```bash
+uv run python -c "import crcc; print(crcc.CollisionEngine.Parry)"
 ```
 
-Angles are in radians. Shapes use local coordinates and `Pose` places them in the scene.
+To install a compatible wheel downloaded from a GitHub release:
 
-## Pair queries
+```bash
+uv venv
+uv pip install ./crcc-0.1.0-cp310-abi3-<platform>.whl
+```
 
-Use `collides` and `distance` when checking two objects directly:
+The ABI3 wheels target CPython 3.10 and newer. Match the wheel's operating system and architecture to the interpreter.
+
+## Coordinate Conventions
+
+- Coordinates and distances are `float` values.
+- Angles are counter-clockwise radians.
+- Shape centers and vertices are local coordinates.
+- A `Pose` places local geometry in world coordinates.
 
 ```python
-from crcc import Circle, Pose
+from math import pi
+
+from crcc import Pose
+
+world_pose = Pose((3.0, 4.0), pi / 2)
+assert world_pose.translation == (3.0, 4.0)
+assert world_pose.rotation == pi / 2
+```
+
+Compose poses with `compose` or `*`. The right-hand pose is applied first.
+
+## Construct Geometry
+
+All concrete shapes inherit from `CollisionObject`:
+
+```python
+from crcc import Circle, Compound, HalfSpace, Polygon, Rectangle, Triangle
+
+circle = Circle(radius=0.5, center=(0.25, 0.0))
+rectangle = Rectangle(length=2.0, width=1.0, orientation=0.2)
+triangle = Triangle(point_a=(0.0, 0.0), point_b=(1.0, 0.0), point_c=(0.0, 1.0))
+polygon = Polygon(
+    exterior=[(-2.0, -2.0), (2.0, -2.0), (2.0, 2.0), (-2.0, 2.0)],
+    interiors=[[(-0.5, -0.5), (-0.5, 0.5), (0.5, 0.5), (0.5, -0.5)]],
+)
+ground = HalfSpace.from_coeffs(0.0, 1.0, 0.0)  # y <= 0
+compound = Compound([circle, rectangle, triangle])
+```
+
+Constructors reject non-finite, degenerate, or invalid geometry with `ValueError`. A circle radius and rectangle dimensions must be strictly positive. A polygon may be non-convex and may contain holes, but its rings must describe valid finite geometry.
+
+`Empty()` never collides. `FullSpace()` collides with every non-empty object. `Compound([])` is empty.
+
+## Query Two Objects
+
+Use pair methods when no reusable scene is needed:
+
+```python
+from crcc import Circle, CollisionEngine, Pose
 
 left = Circle(1.0)
 right = Circle(1.0)
 right_pose = Pose.from_translation((3.0, 0.0))
 
-assert not left.collides(right, pos_other=right_pose)
+assert not left.collides(
+    right,
+    pos_other=right_pose,
+    engine=CollisionEngine.Parry,
+)
 assert left.distance(right, pos_other=right_pose) == 1.0
 ```
 
-The default engine is Parry. Pass `engine=CollisionEngine.Rhusics` or `CollisionEngine.Collide` to select another backend for a pair query.
+Pair calls convert both objects to the selected backend each time. For repeated queries against a scene, build a checker instead.
 
-## Continuous collision detection
+## Check Continuous Motion
 
-Endpoint checks can miss a collision between poses. `collides_continuous` checks the complete motion interval:
+Discrete endpoint checks can miss tunneling. Supply start and end poses for both objects:
 
 ```python
 from crcc import Circle, Pose, Rectangle
 
 moving = Circle(0.5)
-barrier = Rectangle(0.25, 3.0)
+barrier = Rectangle(length=0.25, width=3.0)
 
-hit = moving.collides_continuous(
+possible_hit = moving.collides_continuous(
     Pose.from_translation((-2.0, 0.0)),
     Pose.from_translation((2.0, 0.0)),
     barrier,
     Pose.identity(),
     Pose.identity(),
 )
-assert hit
+assert possible_hit
 ```
 
-A `False` result certifies separation. A `True` result means the interval may contain a collision; rotational sweeps can be conservative.
+Interpret the result conservatively: `False` certifies the complete interval is clear; `True` may be a conservative positive. Engine behavior for rotation, half-spaces, and exact tangency is summarized in [Engine selection](concepts.md#engine-selection).
 
-## Scene queries
+## Build an Immutable Scene
 
-A `CollisionChecker` stores static and dynamic obstacles. Build one with `CollisionCheckerBuilder`:
+The builder accepts static objects, dynamic trajectories, and road boundaries:
 
 ```python
 from crcc import Circle, CollisionCheckerBuilder, CollisionEngine, Pose, Rectangle
@@ -70,58 +125,113 @@ from crcc import Circle, CollisionCheckerBuilder, CollisionEngine, Pose, Rectang
 checker = (
     CollisionCheckerBuilder(CollisionEngine.Rhusics)
     .with_static_obstacle(Rectangle(2.0, 2.0))
+    .with_static_obstacle(Circle(0.25, center=(3.0, 0.0)))
     .build()
 )
 
-status = checker.collides_static(Circle(0.5), Pose.identity())
+status = checker.collides_static(Circle(0.5), position=Pose.identity())
 assert status.collides
+assert status.time_step is None
 assert checker.engine == CollisionEngine.Rhusics
 ```
 
-`CollisionStatus.collides` reports whether anything was hit. `time_step` identifies the first dynamic collision and is otherwise `None`.
+Static scene geometry is checked before dynamic geometry. If it collides, the result is `CollidesStatic` regardless of time bounds.
 
-## Dynamic obstacles and time windows
+## Add a Fixed-Shape Trajectory
 
-`DynamicObstacle` associates geometry with poses at discrete time steps. Motion between consecutive poses is checked continuously.
+`positions[0]` occurs at `time_offset`; each later pose advances one step:
 
 ```python
 from crcc import Circle, CollisionCheckerBuilder, DynamicObstacle, Pose, Rectangle
 
-moving = DynamicObstacle(
+trajectory = DynamicObstacle(
     Circle(0.5),
-    [Pose.from_translation((-2.0, 0.0)), Pose.from_translation((2.0, 0.0))],
+    [
+        Pose.from_translation((-2.0, 0.0)),
+        Pose.from_translation((2.0, 0.0)),
+    ],
     time_offset=10,
 )
-checker = CollisionCheckerBuilder().with_static_obstacle(Rectangle(0.25, 3.0)).build()
 
-status = checker.collides_dynamic(moving, min_time=10, max_time=11)
+checker = (
+    CollisionCheckerBuilder()
+    .with_static_obstacle(Rectangle(0.25, 3.0))
+    .build()
+)
+
+status = checker.collides_dynamic(trajectory, min_time=10, max_time=11)
 assert status.collides
+assert status.time_step == 10
 ```
 
-Python time bounds are inclusive. Omit both bounds to query the complete trajectory. Use `DynamicObstacle.from_time_variant` when the geometry also changes between steps.
+Bounds are inclusive. Both 10 and 11 are selected, so CRCC checks motion from 10 to 11. A range containing only 10 checks the pose at 10 but not that outgoing interval.
 
-## Batch queries
+Empty pose sequences are valid and have no active times. Time values must fit signed 32-bit integers; Python conversion may raise `OverflowError` for out-of-range values.
 
-Batch methods preserve input order. Small batches run sequentially; larger batches use Rayon automatically.
+## Use Time-Varying Geometry
+
+Use `from_time_variant` when occupancy changes by step:
+
+```python
+from crcc import Circle, DynamicObstacle, Empty, Pose
+
+occupancy = DynamicObstacle.from_time_variant(
+    obstacles=[Circle(0.5), Empty(), Circle(0.5)],
+    positions=[
+        Pose.from_translation((-2.0, 0.0)),
+        Pose.identity(),
+        Pose.from_translation((2.0, 0.0)),
+    ],
+    time_offset=0,
+)
+```
+
+Intervals touching the empty middle sample are empty. CRCC does not infer motion through a missing occupancy. If `positions` is omitted, identity poses are created for all shapes.
+
+## Reuse Prepared Queries
+
+Prepared queries avoid backend conversion when the same geometry or trajectory is reused:
+
+```python
+from crcc import Circle, CollisionCheckerBuilder, Pose
+
+checker = CollisionCheckerBuilder().with_static_obstacle(Circle(1.0)).build()
+query = Circle(0.25)
+prepared = checker.prepare_static(query)
+
+near = checker.collides_static_prepared(prepared, Pose.identity())
+far = checker.collides_static_prepared(
+    prepared,
+    Pose.from_translation((5.0, 0.0)),
+)
+assert near.collides and not far.collides
+assert prepared.engine == checker.engine
+```
+
+A prepared query belongs to one engine. Passing it to a checker built with another engine raises `ValueError` as an unsupported operation.
+
+## Run Ordered Batches
+
+Batch results preserve input order:
 
 ```python
 from crcc import Circle, CollisionCheckerBuilder, Pose, Rectangle
 
 checker = CollisionCheckerBuilder().with_static_obstacle(Rectangle(2.0, 2.0)).build()
-queries = [
-    (Circle(0.25), Pose.identity()),
-    (Circle(0.25), Pose.from_translation((5.0, 0.0))),
-]
-
-results = checker.collides_static_batch(queries)
+results = checker.collides_static_batch(
+    [
+        (Circle(0.25), Pose.identity()),
+        (Circle(0.25), Pose.from_translation((5.0, 0.0))),
+    ]
+)
 assert [result.collides for result in results] == [True, False]
 ```
 
-Use `collides_dynamic_batch` for multiple trajectories. Both batch methods accept the same inclusive time bounds as their single-query equivalents.
+Use `collides_dynamic_batch` for trajectories. Inputs below 32 run sequentially; larger batches use Rayon and release the GIL during native work. Legacy `par_static` and `par_dynamic` are aliases of this automatic behavior.
 
-## CommonRoad scenarios
+## Convert a CommonRoad Scenario
 
-`crcc.commonroad.scenario_builder` adds the road boundary and all supported scenario obstacles to a builder:
+CommonRoad support is in the Python-only `crcc.commonroad` module. Scenario XML files in this repository require Git LFS.
 
 ```python
 from commonroad.common.file_reader import CommonRoadFileReader
@@ -131,27 +241,45 @@ from crcc.commonroad import scenario_builder
 scenario, _ = CommonRoadFileReader(
     "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
 ).open()
+
 checker = scenario_builder(
     scenario,
     CollisionCheckerBuilder(CollisionEngine.Parry),
 ).build()
 ```
 
-Lower-level conversion helpers are listed in the [CommonRoad API section](python-api.md#commonroad-conversion).
+`scenario_builder` adds the road boundary, static obstacles, and dynamic obstacles. It returns a builder so callers can add project-specific geometry before `build()`.
 
-## Interactive exploration
+Missing intermediate CommonRoad occupancies become empty geometry. The adapter suppresses motion across those gaps. An empty lanelet network adds no road constraint; directly calling the low-level boundary function on an empty network returns full space.
 
-Run the playground against the bundled scenario:
+## Handle Errors
+
+Native CRCC errors appear as `ValueError`:
+
+```python
+from crcc import Circle, Empty
+
+try:
+    Circle(0.0)
+except ValueError as error:
+    print(error)
+
+try:
+    Empty().distance(Circle(1.0))
+except ValueError:
+    # Distance to an empty set is unsupported by this API.
+    pass
+```
+
+Python argument conversion can also raise `TypeError` or `OverflowError`. Treat unsupported queries as errors, never as collision-free results.
+
+## Explore the Repository Tutorials
 
 ```bash
+uv run main.py basic --engine parry
+uv run main.py continuous --engine collide
+uv run main.py commonroad --engine rhusics
 uv run main.py playground
 ```
 
-Object fills show collisions at the visible pose. Paths and outlines show conservative collision results for the next interval.
-
-## Accuracy notes
-
-- Translation is interpolated linearly.
-- Rotation follows the shortest angular path.
-- Translation-only convex sweeps are exact; more complex rotational sweeps may be over-approximated.
-- Dividing a trajectory into smaller intervals can tighten conservative rotational bounds.
+`main.py` is not installed by the wheel. See [Development and benchmarks](development.md) for the launcher, playground requirements, and benchmark workflows.
