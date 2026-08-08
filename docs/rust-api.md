@@ -19,7 +19,7 @@ The crate root exports the common application-facing types:
 
 - Geometry: `CollisionObject`, `Circle`, `Rectangle`, `Triangle`, `HalfSpace`, `Polygon`, `Compound`, `Empty`, `FullSpace`.
 - Placement and time: `Pose`, `TimeStep`.
-- Scenes: `CollisionChecker`, `SelectedCollisionChecker`, `CollisionCheckerBuilder`, `DynamicObstacle`.
+- Scenes: `CollisionChecker`, `SelectedCollisionChecker`, `CollisionCheckerBuilder`, `DynamicObstacle`, `PreparedStaticQuery`, `PreparedDynamicQuery`.
 - Results: `CollisionStatus`, `CollisionResult`, `CrccError`, `CrccResult`.
 - Backend selection: `CollisionEngine`.
 
@@ -73,6 +73,8 @@ The runtime-selected checker accepts ordinary `CollisionObject` and `DynamicObst
 | Method | Purpose |
 | --- | --- |
 | `engine()` | Active `CollisionEngine`. |
+| `prepare_static(...)` / `prepare_dynamic(...)` | Convert a reusable query once for the active engine. |
+| `collides_static_prepared(...)` / `collides_dynamic_prepared(...)` | Execute a previously prepared query. |
 | `collides_static(...)` / `collides_dynamic(...)` | Query the full supported time domain. |
 | `collides_static_at(...)` / `collides_dynamic_at(...)` | Query one `TimeStep`. |
 | `collides_static_range(...)` / `collides_dynamic_range(...)` | Query a Rust time range. |
@@ -82,8 +84,8 @@ The runtime-selected checker accepts ordinary `CollisionObject` and `DynamicObst
 
 | API | Purpose |
 | --- | --- |
-| `DynamicObstacle::new(shape, poses, time_offset)` | Constant geometry across a trajectory. |
-| `DynamicObstacle::time_variant(shapes, poses, time_offset)` | Geometry that changes by step. |
+| `DynamicObstacle::new(shape, poses, time_offset)` | Fallibly create constant geometry across a representable trajectory. |
+| `DynamicObstacle::time_variant(shapes, poses, time_offset)` | Fallibly create geometry that changes by step. |
 | `TimeStep::pred()` / `succ()` | Saturating adjacent step. |
 | `TimeStep::add_steps(count)` | Saturating forward offset. |
 | `TimeStep::iter_range(range)` | Iterate the steps selected by a Rust range. |

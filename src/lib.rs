@@ -41,7 +41,7 @@ pub mod time;
 pub use collision_checker::engine::CollisionEngine;
 pub use collision_checker::{
     CollisionChecker, CollisionCheckerBuilder, CollisionResult, CollisionStatus,
-    SelectedCollisionChecker,
+    PreparedDynamicQuery, PreparedStaticQuery, SelectedCollisionChecker,
 };
 pub use collision_object::CollisionObject;
 pub use collision_object::DynamicObstacle;

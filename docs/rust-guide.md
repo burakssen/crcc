@@ -125,7 +125,7 @@ let moving = DynamicObstacle::new(
     CollisionObject::circle((0.0, 0.0), 0.5)?,
     vec![Pose::translation(-2.0, 0.0), Pose::translation(2.0, 0.0)],
     TimeStep(10),
-);
+)?;
 let barrier = CollisionObject::rectangle(
     geo::Rect::new((-0.125, -1.5), (0.125, 1.5)),
     0.0,
@@ -141,6 +141,21 @@ assert!(status.collides());
 ```
 
 Use `DynamicObstacle::time_variant` when geometry changes between steps.
+
+When the same query is reused, prepare it once for the checker's selected backend:
+
+```rust
+# use crcc::{CollisionCheckerBuilder, CollisionEngine, CollisionObject};
+# fn main() -> Result<(), crcc::CrccError> {
+let checker = CollisionCheckerBuilder::new().build_with_engine(CollisionEngine::Parry)?;
+let query = CollisionObject::circle((0.0, 0.0), 0.5)?;
+let prepared = checker.prepare_static(&query)?;
+
+let status = checker.collides_static_prepared(&prepared)?;
+# let _ = status;
+# Ok(())
+# }
+```
 
 ## Batch queries
 

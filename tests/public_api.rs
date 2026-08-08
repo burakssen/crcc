@@ -49,7 +49,8 @@ fn root_api_covers_pair_and_checker_queries() {
         query.clone(),
         vec![Pose::translation(3.0, 0.0), Pose::IDENTITY],
         TimeStep(0),
-    );
+    )
+    .unwrap();
 
     for engine in engines() {
         assert!(

@@ -26,14 +26,18 @@ impl AsRef<RustDynamicObstacle> for DynamicObstacle {
 impl DynamicObstacle {
     #[new]
     /// Creates a fixed-shape trajectory.
-    pub fn new(shape: &CollisionObject, positions: Vec<Pose>, time_offset: TimeStepInner) -> Self {
+    pub fn new(
+        shape: &CollisionObject,
+        positions: Vec<Pose>,
+        time_offset: TimeStepInner,
+    ) -> PyResult<Self> {
         let dynamic_obstacle = RustDynamicObstacle::new(
             shape.as_ref().clone(),
             positions.into_iter().map(|position| position.0).collect(),
             time_offset.into(),
-        );
+        )?;
 
-        Self(Arc::new(dynamic_obstacle))
+        Ok(Self(Arc::new(dynamic_obstacle)))
     }
 
     #[staticmethod]
@@ -69,7 +73,7 @@ impl DynamicObstacle {
                 .collect(),
             positions,
             time_offset.into(),
-        );
+        )?;
 
         Ok(Self(Arc::new(dynamic_obstacle)))
     }

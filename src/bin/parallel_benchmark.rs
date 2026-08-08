@@ -168,7 +168,7 @@ fn benchmark_dynamic(
                 TimeStep::ZERO,
             )
         })
-        .collect::<Vec<_>>();
+        .collect::<Result<Vec<_>, _>>()?;
 
     let sequential = || {
         queries

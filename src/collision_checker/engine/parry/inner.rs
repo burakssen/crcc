@@ -20,6 +20,8 @@ const QUADRATIC_EPSILON: f64 = 1e-12;
 pub enum ParryCollisionObjectInner {
     Empty,
     FullSpace,
+    // ponytail: Keep conversion infallible while surfacing invalid prepared geometry on use.
+    Invalid,
     NonTrivial(NonTrivial),
 }
 
@@ -37,6 +39,7 @@ impl ParryCollisionObjectInner {
         pos_other: DPose2,
     ) -> Result<bool, Unsupported> {
         match (self, other) {
+            (Self::Invalid, _) | (_, Self::Invalid) => Err(Unsupported),
             (Self::Empty, _) | (_, Self::Empty) => Ok(false),
             (Self::FullSpace, _) | (_, Self::FullSpace) => Ok(true),
             (Self::NonTrivial(left), Self::NonTrivial(right)) => {
@@ -54,6 +57,7 @@ impl ParryCollisionObjectInner {
         end_pos_other: DPose2,
     ) -> Result<bool, Unsupported> {
         match (self, other) {
+            (Self::Invalid, _) | (_, Self::Invalid) => Err(Unsupported),
             (Self::Empty, _) | (_, Self::Empty) => Ok(false),
             (Self::FullSpace, _) | (_, Self::FullSpace) => Ok(true),
             (Self::NonTrivial(left), Self::NonTrivial(right)) => left.collides_continuous(
@@ -73,7 +77,7 @@ impl ParryCollisionObjectInner {
         pos_other: DPose2,
     ) -> Result<f64, Unsupported> {
         match (self, other) {
-            (Self::Empty, _) | (_, Self::Empty) => Err(Unsupported),
+            (Self::Invalid | Self::Empty, _) | (_, Self::Invalid | Self::Empty) => Err(Unsupported),
             (Self::FullSpace, _) | (_, Self::FullSpace) => Ok(0.0),
             (Self::NonTrivial(left), Self::NonTrivial(right)) => {
                 left.distance(pos_self, right, pos_other)
@@ -338,6 +342,10 @@ impl From<CollisionObject> for ParryCollisionObjectInner {
                     return Self::FullSpace;
                 }
 
+                ParrySimpleCollisionObject::Invalid => {
+                    return Self::Invalid;
+                }
+
                 ParrySimpleCollisionObject::TriMesh(mesh) => {
                     tri_meshes.push(*mesh);
                 }
@@ -352,11 +360,11 @@ impl From<CollisionObject> for ParryCollisionObjectInner {
             None
         } else {
             let Some(merged_tri_mesh) = merge_trimeshes(tri_meshes) else {
-                return Self::FullSpace;
+                return Self::Invalid;
             };
 
             let Some(compound) = Compound::decompose_trimesh(&merged_tri_mesh) else {
-                return Self::FullSpace;
+                return Self::Invalid;
             };
 
             Some(compound)

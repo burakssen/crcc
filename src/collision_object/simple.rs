@@ -6,7 +6,7 @@ use geo::{
 };
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
-use std::ops::{Deref, Mul, Sub};
+use std::ops::{Deref, Div, Mul, Sub};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 /// Geometry representing the empty set.
@@ -259,6 +259,32 @@ pub struct HalfSpace {
 }
 
 impl HalfSpace {
+    fn normalized(outward_normal: DVec2, offset: f64) -> CrccResult<Self> {
+        let length = outward_normal.x.hypot(outward_normal.y);
+        if !outward_normal.is_finite()
+            || !offset.is_finite()
+            || !length.is_finite()
+            || length == 0.0
+        {
+            return Err(CrccError::InvalidGeometry(
+                "half-space requires a finite nonzero normal and finite offset",
+            ));
+        }
+
+        let outward_normal = outward_normal.div(length);
+        let offset = offset / length;
+        if !outward_normal.is_finite() || !offset.is_finite() {
+            return Err(CrccError::InvalidGeometry(
+                "half-space normalization must produce finite values",
+            ));
+        }
+
+        Ok(Self {
+            outward_normal,
+            offset,
+        })
+    }
+
     /// Creates a half-space from a directed boundary line.
     ///
     /// # Errors
@@ -269,17 +295,13 @@ impl HalfSpace {
         let p1 = p1.into();
         let p2 = p2.into();
         let dir = p2.sub(p1);
-        if !p1.is_finite() || !p2.is_finite() || dir.length_squared() == 0.0 {
+        if !p1.is_finite() || !p2.is_finite() || !dir.is_finite() {
             return Err(CrccError::InvalidGeometry(
                 "half-space points must be finite and distinct",
             ));
         }
-        let unit_normal = DVec2::new(-dir.y, dir.x).normalize();
-        let offset = unit_normal.dot(p1);
-        Ok(Self {
-            outward_normal: unit_normal,
-            offset,
-        })
+        let normal = DVec2::new(-dir.y, dir.x);
+        Self::normalized(normal, normal.dot(p1))
     }
 
     /// Creates the half-space `a*x + b*y <= c`.
@@ -289,17 +311,7 @@ impl HalfSpace {
     /// Returns [`CrccError::InvalidGeometry`] when a coefficient is not finite
     /// or when `(a, b)` is the zero vector.
     pub fn from_coeffs(a: f64, b: f64, c: f64) -> CrccResult<Self> {
-        let normal = DVec2::new(a, b);
-        if !normal.is_finite() || !c.is_finite() || normal.length_squared() == 0.0 {
-            return Err(CrccError::InvalidGeometry(
-                "half-space coefficients must be finite with a nonzero normal",
-            ));
-        }
-        let offset = c / normal.length();
-        Ok(Self {
-            outward_normal: normal.normalize(),
-            offset,
-        })
+        Self::normalized(DVec2::new(a, b), c)
     }
 
     /// Compares two normalized half-spaces with the default tolerance.
@@ -350,19 +362,10 @@ impl SimpleCollisionObject {
     /// Returns [`CrccError::InvalidGeometry`] when the normal is zero or when
     /// the normal or offset is not finite.
     pub fn half_space(outward_normal: impl Into<DVec2>, offset: f64) -> CrccResult<Self> {
-        let outward_normal = outward_normal.into();
-        if !outward_normal.is_finite()
-            || !offset.is_finite()
-            || outward_normal.length_squared() == 0.0
-        {
-            return Err(CrccError::InvalidGeometry(
-                "half-space requires a finite nonzero normal and finite offset",
-            ));
-        }
-        Ok(Self::HalfSpace(HalfSpace {
-            outward_normal: outward_normal.normalize(),
+        Ok(Self::HalfSpace(HalfSpace::normalized(
+            outward_normal.into(),
             offset,
-        }))
+        )?))
     }
 
     /// Creates a half-space from a directed boundary line.
@@ -717,6 +720,23 @@ mod tests {
 
         assert_relative_eq!(pose_point.x, affine_point.x);
         assert_relative_eq!(pose_point.y, affine_point.y);
+    }
+
+    #[test]
+    fn half_space_scales_offset_with_normal() {
+        let direct = SimpleCollisionObject::half_space((2.0, 0.0), 2.0);
+        let coefficients = SimpleCollisionObject::half_space_from_coeffs(2.0, 0.0, 2.0);
+
+        assert_eq!(direct, coefficients);
+    }
+
+    #[test]
+    fn half_space_rejects_unrepresentable_normalization() {
+        assert!(SimpleCollisionObject::half_space((f64::MAX, f64::MAX), 1.0).is_err());
+        assert!(
+            SimpleCollisionObject::half_space_from_points((-f64::MAX, 0.0), (f64::MAX, 0.0),)
+                .is_err()
+        );
     }
 
     #[test]

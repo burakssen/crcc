@@ -400,17 +400,11 @@ fn dynamic_query(workload: &Workload) -> BenchmarkResult<DynamicObstacle> {
             })
             .collect::<BenchmarkResult<Vec<_>>>()?;
 
-        Ok(DynamicObstacle::time_variant(
-            obstacles,
-            positions,
-            TimeStep::ZERO,
-        ))
+        DynamicObstacle::time_variant(obstacles, positions, TimeStep::ZERO)
+            .map_err(BenchmarkError::from)
     } else {
-        Ok(DynamicObstacle::new(
-            workload.left.clone(),
-            positions,
-            TimeStep::ZERO,
-        ))
+        DynamicObstacle::new(workload.left.clone(), positions, TimeStep::ZERO)
+            .map_err(BenchmarkError::from)
     }
 }
 

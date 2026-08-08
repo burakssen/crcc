@@ -29,6 +29,15 @@ impl TimeStep {
         Self(self.0.saturating_add(1))
     }
 
+    /// Returns the following step, or `None` at [`TimeStep::MAX`].
+    #[must_use]
+    pub const fn checked_succ(&self) -> Option<Self> {
+        match self.0.checked_add(1) {
+            Some(value) => Some(Self(value)),
+            None => None,
+        }
+    }
+
     /// Advances by `steps`, saturating at [`TimeStep::MAX`].
     #[must_use]
     pub fn add_steps(&self, steps: usize) -> Self {
@@ -38,21 +47,29 @@ impl TimeStep {
         Self(i32::try_from(value).unwrap_or(i32::MAX))
     }
 
+    /// Advances by `steps`, returning `None` when the result is not representable.
+    #[must_use]
+    pub fn checked_add_steps(&self, steps: usize) -> Option<Self> {
+        let steps = i64::try_from(steps).ok()?;
+        let value = i64::from(self.0).checked_add(steps)?;
+        i32::try_from(value).ok().map(Self)
+    }
+
     /// Iterates over the discrete steps selected by a Rust range.
     ///
     /// Included and excluded bounds follow normal [`RangeBounds`] semantics.
     pub fn iter_range(range: impl RangeBounds<Self>) -> impl Iterator<Item = Self> {
         let start = match range.start_bound() {
-            std::ops::Bound::Included(t) => *t,
-            std::ops::Bound::Excluded(t) => t.succ(),
-            std::ops::Bound::Unbounded => Self::MIN,
+            std::ops::Bound::Included(t) => i64::from(t.0),
+            std::ops::Bound::Excluded(t) => i64::from(t.0).saturating_add(1),
+            std::ops::Bound::Unbounded => i64::from(Self::MIN.0),
         };
         let end = match range.end_bound() {
-            std::ops::Bound::Included(t) => *t,
-            std::ops::Bound::Excluded(t) => t.pred(),
-            std::ops::Bound::Unbounded => Self::MAX,
+            std::ops::Bound::Included(t) => i64::from(t.0),
+            std::ops::Bound::Excluded(t) => i64::from(t.0).saturating_sub(1),
+            std::ops::Bound::Unbounded => i64::from(Self::MAX.0),
         };
-        (start.0..=end.0).map(TimeStep)
+        (start..=end).filter_map(|value| i32::try_from(value).ok().map(TimeStep))
     }
 }
 
@@ -114,5 +131,26 @@ mod tests {
             .saturating_add(1);
 
         assert_eq!(TimeStep::MIN.add_steps(steps), TimeStep(0));
+    }
+
+    #[test]
+    fn checked_steps_reject_overflow() {
+        assert_eq!(TimeStep::MAX.checked_succ(), None);
+        assert_eq!(TimeStep::MAX.checked_add_steps(1), None);
+        assert_eq!(TimeStep(4).checked_add_steps(2), Some(TimeStep(6)));
+    }
+
+    #[test]
+    fn excluded_extreme_bounds_are_empty() {
+        use std::ops::Bound::{Excluded, Unbounded};
+
+        assert_eq!(
+            TimeStep::iter_range((Excluded(TimeStep::MAX), Unbounded)).count(),
+            0
+        );
+        assert_eq!(
+            TimeStep::iter_range((Unbounded, Excluded(TimeStep::MIN))).count(),
+            0
+        );
     }
 }

@@ -1,4 +1,5 @@
 use crate::collision_object::CollisionObject;
+use crate::error::{CrccError, CrccResult};
 use crate::time::{TimeStep, TimeStepSet};
 use glamx::DPose2;
 
@@ -31,37 +32,48 @@ impl DynamicObstacle {
     ///
     /// `positions[0]` is active at `time_offset`; later poses advance one time
     /// step each. Motion between adjacent poses is checked conservatively.
-    #[must_use]
-    pub fn new(shape: CollisionObject, positions: Vec<DPose2>, time_offset: TimeStep) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::InvalidGeometry`] when a pose is non-finite or the
+    /// trajectory extends beyond [`TimeStep::MAX`].
+    pub fn new(
+        shape: CollisionObject,
+        positions: Vec<DPose2>,
+        time_offset: TimeStep,
+    ) -> CrccResult<Self> {
+        validate_trajectory(&positions, time_offset)?;
         let convex_hulls = shape.swept_areas(&positions);
-        Self(GenericDynamicObstacle {
+        Ok(Self(GenericDynamicObstacle {
             trajectory: DynamicObstacleTrajectory::FixedShape {
                 shape,
                 positions,
                 convex_hulls,
             },
             time_offset,
-        })
+        }))
     }
 
     /// Creates a trajectory whose shape may change at each step.
     ///
     /// `obstacles` and `positions` must have equal lengths.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `obstacles` and `positions` have different lengths.
-    #[must_use]
+    /// Returns [`CrccError::InvalidGeometry`] when the input lengths differ, a
+    /// pose is non-finite, or the trajectory extends beyond [`TimeStep::MAX`].
+    ///
     pub fn time_variant(
         obstacles: Vec<CollisionObject>,
         positions: Vec<DPose2>,
         time_offset: TimeStep,
-    ) -> Self {
-        assert_eq!(
-            obstacles.len(),
-            positions.len(),
-            "time-variant obstacle shape and pose counts must match"
-        );
+    ) -> CrccResult<Self> {
+        if obstacles.len() != positions.len() {
+            return Err(CrccError::InvalidGeometry(
+                "time-variant obstacle shape and pose counts must match",
+            ));
+        }
+        validate_trajectory(&positions, time_offset)?;
         let convex_hulls = obstacles
             .windows(2)
             .zip(positions.windows(2))
@@ -79,14 +91,14 @@ impl DynamicObstacle {
                     .map(|(swept_t, swept_t1)| swept_t.merge(swept_t1))
             })
             .collect();
-        Self(GenericDynamicObstacle {
+        Ok(Self(GenericDynamicObstacle {
             trajectory: DynamicObstacleTrajectory::VaryingShape {
                 obstacles,
                 positions,
                 convex_hulls,
             },
             time_offset,
-        })
+        }))
     }
 
     #[must_use]
@@ -105,6 +117,27 @@ impl DynamicObstacle {
     pub(crate) fn active_times(&self) -> TimeStepSet {
         self.0.active_times()
     }
+}
+
+fn validate_trajectory(positions: &[DPose2], time_offset: TimeStep) -> CrccResult<()> {
+    if positions
+        .iter()
+        .any(|pose| !pose.translation.is_finite() || !pose.rotation.angle().is_finite())
+    {
+        return Err(CrccError::InvalidGeometry(
+            "trajectory poses must contain only finite values",
+        ));
+    }
+
+    if let Some(last_index) = positions.len().checked_sub(1)
+        && time_offset.checked_add_steps(last_index).is_none()
+    {
+        return Err(CrccError::InvalidGeometry(
+            "trajectory exceeds the representable time-step range",
+        ));
+    }
+
+    Ok(())
 }
 
 impl DynamicObstacleTrajectory<CollisionObject> {
@@ -168,12 +201,13 @@ impl<E> GenericDynamicObstacle<E> {
     }
 
     pub(crate) fn active_times(&self) -> TimeStepSet {
-        self.len()
-            .checked_sub(1)
-            .map_or_else(TimeStepSet::new, |last_index| {
-                TimeStep::iter_range(self.time_offset..=self.time_offset.add_steps(last_index))
-                    .collect()
-            })
+        let Some(last_index) = self.len().checked_sub(1) else {
+            return TimeStepSet::new();
+        };
+        let Some(end) = self.time_offset.checked_add_steps(last_index) else {
+            return TimeStepSet::new();
+        };
+        TimeStep::iter_range(self.time_offset..=end).collect()
     }
 
     fn len(&self) -> usize {
@@ -195,7 +229,7 @@ mod tests {
             DPose2::new((2.0, 2.0).into(), std::f64::consts::FRAC_PI_2),
         ];
 
-        Some(DynamicObstacle::new(shape, positions, TimeStep(5)))
+        DynamicObstacle::new(shape, positions, TimeStep(5)).ok()
     }
 
     #[test]
@@ -253,6 +287,43 @@ mod tests {
         assert_eq!(
             active_times,
             TimeStep::iter_range(TimeStep(5)..=TimeStep(7),).collect(),
+        );
+    }
+
+    #[test]
+    fn trajectories_reject_unrepresentable_end_times() {
+        let shape = CollisionObject::circle((0.0, 0.0), 1.0);
+        assert!(shape.is_ok());
+        let Ok(shape) = shape else {
+            return;
+        };
+
+        assert!(
+            DynamicObstacle::new(
+                shape.clone(),
+                vec![DPose2::IDENTITY, DPose2::IDENTITY],
+                TimeStep::MAX,
+            )
+            .is_err()
+        );
+        assert!(DynamicObstacle::new(shape, vec![DPose2::IDENTITY], TimeStep::MAX).is_ok());
+    }
+
+    #[test]
+    fn trajectories_reject_non_finite_poses() {
+        let shape = CollisionObject::circle((0.0, 0.0), 1.0);
+        assert!(shape.is_ok());
+        let Ok(shape) = shape else {
+            return;
+        };
+
+        assert!(
+            DynamicObstacle::new(
+                shape,
+                vec![DPose2::translation(f64::NAN, 0.0)],
+                TimeStep::ZERO,
+            )
+            .is_err()
         );
     }
 

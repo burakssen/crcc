@@ -1,7 +1,7 @@
+#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+use crate::collision_checker::SelectedCollisionCheckerInner;
 use crate::collision_checker::engine::{CollisionEngine, EngineCollisionObject};
-use crate::collision_checker::{
-    CollisionChecker, SelectedCollisionChecker, SelectedCollisionCheckerInner,
-};
+use crate::collision_checker::{CollisionChecker, SelectedCollisionChecker};
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::collision_object::{CollisionObject, DynamicObstacle};
 use crate::error::CrccError;

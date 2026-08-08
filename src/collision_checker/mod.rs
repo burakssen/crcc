@@ -129,8 +129,9 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
 
         let active_times: TimeStepSet = self.active_times.range(time_range).copied().collect();
         for &time_step in &active_times {
-            let ccd_collider = active_times
-                .contains(&time_step.succ())
+            let ccd_collider = time_step
+                .checked_succ()
+                .is_some_and(|next| active_times.contains(&next))
                 .then_some(Self::stationary_ccd_collider(static_obstacle, position));
             if self.static_query_collides_dynamic_at(
                 static_obstacle,
@@ -160,7 +161,9 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
             if self.dynamic_query_collides_at(
                 dynamic_obstacle,
                 time_step,
-                active_times.contains(&time_step.succ()),
+                time_step
+                    .checked_succ()
+                    .is_some_and(|next| active_times.contains(&next)),
             )? {
                 return Ok(CollisionStatus::CollidesDynamic(time_step));
             }
@@ -334,7 +337,8 @@ mod tests {
                 DPose2::translation(0.0, 0.0),
             ],
             TimeStep(0),
-        );
+        )
+        .unwrap();
         let query = CollisionObject::from(SimpleCollisionObject::circle((8.0, 8.0), 1.0).unwrap());
 
         for engine in engines() {
@@ -388,7 +392,8 @@ mod tests {
                 DPose2::translation(0.0, 0.0),
             ],
             TimeStep(0),
-        );
+        )
+        .unwrap();
         let moving_query = DynamicObstacle::new(
             SimpleCollisionObject::circle((0.0, 0.0), 1.0)
                 .unwrap()
@@ -398,7 +403,8 @@ mod tests {
                 DPose2::translation(15.0, -5.0),
             ],
             TimeStep(2),
-        );
+        )
+        .unwrap();
 
         for engine in engines() {
             let checker = CollisionCheckerBuilder::new()
@@ -424,7 +430,7 @@ mod tests {
         let start = DPose2::IDENTITY;
         let end = DPose2::new((0.0, 0.0).into(), FRAC_PI_2);
         let moving_query =
-            DynamicObstacle::new(moving_shape.clone(), vec![start, end], TimeStep(0));
+            DynamicObstacle::new(moving_shape.clone(), vec![start, end], TimeStep(0)).unwrap();
 
         for engine in engines() {
             let checker = CollisionCheckerBuilder::new()
@@ -471,7 +477,8 @@ mod tests {
             CollisionObject::merge_all(query_parts.clone()),
             positions.clone(),
             TimeStep(0),
-        );
+        )
+        .unwrap();
 
         for engine in engines() {
             let checker = CollisionCheckerBuilder::new()
@@ -481,7 +488,7 @@ mod tests {
             let expanded = query_parts
                 .iter()
                 .cloned()
-                .map(|part| DynamicObstacle::new(part, positions.clone(), TimeStep(0)))
+                .map(|part| DynamicObstacle::new(part, positions.clone(), TimeStep(0)).unwrap())
                 .map(|obstacle| checker.collides_dynamic(&obstacle).unwrap())
                 .find(|status| status.collides())
                 .unwrap_or(CollisionStatus::NoCollision);
@@ -556,12 +563,160 @@ pub(crate) enum SelectedCollisionCheckerInner {
     ),
 }
 
+#[derive(Clone)]
+enum PreparedStaticQueryInner {
+    #[cfg(feature = "parry")]
+    Parry(Box<crate::collision_checker::engine::parry::ParryCollisionObject>),
+    #[cfg(feature = "rhusics")]
+    Rhusics(Box<crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject>),
+    #[cfg(feature = "collide")]
+    Collide(Box<crate::collision_checker::engine::collide::CollideCollisionObject>),
+}
+
+/// Geometry converted once for repeated queries against a selected checker.
+#[derive(Clone)]
+pub struct PreparedStaticQuery(PreparedStaticQueryInner);
+
+impl PreparedStaticQuery {
+    /// Returns the backend representation stored by this query.
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    #[must_use]
+    pub const fn engine(&self) -> CollisionEngine {
+        match &self.0 {
+            #[cfg(feature = "parry")]
+            PreparedStaticQueryInner::Parry(_) => CollisionEngine::Parry,
+            #[cfg(feature = "rhusics")]
+            PreparedStaticQueryInner::Rhusics(_) => CollisionEngine::Rhusics,
+            #[cfg(feature = "collide")]
+            PreparedStaticQueryInner::Collide(_) => CollisionEngine::Collide,
+        }
+    }
+
+    /// Returns the default backend when no collision backend is compiled in.
+    #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+    #[must_use]
+    pub fn engine(&self) -> CollisionEngine {
+        let _ = &self.0;
+        CollisionEngine::default()
+    }
+}
+
+#[derive(Clone)]
+enum PreparedDynamicQueryInner {
+    #[cfg(feature = "parry")]
+    Parry(
+        Box<GenericDynamicObstacle<crate::collision_checker::engine::parry::ParryCollisionObject>>,
+    ),
+    #[cfg(feature = "rhusics")]
+    Rhusics(
+        Box<
+            GenericDynamicObstacle<
+                crate::collision_checker::engine::rhusics::RhusicsCoreCollisionObject,
+            >,
+        >,
+    ),
+    #[cfg(feature = "collide")]
+    Collide(
+        Box<
+            GenericDynamicObstacle<
+                crate::collision_checker::engine::collide::CollideCollisionObject,
+            >,
+        >,
+    ),
+}
+
+/// A dynamic trajectory converted once for repeated selected-checker queries.
+#[derive(Clone)]
+pub struct PreparedDynamicQuery(PreparedDynamicQueryInner);
+
+impl PreparedDynamicQuery {
+    /// Returns the backend representation stored by this query.
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    #[must_use]
+    pub const fn engine(&self) -> CollisionEngine {
+        match &self.0 {
+            #[cfg(feature = "parry")]
+            PreparedDynamicQueryInner::Parry(_) => CollisionEngine::Parry,
+            #[cfg(feature = "rhusics")]
+            PreparedDynamicQueryInner::Rhusics(_) => CollisionEngine::Rhusics,
+            #[cfg(feature = "collide")]
+            PreparedDynamicQueryInner::Collide(_) => CollisionEngine::Collide,
+        }
+    }
+
+    /// Returns the default backend when no collision backend is compiled in.
+    #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+    #[must_use]
+    pub fn engine(&self) -> CollisionEngine {
+        let _ = &self.0;
+        CollisionEngine::default()
+    }
+}
+
 /// An immutable collision scene using one runtime-selected backend.
 pub struct SelectedCollisionChecker(SelectedCollisionCheckerInner);
 
 impl SelectedCollisionChecker {
     pub(crate) const fn new(inner: SelectedCollisionCheckerInner) -> Self {
         Self(inner)
+    }
+
+    /// Converts fixed geometry to this checker's backend representation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] when no collision backend is available.
+    pub fn prepare_static(
+        &self,
+        query: &CollisionObject,
+    ) -> Result<PreparedStaticQuery, CrccError> {
+        #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+        let _ = query;
+        match &self.0 {
+            #[cfg(feature = "parry")]
+            SelectedCollisionCheckerInner::Parry(_) => Ok(PreparedStaticQuery(
+                PreparedStaticQueryInner::Parry(Box::new(query.clone().into())),
+            )),
+            #[cfg(feature = "rhusics")]
+            SelectedCollisionCheckerInner::Rhusics(_) => Ok(PreparedStaticQuery(
+                PreparedStaticQueryInner::Rhusics(Box::new(query.clone().into())),
+            )),
+            #[cfg(feature = "collide")]
+            SelectedCollisionCheckerInner::Collide(_) => Ok(PreparedStaticQuery(
+                PreparedStaticQueryInner::Collide(Box::new(query.clone().into())),
+            )),
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+            _ => Err(CrccError::Unsupported),
+        }
+    }
+
+    /// Converts a dynamic trajectory to this checker's backend representation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] when no collision backend is available.
+    pub fn prepare_dynamic(
+        &self,
+        query: &DynamicObstacle,
+    ) -> Result<PreparedDynamicQuery, CrccError> {
+        #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+        let _ = query;
+        match &self.0 {
+            #[cfg(feature = "parry")]
+            SelectedCollisionCheckerInner::Parry(_) => Ok(PreparedDynamicQuery(
+                PreparedDynamicQueryInner::Parry(Box::new(query.clone().convert_repr())),
+            )),
+            #[cfg(feature = "rhusics")]
+            SelectedCollisionCheckerInner::Rhusics(_) => Ok(PreparedDynamicQuery(
+                PreparedDynamicQueryInner::Rhusics(Box::new(query.clone().convert_repr())),
+            )),
+            #[cfg(feature = "collide")]
+            SelectedCollisionCheckerInner::Collide(_) => Ok(PreparedDynamicQuery(
+                PreparedDynamicQueryInner::Collide(Box::new(query.clone().convert_repr())),
+            )),
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+            _ => Err(CrccError::Unsupported),
+        }
     }
 
     /// Checks a static obstacle against the scene geometry across all active times.
@@ -656,23 +811,50 @@ impl SelectedCollisionChecker {
         position: DPose2,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
-        #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-        let _ = (static_obstacle, position, &time_range);
+        let prepared = self.prepare_static(static_obstacle)?;
+        self.collides_static_prepared_range(&prepared, position, time_range)
+    }
 
-        match &self.0 {
+    /// Checks prepared fixed geometry across all active times.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] when the query was prepared for a
+    /// different backend, or propagates a backend query error.
+    pub fn collides_static_prepared(&self, query: &PreparedStaticQuery) -> CollisionResult {
+        self.collides_static_prepared_range(query, DPose2::IDENTITY, ..)
+    }
+
+    /// Checks prepared fixed geometry at a pose within a time range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] when the query was prepared for a
+    /// different backend, or propagates a backend query error.
+    pub fn collides_static_prepared_range(
+        &self,
+        query: &PreparedStaticQuery,
+        position: DPose2,
+        time_range: impl RangeBounds<TimeStep>,
+    ) -> CollisionResult {
+        #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+        let _ = (position, &time_range);
+        match (&self.0, &query.0) {
             #[cfg(feature = "parry")]
-            SelectedCollisionCheckerInner::Parry(checker) => {
-                collides_static(checker, static_obstacle, position, time_range)
-            }
+            (
+                SelectedCollisionCheckerInner::Parry(checker),
+                PreparedStaticQueryInner::Parry(query),
+            ) => checker.collides_static_range(query, position, time_range),
             #[cfg(feature = "rhusics")]
-            SelectedCollisionCheckerInner::Rhusics(checker) => {
-                collides_static(checker, static_obstacle, position, time_range)
-            }
+            (
+                SelectedCollisionCheckerInner::Rhusics(checker),
+                PreparedStaticQueryInner::Rhusics(query),
+            ) => checker.collides_static_range(query, position, time_range),
             #[cfg(feature = "collide")]
-            SelectedCollisionCheckerInner::Collide(checker) => {
-                collides_static(checker, static_obstacle, position, time_range)
-            }
-            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+            (
+                SelectedCollisionCheckerInner::Collide(checker),
+                PreparedStaticQueryInner::Collide(query),
+            ) => checker.collides_static_range(query, position, time_range),
             _ => Err(CrccError::Unsupported),
         }
     }
@@ -690,23 +872,49 @@ impl SelectedCollisionChecker {
         dynamic_obstacle: &DynamicObstacle,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
-        #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-        let _ = (dynamic_obstacle, &time_range);
+        let prepared = self.prepare_dynamic(dynamic_obstacle)?;
+        self.collides_dynamic_prepared_range(&prepared, time_range)
+    }
 
-        match &self.0 {
+    /// Checks a prepared dynamic trajectory across all active times.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] when the query was prepared for a
+    /// different backend, or propagates a backend query error.
+    pub fn collides_dynamic_prepared(&self, query: &PreparedDynamicQuery) -> CollisionResult {
+        self.collides_dynamic_prepared_range(query, ..)
+    }
+
+    /// Checks a prepared dynamic trajectory within a time range.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CrccError::Unsupported`] when the query was prepared for a
+    /// different backend, or propagates a backend query error.
+    pub fn collides_dynamic_prepared_range(
+        &self,
+        query: &PreparedDynamicQuery,
+        time_range: impl RangeBounds<TimeStep>,
+    ) -> CollisionResult {
+        #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+        let _ = &time_range;
+        match (&self.0, &query.0) {
             #[cfg(feature = "parry")]
-            SelectedCollisionCheckerInner::Parry(checker) => {
-                collides_dynamic(checker, dynamic_obstacle, time_range)
-            }
+            (
+                SelectedCollisionCheckerInner::Parry(checker),
+                PreparedDynamicQueryInner::Parry(query),
+            ) => checker.collides_dynamic_range(query, time_range),
             #[cfg(feature = "rhusics")]
-            SelectedCollisionCheckerInner::Rhusics(checker) => {
-                collides_dynamic(checker, dynamic_obstacle, time_range)
-            }
+            (
+                SelectedCollisionCheckerInner::Rhusics(checker),
+                PreparedDynamicQueryInner::Rhusics(query),
+            ) => checker.collides_dynamic_range(query, time_range),
             #[cfg(feature = "collide")]
-            SelectedCollisionCheckerInner::Collide(checker) => {
-                collides_dynamic(checker, dynamic_obstacle, time_range)
-            }
-            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+            (
+                SelectedCollisionCheckerInner::Collide(checker),
+                PreparedDynamicQueryInner::Collide(query),
+            ) => checker.collides_dynamic_range(query, time_range),
             _ => Err(CrccError::Unsupported),
         }
     }
@@ -817,27 +1025,6 @@ impl SelectedCollisionChecker {
     }
 }
 
-#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
-fn collides_static<E: EngineCollisionObject>(
-    checker: &CollisionChecker<E>,
-    static_obstacle: &CollisionObject,
-    position: DPose2,
-    time_range: impl RangeBounds<TimeStep>,
-) -> CollisionResult {
-    let static_obstacle = E::from(static_obstacle.clone());
-    checker.collides_static_range(&static_obstacle, position, time_range)
-}
-
-#[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
-fn collides_dynamic<E: EngineCollisionObject>(
-    checker: &CollisionChecker<E>,
-    dynamic_obstacle: &DynamicObstacle,
-    time_range: impl RangeBounds<TimeStep>,
-) -> CollisionResult {
-    let dynamic_obstacle: GenericDynamicObstacle<E> = dynamic_obstacle.clone().convert_repr();
-    checker.collides_dynamic_range(&dynamic_obstacle, time_range)
-}
-
 #[cfg(all(
     feature = "rayon",
     any(feature = "parry", feature = "rhusics", feature = "collide")
@@ -935,6 +1122,65 @@ mod selected_tests {
     }
 
     #[test]
+    fn prepared_queries_match_regular_queries() {
+        let query = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
+        let dynamic = DynamicObstacle::new(
+            query.clone(),
+            vec![DPose2::translation(4.0, 0.0), DPose2::translation(0.5, 0.0)],
+            TimeStep(5),
+        )
+        .unwrap();
+
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
+                .build_with_engine(engine)
+                .unwrap();
+            let prepared_static = checker.prepare_static(&query).unwrap();
+            let prepared_dynamic = checker.prepare_dynamic(&dynamic).unwrap();
+
+            assert_eq!(prepared_static.engine(), engine);
+            assert_eq!(prepared_dynamic.engine(), engine);
+            assert_eq!(
+                checker
+                    .collides_static_prepared_range(
+                        &prepared_static,
+                        DPose2::translation(0.5, 0.0),
+                        ..,
+                    )
+                    .unwrap(),
+                checker
+                    .collides_static_pos(&query, DPose2::translation(0.5, 0.0))
+                    .unwrap(),
+            );
+            assert_eq!(
+                checker
+                    .collides_dynamic_prepared(&prepared_dynamic)
+                    .unwrap(),
+                checker.collides_dynamic(&dynamic).unwrap(),
+            );
+        }
+    }
+
+    #[cfg(all(feature = "parry", feature = "rhusics"))]
+    #[test]
+    fn prepared_queries_reject_engine_mismatch() {
+        let query = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
+        let parry = CollisionCheckerBuilder::new()
+            .build_with_engine(CollisionEngine::Parry)
+            .unwrap();
+        let rhusics = CollisionCheckerBuilder::new()
+            .build_with_engine(CollisionEngine::Rhusics)
+            .unwrap();
+        let prepared = parry.prepare_static(&query).unwrap();
+
+        assert_eq!(
+            rhusics.collides_static_prepared(&prepared),
+            Err(CrccError::Unsupported),
+        );
+    }
+
+    #[test]
     fn parallel_static_matches_sequential_around_threshold() {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(2)
@@ -999,6 +1245,7 @@ mod selected_tests {
                             vec![DPose2::translation(x, 0.0), DPose2::translation(0.5, 0.0)],
                             TimeStep(5),
                         )
+                        .unwrap()
                     })
                     .collect::<Vec<_>>();
                 let sequential = queries

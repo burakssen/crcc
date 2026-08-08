@@ -13,6 +13,7 @@ use std::ops::{Div, Mul};
 pub enum ParrySimpleCollisionObject {
     Empty,
     FullSpace,
+    Invalid,
     TriMesh(Box<TriMesh>),
     Shape {
         shape: Box<dyn Shape>,
@@ -76,7 +77,7 @@ fn convert_convex_polygon(convex_polygon: &ConvexPolygon) -> ParrySimpleCollisio
     let vertices = geo_line_string_to_parry_polyline(convex_polygon.exterior());
 
     ParryConvexPolygon::from_convex_polyline(vertices).map_or_else(
-        || ParrySimpleCollisionObject::FullSpace,
+        || ParrySimpleCollisionObject::Invalid,
         |polygon| ParrySimpleCollisionObject::Shape {
             shape: Box::new(polygon),
             position: DPose2::IDENTITY,
@@ -88,7 +89,7 @@ fn convert_non_convex_polygon(non_convex_polygon: &NonConvexPolygon) -> ParrySim
     let vertices = geo_line_string_to_parry_polyline(non_convex_polygon.exterior());
 
     TriMesh::from_polygon(vertices).map_or_else(
-        || ParrySimpleCollisionObject::FullSpace,
+        || ParrySimpleCollisionObject::Invalid,
         trimesh_collision_object,
     )
 }
@@ -97,15 +98,15 @@ fn convert_polygon_with_holes(polygon_with_holes: &PolygonWithHoles) -> ParrySim
     let triangulation = polygon_with_holes.earcut_triangles_raw();
 
     let Some(vertices) = triangulation_vertices(&triangulation.vertices) else {
-        return ParrySimpleCollisionObject::FullSpace;
+        return ParrySimpleCollisionObject::Invalid;
     };
 
     let Some(indices) = triangulation_indices(&triangulation.triangle_indices) else {
-        return ParrySimpleCollisionObject::FullSpace;
+        return ParrySimpleCollisionObject::Invalid;
     };
 
     TriMesh::new(vertices, indices).map_or_else(
-        |_| ParrySimpleCollisionObject::FullSpace,
+        |_| ParrySimpleCollisionObject::Invalid,
         trimesh_collision_object,
     )
 }
