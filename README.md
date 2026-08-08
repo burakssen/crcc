@@ -1,14 +1,14 @@
 # CRCC
 
-CRCC is a two-dimensional collision-checking library for Rust and Python. It provides validated primitive and polygon geometry, discrete and continuous pair queries, immutable static/dynamic scenes, prepared queries, ordered native batches, and CommonRoad conversion utilities.
+CRCC is a high-performance two-dimensional collision-checking library for Rust and Python, designed for motion planning and CommonRoad scenario evaluation. It provides direct conversion of CommonRoad scenarios (road boundaries, static obstacles, and dynamic trajectories), validated primitive and polygon geometry, discrete and continuous pair queries, immutable static/dynamic scenes, prepared queries, and ordered native batches.
 
 Continuous collision detection is conservative: `False` certifies separation for the complete interval, while `True` may represent either a collision or a conservative positive.
 
 ## Documentation
 
 - [Documentation home](docs/index.md)
+- [CommonRoad & Python usage guide](docs/python-guide.md) and [Python API](docs/python-api.md)
 - [Core concepts and engine behavior](docs/concepts.md)
-- [Python guide](docs/python-guide.md) and [Python API](docs/python-api.md)
 - [Rust guide](docs/rust-guide.md) and [Rust API](docs/rust-api.md)
 - [Architecture](docs/architecture.md)
 - [Development and benchmarks](docs/development.md)
@@ -21,7 +21,7 @@ CRCC is not currently published to PyPI or crates.io. Use a source checkout, a w
 
 ### Python As a Git Dependency
 
-Install directly from GitHub into a environment (requires a Rust toolchain for the Maturin build step):
+Install directly from GitHub into an environment (requires a Rust toolchain for the Maturin build step):
 
 ```bash
 uv pip install git+https://github.com/burakssen/crcc
@@ -38,6 +38,24 @@ Or add it to `pyproject.toml`:
 dependencies = [
     "crcc @ git+https://github.com/burakssen/crcc",
 ]
+```
+
+### CommonRoad Scenario Conversion
+
+Convert CommonRoad XML scenarios into high-speed collision checkers:
+
+```python
+from commonroad.common.file_reader import CommonRoadFileReader
+from crcc import CollisionCheckerBuilder, CollisionEngine
+from crcc.commonroad import scenario_builder
+
+scenario, _ = CommonRoadFileReader("scenarios/DEU_MerzenichRather-2_870_T-149.xml").open()
+
+# Converts lanelet road boundary, static obstacles, and dynamic predictions
+checker = scenario_builder(
+    scenario,
+    builder=CollisionCheckerBuilder(CollisionEngine.Parry),
+).build()
 ```
 
 ### Python From Source

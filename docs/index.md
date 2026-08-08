@@ -1,15 +1,14 @@
 # CRCC Documentation
 
-CRCC checks collisions among two-dimensional geometry from Rust and Python. Use it for direct shape queries, continuous motion checks, immutable scenes containing static and dynamic obstacles, ordered batch queries, or conversion from CommonRoad scenarios.
+CRCC checks two-dimensional collisions for Rust and Python, optimized for autonomous driving workflows and CommonRoad scenario evaluation. Convert CommonRoad scenarios directly into high-performance collision checkers or perform direct primitive and polygon queries.
 
-## What CRCC Models
+## Key Capabilities
 
-- Primitive geometry: circles, rectangles, triangles, half-spaces, empty space, and full space.
-- Polygon geometry: convex, non-convex, and holed polygons.
-- Compounds: unions of any supported geometry.
-- Motion: one pose per signed 32-bit time step, with conservative checks between adjacent poses.
-- Scenes: immutable collections of static geometry and dynamic trajectories.
-- Backends: Parry, Rhusics, and Collide behind the same high-level API.
+- **CommonRoad Integration**: Convert complete CommonRoad scenarios (lanelet road boundaries, static obstacles, dynamic predictions, time-varying occupancies) automatically via `crcc.commonroad`.
+- **Primitive & Polygon Geometry**: Circles, rectangles, triangles, half-spaces, convex/non-convex polygons with holes, and structural compounds.
+- **Motion & Continuous Checking**: Pose-based discrete queries and conservative continuous motion checks over 32-bit discrete time steps.
+- **Immutable Scene Checkers**: Pre-converted static and dynamic scene indexes supporting single queries, prepared query reuse, and Rayon parallel batching.
+- **Multi-Engine Backend**: Select between Parry, Rhusics, and Collide backend algorithms.
 
 CRCC is a collision-query library, not a physics engine. It does not resolve contacts, advance simulation state, mutate a scene in place, or return contact manifolds.
 
@@ -17,6 +16,7 @@ CRCC is a collision-query library, not a physics engine. It does not resolve con
 
 | Goal | Start here |
 | --- | --- |
+| Convert & Evaluate CommonRoad Scenarios | [CommonRoad Scenario Conversion](python-guide.md#commonroad-scenario-conversion) |
 | Understand collision, time, and engine semantics | [Concepts and engines](concepts.md) |
 | Use CRCC from Python | [Python usage guide](python-guide.md) |
 | Look up a Python signature | [Python API reference](python-api.md) |
@@ -25,7 +25,28 @@ CRCC is a collision-query library, not a physics engine. It does not resolve con
 | Understand implementation boundaries | [Architecture](architecture.md) |
 | Build, test, benchmark, or release the project | [Development and benchmarks](development.md) |
 
-## Python in One Minute
+## CommonRoad Scenario Conversion in One Minute
+
+Convert any CommonRoad XML scenario directly into a collision checker:
+
+```python
+from commonroad.common.file_reader import CommonRoadFileReader
+from crcc import CollisionCheckerBuilder, CollisionEngine
+from crcc.commonroad import scenario_builder
+
+# Load CommonRoad scenario
+scenario, _ = CommonRoadFileReader("scenarios/DEU_MerzenichRather-2_870_T-149.xml").open()
+
+# Build collision checker with road boundaries, static obstacles, and dynamic predictions
+checker = scenario_builder(
+    scenario,
+    builder=CollisionCheckerBuilder(CollisionEngine.Parry),
+).build()
+
+assert checker.engine == CollisionEngine.Parry
+```
+
+## Python Query in One Minute
 
 From a source checkout:
 

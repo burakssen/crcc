@@ -17,6 +17,43 @@ Triangle
 
 Import CommonRoad adapters from `crcc.commonroad`, not from the root package.
 
+## CommonRoad Conversion (`crcc.commonroad`)
+
+The `crcc.commonroad` module provides dedicated adapters to convert CommonRoad benchmark scenarios and geometric models into `crcc` collision objects and checkers.
+
+### Scenario and Builder Helpers
+
+```python
+scenario_builder(
+    scenario: Scenario,
+    builder: CollisionCheckerBuilder | None = None,
+) -> CollisionCheckerBuilder
+
+add_static_obstacle(builder, static_obstacle) -> CollisionCheckerBuilder
+add_dynamic_obstacle(builder, dynamic_obstacle) -> CollisionCheckerBuilder
+add_road_boundary(builder, lanelet_network) -> CollisionCheckerBuilder
+```
+
+`scenario_builder` adds road boundary, static obstacles, and dynamic obstacles. `add_road_boundary` skips an empty network.
+
+### Model Conversion Helpers
+
+```python
+to_dynamic_obstacle(dynamic_obstacle) -> DynamicObstacle
+road_boundary(lanelet_network) -> CollisionObject
+to_polygon(polygon: shapely.geometry.Polygon) -> CollisionObject
+to_shape(shape: ObstacleShape) -> CollisionObject
+to_occupancy(occupancy: Occupancy) -> CollisionObject
+from_shapely(geometry: BaseGeometry) -> CollisionObject
+to_pose(state: TraceState) -> Pose
+```
+
+`from_shapely` accepts empty geometry, `Polygon`, and `MultiPolygon`; other non-empty geometry types raise `ValueError`. `to_pose` requires an exact two-dimensional position and orientation.
+
+Trajectory predictions preserve their state timeline. Missing intermediate states become empty occupancy.
+
+The module exposes `ROAD_BOUNDARY_SIMPLIFY_TOLERANCE` and `ROAD_BOUNDARY_MIN_HOLE_AREA` as informational mirrors of native boundary parameters.
+
 ## `Pose`
 
 ```python
@@ -354,43 +391,6 @@ road_boundary(
 ```
 
 Returns occupied geometry outside the supplied drivable polygons. Empty input returns full space. This function is not exported from root `crcc`.
-
-## CommonRoad Conversion
-
-The following functions are exported by `crcc.commonroad`.
-
-### Scenario and builder helpers
-
-```python
-scenario_builder(
-    scenario: Scenario,
-    builder: CollisionCheckerBuilder | None = None,
-) -> CollisionCheckerBuilder
-
-add_static_obstacle(builder, static_obstacle) -> CollisionCheckerBuilder
-add_dynamic_obstacle(builder, dynamic_obstacle) -> CollisionCheckerBuilder
-add_road_boundary(builder, lanelet_network) -> CollisionCheckerBuilder
-```
-
-`scenario_builder` adds road boundary, static obstacles, and dynamic obstacles. `add_road_boundary` skips an empty network.
-
-### Conversion helpers
-
-```python
-to_dynamic_obstacle(dynamic_obstacle) -> DynamicObstacle
-road_boundary(lanelet_network) -> CollisionObject
-to_polygon(polygon: shapely.geometry.Polygon) -> CollisionObject
-to_shape(shape: ObstacleShape) -> CollisionObject
-to_occupancy(occupancy: Occupancy) -> CollisionObject
-from_shapely(geometry: BaseGeometry) -> CollisionObject
-to_pose(state: TraceState) -> Pose
-```
-
-`from_shapely` accepts empty geometry, `Polygon`, and `MultiPolygon`; other non-empty geometry types raise `ValueError`. `to_pose` requires an exact two-dimensional NumPy position and a real orientation.
-
-Trajectory predictions preserve their state timeline. Missing intermediate states become empty occupancy. Set-based predictions query each occupancy in the declared time range.
-
-The module exposes `ROAD_BOUNDARY_SIMPLIFY_TOLERANCE` and `ROAD_BOUNDARY_MIN_HOLE_AREA` as informational mirrors of current native constants. Changing the Python values does not configure native boundary construction.
 
 ## Exceptions
 

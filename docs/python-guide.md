@@ -97,6 +97,40 @@ Constructors reject non-finite, degenerate, or invalid geometry with `ValueError
 
 `Empty()` never collides. `FullSpace()` collides with every non-empty object. `Compound([])` is empty.
 
+## CommonRoad Scenario Conversion
+
+CommonRoad support is built into the Python-only `crcc.commonroad` module. You can convert any CommonRoad scenario (including road network boundaries, static obstacles, dynamic obstacle predictions, and time-varying occupancies) into a high-performance `CollisionChecker`.
+
+```python
+from commonroad.common.file_reader import CommonRoadFileReader
+from crcc import CollisionCheckerBuilder, CollisionEngine
+from crcc.commonroad import road_boundary, scenario_builder, to_dynamic_obstacle
+
+# Load CommonRoad XML scenario
+scenario, _ = CommonRoadFileReader(
+    "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
+).open()
+
+# scenario_builder populates road boundaries, static obstacles, and dynamic predictions
+builder = scenario_builder(
+    scenario,
+    builder=CollisionCheckerBuilder(CollisionEngine.Parry),
+)
+
+# You can add custom vehicle query geometry or ego trajectory before building
+checker = builder.build()
+
+assert checker.engine == CollisionEngine.Parry
+```
+
+### Low-Level CommonRoad Helpers
+
+- **`scenario_builder(scenario, builder=None)`**: Converts all scenario elements (road network, static obstacles, dynamic predictions) and populates a `CollisionCheckerBuilder`.
+- **`road_boundary(lanelets)`**: Generates an outer non-drivable boundary shape from a collection of lanelet vertices. An empty lanelet network adds no road constraint.
+- **`to_dynamic_obstacle(obstacle)`**: Converts a CommonRoad `DynamicObstacle` (or its trajectory prediction) directly into a CRCC `DynamicObstacle`.
+
+Missing intermediate CommonRoad occupancies become empty geometry. The adapter suppresses continuous motion across missing steps to prevent phantom collisions across gaps.
+
 ## Query Two Objects
 
 Use pair methods when no reusable scene is needed:
@@ -253,29 +287,6 @@ assert [result.collides for result in results] == [True, False]
 ```
 
 Use `collides_dynamic_batch` for trajectories. Inputs below 32 run sequentially; larger batches use Rayon and release the GIL during native work. Legacy `par_static` and `par_dynamic` are aliases of this automatic behavior.
-
-## Convert a CommonRoad Scenario
-
-CommonRoad support is in the Python-only `crcc.commonroad` module. Scenario XML files in this repository require Git LFS.
-
-```python
-from commonroad.common.file_reader import CommonRoadFileReader
-from crcc import CollisionCheckerBuilder, CollisionEngine
-from crcc.commonroad import scenario_builder
-
-scenario, _ = CommonRoadFileReader(
-    "scenarios/DEU_MerzenichRather-2_870_T-149.xml"
-).open()
-
-checker = scenario_builder(
-    scenario,
-    CollisionCheckerBuilder(CollisionEngine.Parry),
-).build()
-```
-
-`scenario_builder` adds the road boundary, static obstacles, and dynamic obstacles. It returns a builder so callers can add project-specific geometry before `build()`.
-
-Missing intermediate CommonRoad occupancies become empty geometry. The adapter suppresses motion across those gaps. An empty lanelet network adds no road constraint; directly calling the low-level boundary function on an empty network returns full space.
 
 ## Handle Errors
 
