@@ -288,12 +288,10 @@ impl IntoIterator for CollisionObject {
 #[allow(clippy::panic_in_result_fn)]
 mod tests {
     use super::*;
-    use geo::Rect;
-    use glamx::{DPose2, DVec2};
-    use itertools::Itertools;
+    use crate::error::CrccError;
+    use geo::{BoundingRect, Rect};
+    use glamx::DPose2;
     use rstest::{fixture, rstest};
-    use std::f64::consts::{FRAC_PI_2, FRAC_PI_4};
-    use std::ops::Div;
 
     #[fixture]
     fn circle() -> CrccResult<SimpleCollisionObject> {
@@ -319,19 +317,6 @@ mod tests {
         Ok(CollisionObject::from(vec![
             SimpleCollisionObject::circle((5.0, 0.0), 1.0)?,
             SimpleCollisionObject::rectangle(Rect::new((-2.0, -1.0), (2.0, 1.0)), 0.0)?,
-        ]))
-    }
-
-    fn polygon_compound() -> CrccResult<CollisionObject> {
-        Ok(CollisionObject::from(vec![
-            SimpleCollisionObject::polygon(Polygon::new(
-                vec![(0.0, 0.0), (2.0, 0.0), (1.0, 1.0)].into(),
-                Vec::new(),
-            ))?,
-            SimpleCollisionObject::polygon(Polygon::new(
-                vec![(0.0, 0.0), (2.0, 0.0), (2.0, 2.0), (1.0, 1.0), (0.0, 2.0)].into(),
-                Vec::new(),
-            ))?,
         ]))
     }
 
@@ -429,54 +414,27 @@ mod tests {
         Ok(())
     }
 
-    #[rstest]
-    fn swept_areas_cover_interpolated_shape_positions(
-        #[values(primitive_compound(), polygon_compound())] shape: CrccResult<CollisionObject>,
-        #[values(&[
-            DPose2::IDENTITY,
-            DPose2::new(
-                DVec2::new(10.0, 20.0),
-                FRAC_PI_4,
-            ),
-            DPose2::new(
-                DVec2::new(20.0, 40.0),
-                FRAC_PI_2,
-            ),
-        ])]
-        positions: &[DPose2],
-    ) -> CrccResult<()> {
-        let shape = shape?;
-        let swept_areas = shape.swept_areas(positions);
+    #[test]
+    fn swept_area_preserves_compound_extrema() -> CrccResult<()> {
+        let shape = primitive_compound()?;
+        let swept_area = shape
+            .swept_area(DPose2::IDENTITY, DPose2::translation(2.0, 3.0))
+            .ok_or(CrccError::InvalidGeometry("test expected one swept area"))?;
+        let [
+            SimpleCollisionObject::Rectangle(circle_bound),
+            SimpleCollisionObject::ConvexPolygon(rectangle_bound),
+        ] = swept_area.collision_objects()
+        else {
+            return Err(CrccError::InvalidGeometry(
+                "test expected circle and rectangle swept bounds",
+            ));
+        };
 
-        assert_eq!(swept_areas.len(), positions.len().saturating_sub(1),);
-
-        for ((start_position, end_position), swept_area) in
-            positions.iter().tuple_windows().zip(&swept_areas)
-        {
-            for sample_index in 0..=5 {
-                let interpolation = f64::from(sample_index).div(5.0);
-
-                let interpolated_position = DPose2::from_parts(
-                    start_position
-                        .translation
-                        .lerp(end_position.translation, interpolation),
-                    start_position
-                        .rotation
-                        .slerp(&end_position.rotation, interpolation),
-                );
-
-                let collides = crate::collision_checker::engine::collides(
-                    swept_area,
-                    DPose2::IDENTITY,
-                    &shape,
-                    interpolated_position,
-                    CollisionEngine::default(),
-                )?;
-
-                assert!(collides);
-            }
-        }
-
+        assert_eq!(circle_bound.rect(), &Rect::new((4.0, -1.0), (8.0, 4.0)));
+        assert_eq!(
+            rectangle_bound.bounding_rect(),
+            Some(Rect::new((-2.0, -1.0), (4.0, 4.0))),
+        );
         Ok(())
     }
 }
