@@ -194,12 +194,3 @@ def from_pose(state: TraceState) -> Pose:
     if not isinstance(orientation, Real):
         raise ValueError("CommonRoad state requires an exact orientation")
     return Pose(translation=(float(position[0]), float(position[1])), angle=float(orientation))
-
-
-# Backward compatibility and alternative aliases
-from_state = from_pose
-to_dynamic_obstacle = from_dynamic_obstacle
-to_occupancy = from_occupancy
-to_shape = from_shape
-to_polygon = from_polygon
-to_pose = from_pose

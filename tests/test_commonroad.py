@@ -25,13 +25,8 @@ from crcc.commonroad import (
     from_occupancy,
     from_pose,
     from_shape,
-    from_state,
     road_boundary,
     scenario_builder,
-    to_dynamic_obstacle,
-    to_occupancy,
-    to_pose,
-    to_shape,
 )
 from shapely.geometry import Point, Polygon as ShapelyPolygon
 
@@ -100,6 +95,13 @@ def test_static_obstacle_conversion():
         False,
         None,
     )
+
+
+def test_commonroad_from_pose_conversion():
+    state = InitialState(time_step=0, position=np.array((10.0, 5.0)), orientation=0.5)
+    pose = from_pose(state)
+    assert pose.translation == (10.0, 5.0)
+    assert pose.rotation == 0.5
 
 
 def test_commonroad_shape_converters_preserve_geometry():
@@ -191,18 +193,6 @@ def test_trajectory_prediction_keeps_between_step_motion(engine):
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.25)).build()
 
     assert collision_status(checker.collides_dynamic(trajectory)) == (True, 0)
-
-
-def test_legacy_to_aliases_behave_identically():
-    assert to_pose is from_pose
-    assert from_state is from_pose
-    assert to_shape is from_shape
-    assert to_occupancy is from_occupancy
-    assert to_dynamic_obstacle is from_dynamic_obstacle
-    state = InitialState(time_step=0, position=np.array((1.0, 2.0)), orientation=0.5)
-    pose = from_pose(state)
-    assert pose.translation == (1.0, 2.0)
-    assert pose.rotation == 0.5
 
 
 def test_scenario_builder_includes_set_based_dynamic_obstacles(engine):

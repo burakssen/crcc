@@ -48,7 +48,7 @@ from_pose(state: TraceState) -> Pose
 road_boundary(lanelet_network) -> CollisionObject
 ```
 
-`from_shapely` accepts empty geometry, `Polygon`, and `MultiPolygon`; other non-empty geometry types raise `ValueError`. `from_pose` (also available as `from_state`) requires an exact two-dimensional position and orientation. Legacy `to_*` aliases (`to_dynamic_obstacle`, `to_occupancy`, `to_shape`, `to_polygon`, `to_pose`) remain available for backward compatibility.
+`from_shapely` accepts empty geometry, `Polygon`, and `MultiPolygon`; other non-empty geometry types raise `ValueError`. `from_pose` requires an exact two-dimensional position and orientation.
 
 Trajectory predictions preserve their state timeline. Missing intermediate states become empty occupancy.
 
