@@ -19,7 +19,7 @@ Import CommonRoad adapters from `crcc.commonroad`, not from the root package.
 
 ## CommonRoad Conversion (`crcc.commonroad`)
 
-The `crcc.commonroad` module provides dedicated adapters to convert CommonRoad benchmark scenarios and geometric models into `crcc` collision objects and checkers.
+The `crcc.commonroad` module provides dedicated adapters to convert CommonRoad benchmark scenarios and geometric models into `crcc` collision objects and checkers. It requires `commonroad-io >= 2026.1`.
 
 ### Scenario and Builder Helpers
 

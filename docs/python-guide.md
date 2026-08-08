@@ -99,7 +99,7 @@ Constructors reject non-finite, degenerate, or invalid geometry with `ValueError
 
 ## CommonRoad Scenario Conversion
 
-CommonRoad support is built into the Python-only `crcc.commonroad` module. You can convert any CommonRoad scenario (including road network boundaries, static obstacles, dynamic obstacle predictions, and time-varying occupancies) into a high-performance `CollisionChecker`.
+CommonRoad support is built into the Python-only `crcc.commonroad` module. CRCC requires `commonroad-io >= 2026.1`, which is installed automatically as a dependency of `crcc`. You can convert any CommonRoad scenario (including road network boundaries, static obstacles, dynamic obstacle predictions, and time-varying occupancies) into a high-performance `CollisionChecker`.
 
 ```python
 from commonroad.common.file_reader import CommonRoadFileReader

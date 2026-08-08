@@ -5,7 +5,7 @@ This page covers the repository workflow. End-user API usage belongs in the lang
 ## Prerequisites
 
 - Git and Git LFS.
-- Python 3.10 or newer.
+- Python 3.10 or newer (with `commonroad-io >= 2026.1`).
 - A recent stable Rust toolchain supporting edition 2024.
 - A native compiler toolchain for PyO3 builds.
 - `uv` for Python environments and tools.
