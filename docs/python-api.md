@@ -39,16 +39,16 @@ add_road_boundary(builder, lanelet_network) -> CollisionCheckerBuilder
 ### Model Conversion Helpers
 
 ```python
-to_dynamic_obstacle(dynamic_obstacle) -> DynamicObstacle
-road_boundary(lanelet_network) -> CollisionObject
-to_polygon(polygon: shapely.geometry.Polygon) -> CollisionObject
-to_shape(shape: ObstacleShape) -> CollisionObject
-to_occupancy(occupancy: Occupancy) -> CollisionObject
+from_dynamic_obstacle(dynamic_obstacle) -> DynamicObstacle
+from_occupancy(occupancy: Occupancy) -> CollisionObject
+from_shape(shape: ObstacleShape) -> CollisionObject
+from_polygon(polygon: shapely.geometry.Polygon) -> CollisionObject
 from_shapely(geometry: BaseGeometry) -> CollisionObject
-to_pose(state: TraceState) -> Pose
+from_pose(state: TraceState) -> Pose
+road_boundary(lanelet_network) -> CollisionObject
 ```
 
-`from_shapely` accepts empty geometry, `Polygon`, and `MultiPolygon`; other non-empty geometry types raise `ValueError`. `to_pose` requires an exact two-dimensional position and orientation.
+`from_shapely` accepts empty geometry, `Polygon`, and `MultiPolygon`; other non-empty geometry types raise `ValueError`. `from_pose` (also available as `from_state`) requires an exact two-dimensional position and orientation. Legacy `to_*` aliases (`to_dynamic_obstacle`, `to_occupancy`, `to_shape`, `to_polygon`, `to_pose`) remain available for backward compatibility.
 
 Trajectory predictions preserve their state timeline. Missing intermediate states become empty occupancy.
 

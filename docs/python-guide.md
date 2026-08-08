@@ -104,7 +104,7 @@ CommonRoad support is built into the Python-only `crcc.commonroad` module. CRCC 
 ```python
 from commonroad.common.file_reader import CommonRoadFileReader
 from crcc import CollisionCheckerBuilder, CollisionEngine
-from crcc.commonroad import road_boundary, scenario_builder, to_dynamic_obstacle
+from crcc.commonroad import from_dynamic_obstacle, road_boundary, scenario_builder
 
 # Load CommonRoad XML scenario
 scenario, _ = CommonRoadFileReader(
@@ -127,7 +127,10 @@ assert checker.engine == CollisionEngine.Parry
 
 - **`scenario_builder(scenario, builder=None)`**: Converts all scenario elements (road network, static obstacles, dynamic predictions) and populates a `CollisionCheckerBuilder`.
 - **`road_boundary(lanelets)`**: Generates an outer non-drivable boundary shape from a collection of lanelet vertices. An empty lanelet network adds no road constraint.
-- **`to_dynamic_obstacle(obstacle)`**: Converts a CommonRoad `DynamicObstacle` (or its trajectory prediction) directly into a CRCC `DynamicObstacle`.
+- **`from_dynamic_obstacle(obstacle)`**: Converts a CommonRoad `DynamicObstacle` (or its trajectory prediction) directly into a CRCC `DynamicObstacle`.
+- **`from_occupancy(occupancy)`**: Converts a CommonRoad `Occupancy` / `OccupancyGroup` directly into a CRCC `CollisionObject`.
+- **`from_shape(shape)`**: Converts a CommonRoad `ObstacleShape` directly into a local CRCC `CollisionObject`.
+- **`from_pose(state)`**: Converts a CommonRoad state/pose directly into a CRCC `Pose`.
 
 Missing intermediate CommonRoad occupancies become empty geometry. The adapter suppresses continuous motion across missing steps to prevent phantom collisions across gaps.
 
