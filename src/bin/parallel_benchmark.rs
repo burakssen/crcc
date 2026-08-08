@@ -104,9 +104,28 @@ fn run_cli() -> BenchmarkResult<()> {
         Operation::Dynamic => benchmark_dynamic(&checker, &pool, batch_size, iterations)?,
     };
 
-    print_results(
-        operation, batch_size, threads, iterations, scalar_ns, batch_ns, checksum,
-    )
+    let query_count = batch_size
+        .checked_mul(iterations)
+        .ok_or_else(|| invalid_input("batch size multiplied by iterations overflowed"))?;
+    let scalar_ns_per_query = format_ns_per_query(scalar_ns, query_count)?;
+    let batch_ns_per_query = format_ns_per_query(batch_ns, query_count)?;
+
+    println!(
+        "operation,api_mode,batch_size,threads,iterations,\
+         total_ns,ns_per_query,checksum"
+    );
+    println!(
+        "{},scalar,{batch_size},1,{iterations},\
+         {scalar_ns},{scalar_ns_per_query},{checksum}",
+        operation.name(),
+    );
+    println!(
+        "{},batch_reusable,{batch_size},{threads},{iterations},\
+         {batch_ns},{batch_ns_per_query},{checksum}",
+        operation.name(),
+    );
+
+    Ok(())
 }
 
 fn parse_engine(value: &str) -> BenchmarkResult<CollisionEngine> {
@@ -240,44 +259,6 @@ fn status_value(status: CollisionStatus) -> u64 {
             2_u64.wrapping_add(encoded_time)
         }
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn print_results(
-    operation: Operation,
-    batch_size: usize,
-    threads: usize,
-    iterations: usize,
-    scalar_ns: u128,
-    batch_ns: u128,
-    checksum: u64,
-) -> BenchmarkResult<()> {
-    let query_count = batch_size
-        .checked_mul(iterations)
-        .ok_or_else(|| invalid_input("batch size multiplied by iterations overflowed"))?;
-
-    let scalar_ns_per_query = format_ns_per_query(scalar_ns, query_count)?;
-
-    let batch_ns_per_query = format_ns_per_query(batch_ns, query_count)?;
-
-    println!(
-        "operation,api_mode,batch_size,threads,iterations,\
-         total_ns,ns_per_query,checksum"
-    );
-
-    println!(
-        "{},scalar,{batch_size},1,{iterations},\
-         {scalar_ns},{scalar_ns_per_query},{checksum}",
-        operation.name(),
-    );
-
-    println!(
-        "{},batch_reusable,{batch_size},{threads},{iterations},\
-         {batch_ns},{batch_ns_per_query},{checksum}",
-        operation.name(),
-    );
-
-    Ok(())
 }
 
 fn format_ns_per_query(total_ns: u128, query_count: usize) -> BenchmarkResult<String> {
