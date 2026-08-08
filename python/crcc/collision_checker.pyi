@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from crcc._core.collision_checker import CollisionChecker, CollisionEngine, CollisionStatus
+from crcc._core.collision_checker import (
+    CollisionChecker,
+    CollisionEngine,
+    CollisionStatus,
+    PreparedDynamicQuery,
+    PreparedStaticQuery,
+)
 from crcc.collision_object import CollisionObject
 from crcc.dynamic_obstacle import DynamicObstacle
 
 class CollisionCheckerBuilder:
-    def __init__(self, engine: CollisionEngine = CollisionEngine.Parry) -> None: ...
+    def __init__(self, engine: CollisionEngine | None = None) -> None: ...
     def with_engine(self, engine: CollisionEngine) -> CollisionCheckerBuilder: ...
     def with_static_obstacle(self, query_shape: CollisionObject) -> CollisionCheckerBuilder: ...
     def with_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
@@ -24,5 +30,7 @@ __all__ = [
     "CollisionCheckerBuilder",
     "CollisionEngine",
     "CollisionStatus",
+    "PreparedDynamicQuery",
+    "PreparedStaticQuery",
     "road_boundary",
 ]

@@ -1,4 +1,5 @@
 use glamx::{DPose2, DVec2};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::ops::Mul;
 
@@ -15,8 +16,8 @@ pub struct Pose(pub(crate) DPose2);
 impl Pose {
     #[new]
     /// Creates a pose from an `(x, y)` translation and a counter-clockwise angle.
-    pub fn new(translation: (f64, f64), angle: f64) -> Self {
-        Self(DPose2::new(DVec2::new(translation.0, translation.1), angle))
+    pub fn new(translation: (f64, f64), angle: f64) -> PyResult<Self> {
+        Self::validated(DPose2::new(DVec2::new(translation.0, translation.1), angle))
     }
 
     #[staticmethod]
@@ -27,14 +28,14 @@ impl Pose {
 
     #[staticmethod]
     /// Returns a pure translation.
-    pub fn from_translation(translation: (f64, f64)) -> Self {
-        Self(DPose2::translation(translation.0, translation.1))
+    pub fn from_translation(translation: (f64, f64)) -> PyResult<Self> {
+        Self::validated(DPose2::translation(translation.0, translation.1))
     }
 
     #[staticmethod]
     /// Returns a pure counter-clockwise rotation in radians.
-    pub fn from_rotation(angle: f64) -> Self {
-        Self(DPose2::rotation(angle))
+    pub fn from_rotation(angle: f64) -> PyResult<Self> {
+        Self::validated(DPose2::rotation(angle))
     }
 
     #[getter]
@@ -50,14 +51,23 @@ impl Pose {
     }
 
     /// Composes this transform with `other`.
-    #[must_use]
-    pub fn compose(&self, other: &Self) -> Self {
-        Self(self.0.mul(other.0))
+    pub fn compose(&self, other: &Self) -> PyResult<Self> {
+        Self::validated(self.0.mul(other.0))
     }
 
-    #[must_use]
-    pub fn __mul__(&self, other: &Self) -> Self {
+    pub fn __mul__(&self, other: &Self) -> PyResult<Self> {
         self.compose(other)
+    }
+}
+
+impl Pose {
+    fn validated(pose: DPose2) -> PyResult<Self> {
+        if !pose.translation.is_finite() || !pose.rotation.angle().is_finite() {
+            return Err(PyValueError::new_err(
+                "pose translation and rotation must be finite",
+            ));
+        }
+        Ok(Self(pose))
     }
 }
 

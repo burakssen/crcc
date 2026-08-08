@@ -13,7 +13,7 @@ class CollisionObject:
         other: CollisionObject,
         pos_self: Pose = Pose.identity(),
         pos_other: Pose = Pose.identity(),
-        engine: CollisionEngine = CollisionEngine.Parry,
+        engine: CollisionEngine | None = None,
     ) -> bool: ...
     def collides_continuous(
         self,
@@ -22,14 +22,14 @@ class CollisionObject:
         other: CollisionObject,
         start_pos_other: Pose,
         end_pos_other: Pose,
-        engine: CollisionEngine = CollisionEngine.Parry,
+        engine: CollisionEngine | None = None,
     ) -> bool: ...
     def distance(
         self,
         other: CollisionObject,
         pos_self: Pose = Pose.identity(),
         pos_other: Pose = Pose.identity(),
-        engine: CollisionEngine = CollisionEngine.Parry,
+        engine: CollisionEngine | None = None,
     ) -> float: ...
     def merge(self, other: CollisionObject) -> CollisionObject: ...
     @staticmethod
@@ -55,7 +55,7 @@ class HalfSpace(CollisionObject):
 
     def __init__(self, outward_normal: tuple[float, float], offset: float = 0.0) -> None: ...
     @staticmethod
-    def from_points(p1: tuple[float, float], p2: tuple[float, float]) -> HalfSpace: ...
+    def from_points(point_1: tuple[float, float], point_2: tuple[float, float]) -> HalfSpace: ...
     @staticmethod
     def from_coeffs(a: float, b: float, c: float = 0.0) -> HalfSpace: ...
 
@@ -83,7 +83,12 @@ class Rectangle(CollisionObject):
 class Triangle(CollisionObject):
     """Triangle specified by three finite vertices."""
 
-    def __init__(self, a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> None: ...
+    def __init__(
+        self,
+        point_a: tuple[float, float],
+        point_b: tuple[float, float],
+        point_c: tuple[float, float],
+    ) -> None: ...
 
 __all__ = [
     "Circle",

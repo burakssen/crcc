@@ -28,40 +28,57 @@ class CollisionStatus:
     def time_step(self) -> int | None: ...
     def __str__(self) -> str: ...
 
+class PreparedStaticQuery:
+    @property
+    def engine(self) -> CollisionEngine: ...
+
+class PreparedDynamicQuery:
+    @property
+    def engine(self) -> CollisionEngine: ...
+
 class CollisionChecker:
     """Immutable static and dynamic collision scene."""
 
     @property
     def engine(self) -> CollisionEngine: ...
+    def prepare_static(self, query_shape: CollisionObject) -> PreparedStaticQuery: ...
+    def prepare_dynamic(self, dynamic_obstacle: DynamicObstacle) -> PreparedDynamicQuery: ...
     def collides_static(
         self,
-        static_obstacle: CollisionObject,
+        query_shape: CollisionObject,
         position: Pose | None = None,
         min_time: int | None = None,
         max_time: int | None = None,
     ) -> CollisionStatus: ...
     def collides_static_batch(
         self,
-        positioned_static_obstacle: Sequence[tuple[CollisionObject, Pose]],
+        positioned_query_shapes: Sequence[tuple[CollisionObject, Pose]],
         min_time: int | None = None,
         max_time: int | None = None,
     ) -> list[CollisionStatus]: ...
+    def collides_static_prepared(
+        self,
+        query: PreparedStaticQuery,
+        position: Pose | None = None,
+        min_time: int | None = None,
+        max_time: int | None = None,
+    ) -> CollisionStatus: ...
     def par_static(
         self,
-        positioned_static_obstacle: Sequence[tuple[CollisionObject, Pose]],
+        positioned_query_shapes: Sequence[tuple[CollisionObject, Pose]],
         min_time: int | None = None,
         max_time: int | None = None,
     ) -> list[CollisionStatus]: ...
     def _collides_static_batch_threads(
         self,
-        positioned_static_obstacle: Sequence[tuple[CollisionObject, Pose]],
+        positioned_query_shapes: Sequence[tuple[CollisionObject, Pose]],
         threads: int,
         min_time: int | None = None,
         max_time: int | None = None,
     ) -> list[CollisionStatus]: ...
     def par_static_threads(
         self,
-        positioned_static_obstacle: Sequence[tuple[CollisionObject, Pose]],
+        positioned_query_shapes: Sequence[tuple[CollisionObject, Pose]],
         threads: int,
         min_time: int | None = None,
         max_time: int | None = None,
@@ -78,6 +95,12 @@ class CollisionChecker:
         min_time: int | None = None,
         max_time: int | None = None,
     ) -> list[CollisionStatus]: ...
+    def collides_dynamic_prepared(
+        self,
+        query: PreparedDynamicQuery,
+        min_time: int | None = None,
+        max_time: int | None = None,
+    ) -> CollisionStatus: ...
     def par_dynamic(
         self,
         dynamic_obstacles: Sequence[DynamicObstacle],
@@ -102,5 +125,7 @@ __all__ = [
     "CollisionCheckerBuilder",
     "CollisionEngine",
     "CollisionStatus",
+    "PreparedDynamicQuery",
+    "PreparedStaticQuery",
     "road_boundary",
 ]

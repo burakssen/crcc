@@ -3,6 +3,8 @@ from crcc.collision_checker import (
     CollisionCheckerBuilder,
     CollisionEngine,
     CollisionStatus,
+    PreparedDynamicQuery,
+    PreparedStaticQuery,
 )
 from crcc.collision_object import (
     Circle,
@@ -32,6 +34,8 @@ __all__ = [
     "HalfSpace",
     "Polygon",
     "Pose",
+    "PreparedDynamicQuery",
+    "PreparedStaticQuery",
     "Rectangle",
     "Triangle",
 ]

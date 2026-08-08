@@ -81,6 +81,8 @@ Python time bounds are inclusive.
 | Member | Purpose |
 | --- | --- |
 | `engine` | Selected `CollisionEngine`. |
+| `prepare_static(query)` / `prepare_dynamic(obstacle)` | Convert a reusable query once for the selected engine. |
+| `collides_static_prepared(...)` / `collides_dynamic_prepared(...)` | Execute a previously prepared query. |
 | `collides_static(query, position=None, min_time=None, max_time=None)` | Check a positioned shape against the scene. |
 | `collides_dynamic(obstacle, min_time=None, max_time=None)` | Check a trajectory against the scene. |
 | `collides_static_batch(queries, min_time=None, max_time=None)` | Ordered batch of positioned shape queries. |

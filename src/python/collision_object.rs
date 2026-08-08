@@ -23,7 +23,7 @@ impl CollisionObject {
         other,
         pos_self = Pose::identity(),
         pos_other = Pose::identity(),
-        engine = CollisionEngine::Parry
+        engine = None
     ))]
     /// Returns whether two objects overlap at the supplied poses.
     ///
@@ -36,14 +36,14 @@ impl CollisionObject {
         other: &Self,
         pos_self: Pose,
         pos_other: Pose,
-        engine: CollisionEngine,
+        engine: Option<CollisionEngine>,
     ) -> PyResult<bool> {
         Ok(crate::collision_checker::engine::collides(
             self.as_ref(),
             pos_self.0,
             other.as_ref(),
             pos_other.0,
-            engine,
+            engine.unwrap_or_default(),
         )?)
     }
 
@@ -53,7 +53,7 @@ impl CollisionObject {
         other,
         start_pos_other,
         end_pos_other,
-        engine = CollisionEngine::Parry
+        engine = None
     ))]
     /// Conservatively checks two motions over one continuous interval.
     ///
@@ -70,7 +70,7 @@ impl CollisionObject {
         other: &Self,
         start_pos_other: Pose,
         end_pos_other: Pose,
-        engine: CollisionEngine,
+        engine: Option<CollisionEngine>,
     ) -> PyResult<bool> {
         Ok(crate::collision_checker::engine::collides_continuous(
             self.as_ref(),
@@ -79,7 +79,7 @@ impl CollisionObject {
             other.as_ref(),
             start_pos_other.0,
             end_pos_other.0,
-            engine,
+            engine.unwrap_or_default(),
         )?)
     }
 
@@ -87,7 +87,7 @@ impl CollisionObject {
         other,
         pos_self = Pose::identity(),
         pos_other = Pose::identity(),
-        engine = CollisionEngine::Parry
+        engine = None
     ))]
     /// Returns the non-negative separation distance between two objects.
     ///
@@ -100,14 +100,14 @@ impl CollisionObject {
         other: &Self,
         pos_self: Pose,
         pos_other: Pose,
-        engine: CollisionEngine,
+        engine: Option<CollisionEngine>,
     ) -> PyResult<f64> {
         Ok(crate::collision_checker::engine::distance(
             self.as_ref(),
             pos_self.0,
             other.as_ref(),
             pos_other.0,
-            engine,
+            engine.unwrap_or_default(),
         )?)
     }
 

@@ -2,6 +2,8 @@ use crate::collision_checker::SelectedCollisionChecker as RustCollisionChecker;
 pub use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::{
     CollisionCheckerBuilder as RustCollisionCheckerBuilder, CollisionStatus as RustCollisionStatus,
+    PreparedDynamicQuery as RustPreparedDynamicQuery,
+    PreparedStaticQuery as RustPreparedStaticQuery,
 };
 use crate::python::collision_object::CollisionObject;
 use crate::python::dynamic_obstacle::DynamicObstacle;
@@ -73,6 +75,31 @@ impl From<RustCollisionStatus> for CollisionStatus {
         }
     }
 }
+
+/// Fixed geometry converted for repeated queries against one backend.
+#[pyclass]
+pub struct PreparedStaticQuery(RustPreparedStaticQuery);
+
+#[pymethods]
+impl PreparedStaticQuery {
+    #[getter]
+    pub const fn engine(&self) -> CollisionEngine {
+        self.0.engine()
+    }
+}
+
+/// A dynamic trajectory converted for repeated queries against one backend.
+#[pyclass]
+pub struct PreparedDynamicQuery(RustPreparedDynamicQuery);
+
+#[pymethods]
+impl PreparedDynamicQuery {
+    #[getter]
+    pub const fn engine(&self) -> CollisionEngine {
+        self.0.engine()
+    }
+}
+
 /// An immutable scene containing merged static geometry and dynamic trajectories.
 ///
 /// Construct instances with `CollisionCheckerBuilder`. Time bounds are
@@ -92,6 +119,23 @@ impl CollisionChecker {
     /// The runtime collision backend used by this checker.
     pub const fn engine(&self) -> CollisionEngine {
         self.0.engine()
+    }
+
+    /// Converts fixed geometry once for repeated queries.
+    pub fn prepare_static(&self, query_shape: &CollisionObject) -> PyResult<PreparedStaticQuery> {
+        Ok(PreparedStaticQuery(
+            self.0.prepare_static(query_shape.as_ref())?,
+        ))
+    }
+
+    /// Converts a dynamic trajectory once for repeated queries.
+    pub fn prepare_dynamic(
+        &self,
+        dynamic_obstacle: &DynamicObstacle,
+    ) -> PyResult<PreparedDynamicQuery> {
+        Ok(PreparedDynamicQuery(
+            self.0.prepare_dynamic(dynamic_obstacle.as_ref())?,
+        ))
     }
 
     #[pyo3(signature = (query_shape, position = None, min_time = None, max_time = None))]
@@ -115,6 +159,26 @@ impl CollisionChecker {
         )?;
 
         Ok(result.into())
+    }
+
+    #[pyo3(signature = (query, position = None, min_time = None, max_time = None))]
+    /// Checks prepared fixed geometry against the scene.
+    pub fn collides_static_prepared(
+        &self,
+        query: &PreparedStaticQuery,
+        position: Option<&Pose>,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<CollisionStatus> {
+        let position = position.map_or(DPose2::IDENTITY, |position| position.0);
+        Ok(self
+            .0
+            .collides_static_prepared_range(
+                &query.0,
+                position,
+                min_max_to_range(min_time, max_time)?,
+            )?
+            .into())
     }
 
     #[pyo3(
@@ -268,6 +332,20 @@ impl CollisionChecker {
             min_max_to_range(min_time, max_time)?,
         )?;
         Ok(res.into())
+    }
+
+    #[pyo3(signature = (query, min_time=None, max_time=None))]
+    /// Checks a prepared dynamic trajectory against the scene.
+    pub fn collides_dynamic_prepared(
+        &self,
+        query: &PreparedDynamicQuery,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<CollisionStatus> {
+        Ok(self
+            .0
+            .collides_dynamic_prepared_range(&query.0, min_max_to_range(min_time, max_time)?)?
+            .into())
     }
 
     #[pyo3(signature = (dynamic_obstacles, min_time=None, max_time=None))]
@@ -424,7 +502,8 @@ pub(super) mod collision_checker {
 
     #[pymodule_export]
     use super::{
-        CollisionChecker, CollisionCheckerBuilder, CollisionEngine, CollisionStatus, road_boundary,
+        CollisionChecker, CollisionCheckerBuilder, CollisionEngine, CollisionStatus,
+        PreparedDynamicQuery, PreparedStaticQuery, road_boundary,
     };
 
     /// Hack: workaround for <https://github.com/PyO3/pyo3/issues/759>.

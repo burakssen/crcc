@@ -9,13 +9,15 @@ from crcc.dynamic_obstacle import DynamicObstacle
 CollisionStatus = core.CollisionStatus
 CollisionChecker = core.CollisionChecker
 CollisionEngine = core.CollisionEngine
+PreparedDynamicQuery = core.PreparedDynamicQuery
+PreparedStaticQuery = core.PreparedStaticQuery
 road_boundary = core.road_boundary
 
 
 class CollisionCheckerBuilder:
     """Build a checker using the selected collision engine."""
 
-    def __init__(self, engine: core.CollisionEngine = core.CollisionEngine.Parry) -> None:
+    def __init__(self, engine: core.CollisionEngine | None = None) -> None:
         """Initializes an empty CollisionCheckerBuilder with the specified engine."""
         self._rust_builder = core.CollisionCheckerBuilder()
         self._engine = engine
@@ -50,5 +52,7 @@ __all__ = [
     "CollisionCheckerBuilder",
     "CollisionEngine",
     "CollisionStatus",
+    "PreparedDynamicQuery",
+    "PreparedStaticQuery",
     "road_boundary",
 ]
