@@ -1,4 +1,5 @@
 import pytest
+from collision_helpers import collision_status
 from crcc import Circle, CollisionCheckerBuilder, Compound, DynamicObstacle, Pose, Rectangle
 
 
@@ -15,9 +16,7 @@ def test_dynamic_query_against_static_environment(engine):
     )
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(1.0)).build()
 
-    result = checker.collides_dynamic(trajectory)
-    assert result.collides
-    assert result.time_step == 3
+    assert collision_status(checker.collides_dynamic(trajectory)) == (True, 3)
 
 
 def test_time_variant_obstacle_behavior(engine):
@@ -32,9 +31,7 @@ def test_time_variant_obstacle_behavior(engine):
         time_offset=7,
     )
     checker1 = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.5)).build()
-    result1 = checker1.collides_dynamic(trajectory1)
-    assert result1.collides
-    assert result1.time_step == 7
+    assert collision_status(checker1.collides_dynamic(trajectory1)) == (True, 7)
 
     # Test time-variant dynamic obstacle respecting explicitly specified positions
     trajectory2 = DynamicObstacle.from_time_variant(
@@ -43,16 +40,14 @@ def test_time_variant_obstacle_behavior(engine):
         [Pose.from_translation((5.0, 0.0)), Pose.from_translation((0.0, 0.0))],
     )
     checker2 = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75)).build()
-    result2 = checker2.collides_dynamic(trajectory2)
-    assert result2.collides
-    assert result2.time_step == 2
+    assert collision_status(checker2.collides_dynamic(trajectory2)) == (True, 2)
 
 
 def test_empty_compound_trajectories():
     """Verify empty trajectory definitions safely return no collisions."""
     trajectory = DynamicObstacle.from_time_variant([Compound([])], time_offset=0)
     checker = CollisionCheckerBuilder().with_static_obstacle(Rectangle(1.0, 1.0)).build()
-    assert not checker.collides_dynamic(trajectory).collides
+    assert collision_status(checker.collides_dynamic(trajectory)) == (False, None)
 
 
 def test_dynamic_obstacle_time_windows_and_parallelization(engine):
@@ -62,36 +57,32 @@ def test_dynamic_obstacle_time_windows_and_parallelization(engine):
     hit = DynamicObstacle(Circle(0.5), [Pose.from_translation((0.25, 0.0))], 5)
     checker = CollisionCheckerBuilder(engine=engine).with_dynamic_obstacle(obstacle).build()
 
-    assert not checker.collides_dynamic(hit, min_time=4, max_time=4).collides
-    assert checker.collides_dynamic(hit, min_time=5, max_time=5).time_step == 5
-
-    def assert_parallel_matches_sequential(dynamic_obstacles):
-        parallel = checker.collides_dynamic_batch(dynamic_obstacles, min_time=5, max_time=5)
-        sequential = [
-            checker.collides_dynamic(dynamic_obstacle, min_time=5, max_time=5) for dynamic_obstacle in dynamic_obstacles
-        ]
-        assert [str(result) for result in parallel] == [str(result) for result in sequential]
-
-    assert_parallel_matches_sequential([miss, hit])
-    assert_parallel_matches_sequential(
-        [
-            DynamicObstacle(
-                Circle(0.5),
-                [Pose.from_translation((10.0 if index % 2 == 0 else 0.25, 0.0))],
-                5,
-            )
-            for index in range(40)
-        ]
-    )
+    assert collision_status(checker.collides_dynamic(hit, min_time=4, max_time=4)) == (False, None)
+    assert collision_status(checker.collides_dynamic(hit, min_time=5, max_time=5)) == (True, 5)
+    assert checker.collides_dynamic_batch([], min_time=5, max_time=5) == []
+    assert [
+        collision_status(result) for result in checker.collides_dynamic_batch([miss, hit, miss], min_time=5, max_time=5)
+    ] == [
+        (False, None),
+        (True, 5),
+        (False, None),
+    ]
 
 
-def test_static_batch_matches_scalar(engine):
+def test_static_batch_is_empty_safe_and_order_preserving(engine):
     checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(1.0)).build()
-    positioned = [(Circle(0.25), Pose.from_translation((0.5 if index % 2 == 0 else 10.0, 0.0))) for index in range(40)]
-    sequential = [checker.collides_static(shape, pose) for shape, pose in positioned]
-    expected = [str(result) for result in sequential]
+    positioned = [
+        (Circle(0.25), Pose.from_translation((10.0, 0.0))),
+        (Circle(0.25), Pose.from_translation((0.5, 0.0))),
+        (Circle(0.25), Pose.from_translation((-10.0, 0.0))),
+    ]
 
-    assert [str(result) for result in checker.collides_static_batch(positioned)] == expected
+    assert checker.collides_static_batch([]) == []
+    assert [collision_status(result) for result in checker.collides_static_batch(positioned)] == [
+        (False, None),
+        (True, None),
+        (False, None),
+    ]
 
 
 def test_inverted_time_window_is_rejected():

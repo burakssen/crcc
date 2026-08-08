@@ -17,7 +17,8 @@ def random_shape(rng):
 
 
 def test_engines_match_for_seeded_random_shapes():
-    rng = random.Random(20260604)
+    seed = 20260604
+    rng = random.Random(seed)
 
     for index in range(500):
         left = random_shape(rng)
@@ -25,8 +26,12 @@ def test_engines_match_for_seeded_random_shapes():
         parry = left.collides(right, engine=CollisionEngine.Parry)
         rhusics = left.collides(right, engine=CollisionEngine.Rhusics)
         collide = left.collides(right, engine=CollisionEngine.Collide)
-        assert parry == rhusics, index
-        assert parry == collide, index
+        context = (
+            f"seed={seed} case={index} left={type(left).__name__} right={type(right).__name__} "
+            f"parry={parry} rhusics={rhusics} collide={collide}"
+        )
+        assert parry == rhusics, context
+        assert parry == collide, context
 
 
 def random_compound_parts(rng):
@@ -55,7 +60,8 @@ def random_pose(rng):
 
 
 def test_compounds_match_expanded_children_for_seeded_random_shapes():
-    rng = random.Random(20260701)
+    seed = 20260701
+    rng = random.Random(seed)
 
     for index in range(300):
         left_parts = random_compound_parts(rng)
@@ -72,4 +78,7 @@ def test_compounds_match_expanded_children_for_seeded_random_shapes():
                 for left_part in left_parts
                 for right_part in right_parts
             )
-            assert compound == expanded, (index, engine)
+            assert compound == expanded, (
+                f"seed={seed} case={index} engine={engine} pos_left={pos_left} pos_right={pos_right} "
+                f"compound={compound} expanded={expanded}"
+            )

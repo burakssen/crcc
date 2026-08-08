@@ -45,6 +45,41 @@ from crcc import Circle, Compound, Empty, FullSpace, Polygon, Pose, Rectangle, T
         (Triangle((0.0, 0.0), (10.0, 0.0), (4.0, 5.0)), oriented_rectangle(1.0, 1.3, 0.6, 10.6, 1.0), False),
         (Triangle((10.0, 2.0), (2.0, 2.0), (5.0, 5.0)), oriented_rectangle(1.0, 1.3, 0.6, 10.6, 1.0), True),
     ],
+    ids=[
+        "circle-overlap",
+        "circle-separated",
+        "rectangle-circle-separated",
+        "rotated-rectangles-overlap",
+        "rectangles-separated",
+        "polygon-circle-overlap",
+        "polygon-circle-separated",
+        "triangle-rectangle-overlap",
+        "triangle-rectangle-separated",
+        "compound-child-overlap",
+        "compound-separated",
+        "empty-circle",
+        "empty-full-space",
+        "full-space-circle",
+        "full-space-rectangle",
+        "reference-rectangle-circle-hit",
+        "reference-rectangle-circle-clear",
+        "reference-oriented-rectangle-circle-clear",
+        "reference-oriented-rectangle-circle-hit",
+        "reference-rectangles-clear-axis-aligned",
+        "reference-rectangles-clear-rotated",
+        "reference-rectangles-hit-rotated",
+        "reference-triangle-circle-clear",
+        "reference-triangle-circle-hit",
+        "reference-triangle-rectangle-clear",
+        "reference-triangle-rectangle-hit",
+        "reference-triangle-rectangle-clear-far",
+        "reference-second-triangle-rectangle-clear-far",
+        "reference-triangle-rectangle-hit-near",
+        "reference-triangle-rectangle-hit-offset",
+        "reference-second-triangle-rectangle-clear-offset",
+        "reference-triangle-rectangle-clear-high",
+        "reference-second-triangle-rectangle-hit-high",
+    ],
 )
 def test_static_shape_collisions(left, right, expected, engine):
     """Verify exact collision checker queries for various shape primitives."""
@@ -59,6 +94,7 @@ def test_static_shape_collisions(left, right, expected, engine):
         (oriented_rectangle(1.0, 1.3, 0.6, 10.8, 0.6), True),
         (oriented_rectangle(1.0, 1.3, 0.6, 10.6, 1.0), True),
     ],
+    ids=["clear", "first-triangle-hit", "first-triangle-offset-hit", "second-triangle-hit"],
 )
 def test_polygon_represented_as_compound_triangles(query, expected, engine):
     """Test multi-triangle compound shapes against oriented rectangles."""
@@ -108,20 +144,28 @@ def test_pose_composition_and_multiplication():
     assert math.isclose(composed.rotation, math.pi / 2.0, abs_tol=1e-7)
 
 
-def test_collides_continuous(engine):
-    """Test continuous collision detection (CCD) / rigid shape casting."""
-    circle = Circle(1.0)
-    obstacle = Circle(1.0)
+@pytest.mark.parametrize(
+    ("self_motion", "other_motion", "expected"),
+    [
+        (((-5.0, 0.0), (-4.0, 0.0)), ((5.0, 0.0), (5.0, 0.0)), False),
+        (((0.0, 0.0), (3.0, 0.0)), ((0.0, 0.0), (0.0, 0.0)), True),
+        (((-3.0, 0.0), (3.0, 0.0)), ((3.0, 0.0), (-3.0, 0.0)), True),
+    ],
+    ids=["certified-clear", "endpoint-overlap", "moving-moving-crossing"],
+)
+def test_collides_continuous(self_motion, other_motion, expected, engine):
+    """Cover CCD's certified-clear, endpoint, and two-moving-body contracts."""
+    start_self, end_self = map(Pose.from_translation, self_motion)
+    start_other, end_other = map(Pose.from_translation, other_motion)
 
-    start_pos_self = Pose((-3.0, 0.0), 0.0)
-    end_pos_self = Pose((3.0, 0.0), 0.0)
-    pos_other = Pose((0.0, 0.0), 0.0)
-
-    assert circle.collides_continuous(
-        start_pos_self,
-        end_pos_self,
-        obstacle,
-        pos_other,
-        pos_other,
-        engine=engine,
+    assert (
+        Circle(1.0).collides_continuous(
+            start_self,
+            end_self,
+            Circle(1.0),
+            start_other,
+            end_other,
+            engine=engine,
+        )
+        is expected
     )
