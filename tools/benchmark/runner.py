@@ -464,14 +464,15 @@ def _run_api_overhead_suite(config, engine_items):
     for batch_size in batch_sizes:
         positioned = api_batch_workload(batch_size)
         for backend, engine in engine_items:
-            checker = _try_build_checker(engine, (Circle(0.75),))
-            if checker is None:
+            built_checker = _try_build_checker(engine, (Circle(0.75),))
+            if built_checker is None:
                 runs.append(
                     _unsupported_scene_run(
                         "api_overhead", backend, f"batch_{batch_size}", 0, batch_size, shape="circle"
                     )
                 )
                 continue
+            checker = built_checker
             try:
                 if positioned:
                     checker.collides_static(*positioned[0])
@@ -693,14 +694,15 @@ def _run_dynamic_batch_suite(config, engine_items):
         for batch_size in batch_sizes:
             obstacles = dynamic_query_batch(batch_size, steps)
             for backend, engine in engine_items:
-                checker = _try_build_checker(engine, (Circle(0.75),))
-                if checker is None:
+                built_checker = _try_build_checker(engine, (Circle(0.75),))
+                if built_checker is None:
                     runs.append(
                         _unsupported_scene_run(
                             "dynamic_batch", backend, f"scalar_{steps}_steps", 0, batch_size, shape="circle"
                         )
                     )
                     continue
+                checker = built_checker
                 try:
                     checker.collides_dynamic(obstacles[0])
                     checker.collides_dynamic_batch(obstacles)
@@ -765,10 +767,11 @@ def _run_dynamic_batch_suite(config, engine_items):
                         )
     window_obstacles = dynamic_query_batch(32, 16)
     for backend, engine in engine_items:
-        checker = _try_build_checker(engine, (Circle(0.75),))
-        if checker is None:
+        built_checker = _try_build_checker(engine, (Circle(0.75),))
+        if built_checker is None:
             runs.append(_unsupported_scene_run("dynamic_batch", backend, "window_1", 0, 32, shape="circle"))
             continue
+        checker = built_checker
         for window_steps in (1, 4, 16):
             for repetition in range(config.repetitions):
                 scalar_ns, scalar = _stable_call_time(
@@ -847,14 +850,15 @@ def _run_time_variant_suite(config, engine_items):
             obstacles = time_variant_query_batch(batch_size, steps, variation)
             construction_ns = time.perf_counter_ns() - construction_start
             for backend, engine in engine_items:
-                checker = _try_build_checker(engine, (Circle(0.75),))
-                if checker is None:
+                built_checker = _try_build_checker(engine, (Circle(0.75),))
+                if built_checker is None:
                     runs.append(
                         _unsupported_scene_run(
                             "time_variant", backend, f"{variation}_{steps}_steps", 0, batch_size, shape="varying"
                         )
                     )
                     continue
+                checker = built_checker
                 try:
                     checker.collides_dynamic(obstacles[0])
                     checker.collides_dynamic_batch(obstacles)
