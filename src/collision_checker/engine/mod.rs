@@ -346,6 +346,19 @@ mod tests {
         }
     }
 
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    fn assert_all_engines_collision(
+        left: &CollisionObject,
+        pos_left: DPose2,
+        right: &CollisionObject,
+        pos_right: DPose2,
+        expected: bool,
+    ) {
+        for engine in engines() {
+            assert_collision_at(left, pos_left, right, pos_right, engine, expected);
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn assert_continuous_collision(
         left: &CollisionObject,
@@ -778,37 +791,37 @@ mod tests {
         }
     }
 
-    #[cfg(any(feature = "rhusics", feature = "collide"))]
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
     #[test]
-    fn non_parry_backends_handle_half_space_pairs_exactly() {
+    fn all_backends_handle_half_space_pairs_exactly() {
         let x_le_zero = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap();
         let x_ge_minus_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, 1.0).unwrap();
         let x_ge_one = CollisionObject::half_space_from_coeffs(-1.0, 0.0, -1.0).unwrap();
         let x_le_two = CollisionObject::half_space_from_coeffs(1.0, 0.0, 2.0).unwrap();
         let y_le_zero = CollisionObject::half_space_from_coeffs(0.0, 1.0, 0.0).unwrap();
 
-        assert_rhusics_and_collide_collision(
+        assert_all_engines_collision(
             &x_le_zero,
             DPose2::IDENTITY,
             &x_ge_minus_one,
             DPose2::IDENTITY,
             true,
         );
-        assert_rhusics_and_collide_collision(
+        assert_all_engines_collision(
             &x_le_zero,
             DPose2::IDENTITY,
             &x_ge_one,
             DPose2::IDENTITY,
             false,
         );
-        assert_rhusics_and_collide_collision(
+        assert_all_engines_collision(
             &x_le_zero,
             DPose2::IDENTITY,
             &x_le_two,
             DPose2::IDENTITY,
             true,
         );
-        assert_rhusics_and_collide_collision(
+        assert_all_engines_collision(
             &x_le_zero,
             DPose2::IDENTITY,
             &y_le_zero,
@@ -817,21 +830,15 @@ mod tests {
         );
     }
 
-    #[cfg(any(feature = "rhusics", feature = "collide"))]
+    #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
     #[test]
-    fn non_parry_backends_do_not_separate_nonparallel_half_spaces() {
+    fn backends_do_not_separate_nonparallel_half_spaces() {
         let angle = 5e-10_f64;
         let left = CollisionObject::half_space_from_coeffs(1.0, 0.0, 0.0).unwrap();
         let right =
             CollisionObject::half_space_from_coeffs(-angle.cos(), angle.sin(), -1.0).unwrap();
 
-        assert_rhusics_and_collide_collision(
-            &left,
-            DPose2::IDENTITY,
-            &right,
-            DPose2::IDENTITY,
-            true,
-        );
+        assert_all_engines_collision(&left, DPose2::IDENTITY, &right, DPose2::IDENTITY, true);
     }
 
     #[cfg(any(feature = "rhusics", feature = "collide"))]

@@ -5,12 +5,14 @@ use parry2d_f64::bounding_volume::{Aabb, BoundingVolume};
 use parry2d_f64::query::{
     NonlinearRigidMotion, Unsupported, cast_shapes_nonlinear, distance, intersection_test,
 };
-use parry2d_f64::shape::{Compound, Shape, SharedShape, TriMesh};
+use parry2d_f64::shape::{Compound, Shape, SharedShape, TriMesh, TypedShape};
 use std::f64::consts::{PI, TAU};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
 const ROTATION_EPSILON: f64 = 1e-12;
 const LOCAL_OFFSET_EPSILON_SQUARED: f64 = 1e-24;
+/// Matches the contact tolerance used by the rhusics and collide backends.
+const HALF_SPACE_EPSILON: f64 = 1e-9;
 #[derive(Clone, Debug)]
 pub enum ParryCollisionObjectInner {
     Empty,
@@ -97,6 +99,17 @@ impl NonTrivial {
         other: &Self,
         pos_other: DPose2,
     ) -> Result<bool, Unsupported> {
+        // ponytail: upstream swallows Err(Unsupported) inside the compound
+        // dispatch, so half-space pairs silently read as disjoint; answer them
+        // analytically like the other engines.
+        if self.half_spaces(pos_self).any(|left| {
+            other
+                .half_spaces(pos_other)
+                .any(|right| half_spaces_collide(left, right))
+        }) {
+            return Ok(true);
+        }
+
         for compound_self in self.compounds() {
             for compound_other in other.compounds() {
                 if intersection_test(&pos_self, compound_self, &pos_other, compound_other)? {
@@ -106,6 +119,24 @@ impl NonTrivial {
         }
 
         Ok(false)
+    }
+
+    fn half_spaces(&self, pose: DPose2) -> impl Iterator<Item = (DVec2, f64)> + '_ {
+        self.compounds().flat_map(move |compound| {
+            compound
+                .shapes()
+                .iter()
+                .filter_map(move |(local_pose, shape)| {
+                    let TypedShape::HalfSpace(half_space) = shape.as_typed_shape() else {
+                        return None;
+                    };
+                    let normal = pose.rotation.mul(half_space.normal);
+                    let offset = normal
+                        .dot(pose.translation)
+                        .add(half_space.normal.dot(local_pose.translation));
+                    Some((normal, offset))
+                })
+        })
     }
 
     pub fn collides_continuous(
@@ -223,10 +254,26 @@ impl NonTrivial {
             }
         }
 
-        minimum_distance
-            .is_finite()
+        // ponytail: upstream composite distance reports f64::MAX when no part
+        // pair was supported; surface that as Unsupported, not a bogus gap.
+        (minimum_distance.is_finite() && minimum_distance < f64::MAX)
             .then_some(minimum_distance)
             .ok_or(Unsupported)
+    }
+}
+
+fn half_spaces_collide(left: (DVec2, f64), right: (DVec2, f64)) -> bool {
+    let (left_normal, left_offset) = left;
+    let (right_normal, right_offset) = right;
+
+    // A tolerance here would turn nonparallel, intersecting sets into parallel ones.
+    let normals_are_opposite =
+        left_normal.perp_dot(right_normal).abs() <= 0.0 && left_normal.dot(right_normal) < 0.0;
+
+    if normals_are_opposite {
+        left_offset.add(right_offset) >= HALF_SPACE_EPSILON.neg()
+    } else {
+        true
     }
 }
 

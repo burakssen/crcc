@@ -7,6 +7,7 @@ repo_url: https://github.com/burakssen/crcc
 nav:
   - Home: index.md
   - Concepts and Engines: concepts.md
+  - Engine Semantics: engine-semantics.md
   - Python:
       - Usage Guide: python-guide.md
       - API Reference: python-api.md
