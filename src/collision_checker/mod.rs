@@ -322,7 +322,7 @@ mod tests {
     use crate::collision_object::CollisionObject;
     use crate::collision_object::DynamicObstacle;
     use crate::collision_object::simple::SimpleCollisionObject;
-    use geo::Rect;
+    use geo::{Polygon, Rect};
     use std::f64::consts::FRAC_PI_2;
 
     fn engines() -> Vec<CollisionEngine> {
@@ -334,6 +334,48 @@ mod tests {
             #[cfg(feature = "collide")]
             CollisionEngine::Collide,
         ]
+    }
+
+    #[test]
+    fn duplicate_vertex_polygon_matches_clean_polygon_on_all_engines() {
+        // Regression: a duplicated consecutive vertex once made the parry
+        // backend reject every query against a scene containing such geometry.
+        let clean = Polygon::new(
+            vec![(0.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0)].into(),
+            Vec::new(),
+        );
+        let duplicated = Polygon::new(
+            vec![(0.0, 0.0), (4.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0)].into(),
+            Vec::new(),
+        );
+        let clean = CollisionObject::from(SimpleCollisionObject::polygon(clean).unwrap());
+        let duplicated = CollisionObject::from(SimpleCollisionObject::polygon(duplicated).unwrap());
+        let probe = CollisionObject::from(
+            SimpleCollisionObject::rectangle(Rect::new((-1.0, -1.0), (1.0, 1.0)), 0.0).unwrap(),
+        );
+
+        for engine in engines() {
+            let clean_checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(clean.clone())
+                .build_with_engine(engine)
+                .unwrap();
+            let duplicated_checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(duplicated.clone())
+                .build_with_engine(engine)
+                .unwrap();
+
+            for position in [DPose2::IDENTITY, DPose2::translation(100.0, 100.0)] {
+                assert_eq!(
+                    duplicated_checker
+                        .collides_static_range(&probe, position, ..)
+                        .unwrap(),
+                    clean_checker
+                        .collides_static_range(&probe, position, ..)
+                        .unwrap(),
+                    "{engine:?}, {position:?}"
+                );
+            }
+        }
     }
 
     #[test]

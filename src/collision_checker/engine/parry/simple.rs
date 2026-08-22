@@ -8,13 +8,16 @@ use parry2d_f64::shape::{
     Ball, ConvexPolygon as ParryConvexPolygon, Cuboid, HalfSpace as ParryHalfSpace, Shape, TriMesh,
     Triangle as ParryTriangle,
 };
-use std::ops::{Div, Mul};
+use std::ops::{Div, Mul, Sub};
 
 pub enum ParrySimpleCollisionObject {
     Empty,
     FullSpace,
     Invalid,
     TriMesh(Box<TriMesh>),
+    /// Fallback for triangulations whose topology parry rejects: the raw
+    /// non-degenerate triangles, which are always representable.
+    Triangles(Vec<ParryTriangle>),
     Shape {
         shape: Box<dyn Shape>,
         position: DPose2,
@@ -109,10 +112,37 @@ fn convert_polygon_with_holes(polygon_with_holes: &PolygonWithHoles) -> ParrySim
         return ParrySimpleCollisionObject::Invalid;
     };
 
+    let triangles = non_degenerate_triangles(&vertices, &indices);
+
+    if triangles.is_empty() {
+        return ParrySimpleCollisionObject::Empty;
+    }
+
+    // ponytail: earcut output with valid rings should always pass
+    // TriMesh::new; if topology validation still rejects it, keep the raw
+    // triangles instead of poisoning the whole compound.
     TriMesh::new(vertices, indices).map_or_else(
-        |_| ParrySimpleCollisionObject::Invalid,
-        trimesh_collision_object,
+        |_| ParrySimpleCollisionObject::Triangles(triangles),
+        |mesh| trimesh_collision_object(mesh),
     )
+}
+
+/// Builds parry triangles from an earcut output, dropping zero-area triangles
+/// that would break mesh topology validation.
+fn non_degenerate_triangles(vertices: &[DVec2], indices: &[[u32; 3]]) -> Vec<ParryTriangle> {
+    indices
+        .iter()
+        .filter_map(|&[a, b, c]| {
+            let [a, b, c] = [
+                usize::try_from(a).ok()?,
+                usize::try_from(b).ok()?,
+                usize::try_from(c).ok()?,
+            ];
+            let (a, b, c) = (*vertices.get(a)?, *vertices.get(b)?, *vertices.get(c)?);
+            let area = b.sub(a).perp_dot(c.sub(a));
+            (area != 0.0).then_some(ParryTriangle::new(a, b, c))
+        })
+        .collect()
 }
 
 fn trimesh_collision_object(mesh: TriMesh) -> ParrySimpleCollisionObject {

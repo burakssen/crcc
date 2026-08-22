@@ -205,3 +205,42 @@ def test_scenario_builder_includes_set_based_dynamic_obstacles(engine):
 
     assert collision_status(checker.collides_static(Circle(0.75), min_time=5, max_time=5)) == (True, 5)
     assert collision_status(checker.collides_static(Circle(0.75), min_time=4, max_time=4)) == (False, None)
+
+
+def test_polygon_occupancy_with_duplicate_vertex_does_not_poison_queries(engine):
+    """Regression: a duplicated consecutive vertex once made parry reject
+    every query against a scene containing the converted occupancy."""
+    clean = ShapelyPolygon([(0.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0)])
+    duplicated = ShapelyPolygon([(0.0, 0.0), (4.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0)])
+
+    def obstacle_with_occupancy(occupancy):
+        prediction = SetBasedPrediction(2, {2: PolygonOccupancy(occupancy)})
+        return cr_obstacle.DynamicObstacle(
+            obstacle_id=7,
+            obstacle_type=ObstacleType.PEDESTRIAN,
+            obstacle_shape=RectObstacleShape(width=1.0, length=1.0),
+            initial_state=InitialState(time_step=0, position=np.array((0.0, 0.0)), orientation=0.0),
+            prediction=prediction,
+        )
+
+    def scene_with(occupancy):
+        return (
+            CollisionCheckerBuilder(engine=engine)
+            .with_static_obstacle(Circle(0.1, (50.0, 50.0)))
+            .with_dynamic_obstacle(from_dynamic_obstacle(obstacle_with_occupancy(occupancy)))
+            .build()
+        )
+
+    clean_scene = scene_with(clean)
+    duplicated_scene = scene_with(duplicated)
+
+    probe = Circle(0.25, (2.0, 1.0))
+    assert collision_status(duplicated_scene.collides_static(probe, min_time=2, max_time=2)) == (True, 2)
+    assert collision_status(duplicated_scene.collides_static(probe, min_time=3, max_time=3)) == (False, None)
+    assert collision_status(duplicated_scene.collides_static(Circle(10.0, (50.0, 50.0)), min_time=2, max_time=2)) == (
+        True,
+        None,
+    )
+    assert collision_status(duplicated_scene.collides_static(probe, min_time=2, max_time=2)) == collision_status(
+        clean_scene.collides_static(probe, min_time=2, max_time=2)
+    )

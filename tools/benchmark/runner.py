@@ -1354,6 +1354,7 @@ def _measure_synthetic(backend, engine, workload, repetition):
 def _synthetic_correctness(backend, engine, workload):
     counter = counts()
     mismatches = 0
+    errors = 0
     oracle = "backend_semantics" if any(query.expected_by_backend for query in workload.queries) else "analytic"
     if workload.operation == "distance":
         return CorrectnessResult(
@@ -1366,7 +1367,7 @@ def _synthetic_correctness(backend, engine, workload):
         try:
             actual = bool(_execute_pair_query(engine, workload.operation, query))
         except Exception:
-            mismatches += int(expected is not None)
+            errors += int(expected is not None)
             continue
         update_counts(counter, expected, actual)
     # Conservative CCD may intentionally over-approximate, so only false
@@ -1384,6 +1385,7 @@ def _synthetic_correctness(backend, engine, workload):
         counter["fn"],
         mismatches,
         oracle,
+        errors=errors,
     )
 
 
@@ -1692,12 +1694,14 @@ def _static_parallel_scaling_rows(backend, checker, workload, scenario, thread_c
 def _parallel_correctness(backend, checker, workload):
     poses = workload.poses[: min(1_000, len(workload.poses))]
     positioned = tuple((workload.car, pose) for pose in poses)
+    errors = 0
+    mismatches = 0
     try:
         parallel = checker.collides_static_batch(positioned)
         sequential = [checker.collides_static(workload.car, pose) for pose in poses]
     except Exception:
-        # failed queries count as mismatches like _synthetic_correctness;
-        # a backend error must not kill the whole scenario suite.
+        # A backend error must not kill the whole scenario suite; failed
+        # queries are reported as errors instead of silent result mismatches.
         return CorrectnessResult(
             "scenario",
             workload.name,
@@ -1708,8 +1712,9 @@ def _parallel_correctness(backend, checker, workload):
             "",
             "",
             "",
-            len(poses),
+            0,
             "sequential",
+            errors=len(poses),
         )
     mismatches = sum(str(left) != str(right) for left, right in zip(parallel, sequential, strict=True))
     return CorrectnessResult(
@@ -1724,6 +1729,7 @@ def _parallel_correctness(backend, checker, workload):
         "",
         mismatches,
         "sequential",
+        errors=errors,
     )
 
 

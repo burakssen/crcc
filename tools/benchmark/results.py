@@ -68,6 +68,7 @@ class CorrectnessResult:
     false_negative: int | str
     mismatches: int
     oracle: str
+    errors: int = 0
 
 
 @dataclass(frozen=True)
@@ -277,6 +278,7 @@ CORRECTNESS_FIELDS = [
     "false_positive",
     "false_negative",
     "mismatches",
+    "errors",
     "oracle",
 ]
 
@@ -377,6 +379,7 @@ def correctness_row(result: CorrectnessResult):
         "false_positive": result.false_positive,
         "false_negative": result.false_negative,
         "mismatches": result.mismatches,
+        "errors": result.errors,
         "oracle": result.oracle,
     }
 

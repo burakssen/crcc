@@ -390,6 +390,14 @@ impl From<CollisionObject> for ParryCollisionObjectInner {
                     tri_meshes.push(*mesh);
                 }
 
+                ParrySimpleCollisionObject::Triangles(triangles) => {
+                    generic_objects.extend(
+                        triangles
+                            .into_iter()
+                            .map(|triangle| (DPose2::IDENTITY, SharedShape::new(triangle))),
+                    );
+                }
+
                 ParrySimpleCollisionObject::Shape { shape, position } => {
                     generic_objects.push((position, SharedShape(shape.into())));
                 }
@@ -399,15 +407,16 @@ impl From<CollisionObject> for ParryCollisionObjectInner {
         let tri_mesh_compound = if tri_meshes.is_empty() {
             None
         } else {
-            let Some(merged_tri_mesh) = merge_trimeshes(tri_meshes) else {
+            let Some(merged_tri_mesh) = merge_trimeshes(&tri_meshes) else {
                 return Self::Invalid;
             };
 
-            let Some(compound) = Compound::decompose_trimesh(&merged_tri_mesh) else {
-                return Self::Invalid;
-            };
-
-            Some(compound)
+            // ponytail: hertel-mehlhorn decomposition can reject merged
+            // meshes; keep the raw triangles rather than poisoning the scene.
+            Some(
+                Compound::decompose_trimesh(&merged_tri_mesh)
+                    .unwrap_or_else(|| triangle_compound(&merged_tri_mesh)),
+            )
         };
 
         let generic_compound =
@@ -424,7 +433,16 @@ impl From<CollisionObject> for ParryCollisionObjectInner {
     }
 }
 
-fn merge_trimeshes(meshes: impl IntoIterator<Item = TriMesh>) -> Option<TriMesh> {
+/// Builds a compound from the individual triangles of a tri-mesh.
+fn triangle_compound(mesh: &TriMesh) -> Compound {
+    Compound::new(
+        mesh.triangles()
+            .map(|triangle| (DPose2::IDENTITY, SharedShape::new(triangle)))
+            .collect(),
+    )
+}
+
+fn merge_trimeshes(meshes: &[TriMesh]) -> Option<TriMesh> {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
     let mut offset = 0_u32;

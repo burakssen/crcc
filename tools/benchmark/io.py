@@ -206,6 +206,7 @@ def write_report_rows(path: Path, artifacts: ArtifactBundle):
     mismatches = sum(_int(row["mismatches"]) for row in correctness_rows)
     false_positives = sum(_int(row["false_positive"]) for row in correctness_rows)
     false_negatives = sum(_int(row["false_negative"]) for row in correctness_rows)
+    correctness_errors = sum(_int(row.get("errors", 0)) for row in correctness_rows)
     errors = sum(_int(row["errors_total"]) for row in summary_rows)
     unsupported = [row for row in summary_rows if str(row["unsupported"]).lower() == "true"]
     comparisons = sorted(
@@ -220,6 +221,7 @@ def write_report_rows(path: Path, artifacts: ArtifactBundle):
         "",
         f"- Validated artifact source: **{artifacts.source}**",
         f"- Correctness mismatches: **{mismatches}** (FP: {false_positives}, FN: {false_negatives})",
+        f"- Correctness query errors: **{correctness_errors}**",
         f"- Query errors: **{errors}**",
         f"- Unsupported backend/workload groups: **{len(unsupported)}**",
         "",
@@ -236,7 +238,7 @@ def write_report_rows(path: Path, artifacts: ArtifactBundle):
         f"- Extended stress sizes: {bool(command.get('include_stress', False))}",
         "",
         "The study uses paired backend comparisons, deterministic workload seeds, analytic correctness oracles where possible, and bootstrap confidence intervals for speedup medians.",
-        "Correctness mismatches count false negatives and query errors. Conservative false positives are reported separately in the `fp` column.",
+        "Correctness mismatches count false negatives only; backend query failures are reported separately as `errors`. Conservative false positives are reported in the `fp` column.",
         "",
         "## Spec Coverage Notes",
         "",
@@ -262,14 +264,14 @@ def write_report_rows(path: Path, artifacts: ArtifactBundle):
         "",
         "## Correctness",
         "",
-        "| feature | workload | scenario | backend | queries | FP | FN | mismatches | oracle |",
-        "|---|---|---|---|---:|---:|---:|---:|---|",
+        "| feature | workload | scenario | backend | queries | FP | FN | mismatches | errors | oracle |",
+        "|---|---|---|---|---:|---:|---:|---:|---:|---|",
     ]
     for row in sorted(correctness_rows, key=lambda item: (item["feature"], item["workload"], item["backend"])):
         lines.append(
             f"| {_md(row['feature'])} | {_md(row['workload'])} | {_md(row['scenario'])} | {_md(row['backend'])} | "
             f"{_int(row['queries'])} | {_int(row['false_positive'])} | {_int(row['false_negative'])} | "
-            f"{_int(row['mismatches'])} | {_md(row['oracle'])} |"
+            f"{_int(row['mismatches'])} | {_int(row.get('errors', 0))} | {_md(row['oracle'])} |"
         )
     lines.extend(
         [

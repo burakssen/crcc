@@ -1,8 +1,8 @@
 use crate::error::{CrccError, CrccResult};
 use enum_dispatch::enum_dispatch;
 use geo::{
-    AffineOps, AffineTransform, Area, BooleanOps, ConvexHull, HasDimensions, IsConvex, Polygon,
-    Rect, Rotate, Triangle as GeoTriangle, Validation,
+    AffineOps, AffineTransform, Area, BooleanOps, ConvexHull, HasDimensions, IsConvex, LineString,
+    Polygon, Rect, Rotate, Triangle as GeoTriangle, Validation,
 };
 use glamx::{DPose2, DVec2};
 use itertools::Itertools;
@@ -430,13 +430,17 @@ impl SimpleCollisionObject {
 
     /// Creates a validated polygon collision object.
     ///
+    /// Consecutive duplicate vertices (zero-length edges) are collapsed before
+    /// validation because they carry no geometric information but break
+    /// downstream triangulation, e.g. in the parry backend.
+    ///
     /// # Errors
     ///
     /// Returns an error when the polygon contains non-finite coordinates, is
     /// topologically invalid, is empty, or cannot be classified as supported
     /// collision geometry.
     pub fn polygon(polygon: impl Into<Polygon>) -> CrccResult<Self> {
-        let polygon = polygon.into();
+        let polygon = dedup_polygon_vertices(polygon.into());
         if polygon
             .exterior()
             .0
@@ -664,6 +668,46 @@ pub(crate) fn rotation_changed(start: DPose2, end: DPose2) -> bool {
     start.rotation != end.rotation
 }
 
+/// Collapses consecutive duplicate vertices in every ring of `polygon`.
+///
+/// Duplicate adjacent coordinates create zero-length edges that carry no area
+/// but poison downstream triangulation (e.g. earcut emits degenerate triangles
+/// for them). Interior rings that degenerate to fewer than three distinct
+/// points are dropped entirely. Polygons whose exterior cannot be salvaged are
+/// returned unchanged so the caller's validation reports the original problem.
+fn dedup_polygon_vertices(polygon: Polygon) -> Polygon {
+    let dedup_ring =
+        |ring: &geo::LineString| -> Vec<_> { ring.0.iter().copied().dedup().collect() };
+
+    // Distinct vertex count ignoring a repeated closing coordinate.
+    let distinct_count = |coords: &[geo::Coord]| match coords {
+        [first, middle @ .., last] if first == last => middle.len().saturating_add(1),
+        coords => coords.len(),
+    };
+
+    let usable_ring = |ring: &geo::LineString| {
+        let coords = dedup_ring(ring);
+        // A bare LineString reports zero area by definition, so measure the
+        // ring as a hole-less polygon instead.
+        let area = Polygon::new(LineString::from(coords.clone()), vec![]).unsigned_area();
+        distinct_count(&coords) >= 3 && area > 0.0
+    };
+
+    let exterior_ok = usable_ring(polygon.exterior());
+    let interiors: Vec<_> = polygon
+        .interiors()
+        .iter()
+        .filter(|ring| usable_ring(ring))
+        .map(|ring| LineString::from(dedup_ring(ring)))
+        .collect();
+
+    if !exterior_ok {
+        return polygon;
+    }
+
+    Polygon::new(LineString::from(dedup_ring(polygon.exterior())), interiors)
+}
+
 pub(crate) fn pose_to_affine(pose: DPose2) -> AffineTransform {
     AffineTransform::rotate(pose.rotation.angle().to_degrees(), (0.0, 0.0))
         .translated(pose.translation.x, pose.translation.y)
@@ -767,6 +811,51 @@ mod tests {
 
         assert_eq!(
             SimpleCollisionObject::polygon(bow_tie),
+            Err(CrccError::InvalidGeometry(
+                "polygon must be topologically valid",
+            )),
+        );
+    }
+
+    #[test]
+    fn polygon_collapses_consecutive_duplicate_vertices() {
+        let duplicated = Polygon::new(
+            vec![(0.0, 0.0), (1.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)].into(),
+            Vec::new(),
+        );
+        let clean = Polygon::new(
+            vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)].into(),
+            Vec::new(),
+        );
+
+        let sanitized = SimpleCollisionObject::polygon(duplicated);
+        let expected = SimpleCollisionObject::polygon(clean);
+
+        assert_eq!(
+            sanitized, expected,
+            "duplicated-vertex polygon should sanitize to the clean polygon",
+        );
+    }
+
+    #[test]
+    fn polygon_drops_degenerate_interior_rings_and_keeps_valid_ones() {
+        let degenerate_interior = Polygon::new(
+            vec![(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)].into(),
+            vec![vec![(1.0, 1.0), (1.0, 1.0), (2.0, 1.0)].into()],
+        );
+
+        assert!(matches!(
+            SimpleCollisionObject::polygon(degenerate_interior),
+            Ok(SimpleCollisionObject::ConvexPolygon(_))
+        ));
+    }
+
+    #[test]
+    fn polygon_with_fully_degenerate_exterior_still_reports_invalid_geometry() {
+        let degenerate = Polygon::new(vec![(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)].into(), Vec::new());
+
+        assert_eq!(
+            SimpleCollisionObject::polygon(degenerate),
             Err(CrccError::InvalidGeometry(
                 "polygon must be topologically valid",
             )),
