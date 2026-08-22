@@ -111,6 +111,18 @@ def test_road_boundary_marks_only_space_outside_lanelets(engine):
     assert road_boundary([]).collides(crcc.Circle(0.1), engine=engine)
 
 
+def test_needle_polygon_does_not_poison_scene(engine):
+    # Regression: parry pruned needle-thin convex polygons to <3 points and
+    # marked the whole scene invalid (C-DEU_B471-1_1_T-1 road-boundary sliver).
+    needle = crcc.Polygon([(-12.681534178140668, -2.7162407628206067), (37.1241, 16.1575), (36.6255, 15.9685)])
+    checker = CollisionCheckerBuilder(engine).with_static_obstacle(needle).build()
+    query = crcc.Rectangle(4.4, 2.0)
+
+    assert not collision_status(checker.collides_static(query))[0]
+    assert collision_status(checker.collides_static(query, Pose.from_translation((30.0, 13.0))))[0]
+    assert len(checker.collides_static_batch([(query, Pose.identity())])) == 1
+
+
 def test_prepared_queries_reject_a_different_engine():
     parry = CollisionCheckerBuilder(CollisionEngine.Parry).build()
     rhusics = CollisionCheckerBuilder(CollisionEngine.Rhusics).build()

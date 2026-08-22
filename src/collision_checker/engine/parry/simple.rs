@@ -76,13 +76,17 @@ fn convert_triangle(triangle: &Triangle) -> ParrySimpleCollisionObject {
 fn convert_convex_polygon(convex_polygon: &ConvexPolygon) -> ParrySimpleCollisionObject {
     let vertices = geo_line_string_to_parry_polyline(convex_polygon.exterior());
 
-    ParryConvexPolygon::from_convex_polyline(vertices).map_or_else(
-        || ParrySimpleCollisionObject::Invalid,
-        |polygon| ParrySimpleCollisionObject::Shape {
-            shape: Box::new(polygon),
-            position: DPose2::IDENTITY,
-        },
-    )
+    ParryConvexPolygon::from_convex_polyline(vertices.clone())
+        // parry prunes needle-thin convex polygons below its collinearity
+        // epsilon to <3 points; keep the unpruned polygon instead of poisoning the scene.
+        .or_else(|| ParryConvexPolygon::from_convex_polyline_unmodified(vertices))
+        .map_or_else(
+            || ParrySimpleCollisionObject::Invalid,
+            |polygon| ParrySimpleCollisionObject::Shape {
+                shape: Box::new(polygon),
+                position: DPose2::IDENTITY,
+            },
+        )
 }
 
 fn convert_non_convex_polygon(non_convex_polygon: &NonConvexPolygon) -> ParrySimpleCollisionObject {

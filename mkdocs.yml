@@ -1,4 +1,4 @@
-# ponytail: Stock MkDocs is enough until the documentation needs a concrete theme or plugin.
+# Stock MkDocs is enough until the documentation needs a concrete theme or plugin.
 site_name: CRCC
 site_description: 2D collision checking for Rust, Python, and CommonRoad
 site_url: https://burakssen.com/crcc/

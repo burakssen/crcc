@@ -1549,8 +1549,25 @@ def _measure_parallel_scaling(backend, checker, workload, thread_counts, repetit
 def _parallel_correctness(backend, checker, workload):
     poses = workload.poses[: min(1_000, len(workload.poses))]
     positioned = tuple((workload.car, pose) for pose in poses)
-    parallel = checker.collides_static_batch(positioned)
-    sequential = [checker.collides_static(workload.car, pose) for pose in poses]
+    try:
+        parallel = checker.collides_static_batch(positioned)
+        sequential = [checker.collides_static(workload.car, pose) for pose in poses]
+    except Exception:
+        # failed queries count as mismatches like _synthetic_correctness;
+        # a backend error must not kill the whole scenario suite.
+        return CorrectnessResult(
+            "scenario",
+            workload.name,
+            backend,
+            "parallel_vs_sequential",
+            len(poses),
+            "",
+            "",
+            "",
+            "",
+            len(poses),
+            "sequential",
+        )
     mismatches = sum(str(left) != str(right) for left, right in zip(parallel, sequential, strict=True))
     return CorrectnessResult(
         "scenario",
