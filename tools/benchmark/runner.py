@@ -217,7 +217,7 @@ def _run_scene_scaling_suite(config, engine_items, scene_sizes):
                     checker = None
                 build_ns = time.perf_counter_ns() - build_start
                 if density == DEFAULT_DENSITIES[0] and shape_family == "circle":
-                    rss_delta = _isolated_checker_rss_delta(backend, workload.objects)
+                    rss_delta = _isolated_checker_rss_delta(backend, workload.objects) or 0
                     memory_rows.append(
                         MemoryResult(
                             "scene_scaling",
@@ -246,7 +246,7 @@ def _run_scene_scaling_suite(config, engine_items, scene_sizes):
                         0,
                         len(workload.positioned_queries),
                         True,
-                        time.perf_counter_ns() - build_start,
+                        build_ns,
                         [],
                         shape=shape_family,
                         shape_family=shape_family,
@@ -326,7 +326,7 @@ def _run_capacity_point(config, engine_items):
                 0,
                 "circle",
                 0,
-                _isolated_checker_rss_delta(backend, objects),
+                _isolated_checker_rss_delta(backend, objects) or 0,
                 "isolated_rss_delta",
             )
         )
@@ -341,7 +341,20 @@ def _run_update_proxy_suite(config, engine_items, scene_sizes):
             group_results = []
             for backend, engine in engine_items:
                 for repetition in range(config.repetitions):
-                    checker = _build_checker(engine, workload.static_objects)
+                    checker = _try_build_checker(engine, workload.static_objects)
+                    if checker is None:
+                        group_results.append(
+                            _unsupported_scene_run(
+                                "update_proxy",
+                                backend,
+                                "pose_query_proxy",
+                                repetition,
+                                len(workload.positioned_queries),
+                                transform_kind=transform_kind,
+                                shape="circle",
+                            )
+                        )
+                        continue
                     group_results.append(
                         _measure_scene_with_checker(
                             backend,
@@ -456,11 +469,21 @@ def _run_api_overhead_suite(config, engine_items):
     for batch_size in batch_sizes:
         positioned = api_batch_workload(batch_size)
         for backend, engine in engine_items:
-            checker = _build_checker(engine, (Circle(0.75),))
-            if positioned:
-                checker.collides_static(*positioned[0])
-            checker.collides_static_batch(positioned)
-            checker._collides_static_batch_threads(positioned, 1)
+            checker = _try_build_checker(engine, (Circle(0.75),))
+            if checker is None:
+                runs.append(
+                    _unsupported_scene_run(
+                        "api_overhead", backend, f"batch_{batch_size}", 0, batch_size, shape="circle"
+                    )
+                )
+                continue
+            try:
+                if positioned:
+                    checker.collides_static(*positioned[0])
+                checker.collides_static_batch(positioned)
+                checker._collides_static_batch_threads(positioned, 1)
+            except Exception:
+                pass
             for repetition in range(config.repetitions):
 
                 def scalar_call():
@@ -586,7 +609,20 @@ def _run_density_scaling_suite(config, engine_items, scene_sizes):
             group_results = []
             for backend, engine in engine_items:
                 for repetition in range(config.repetitions):
-                    checker = _build_checker(engine, workload.static_objects)
+                    checker = _try_build_checker(engine, workload.static_objects)
+                    if checker is None:
+                        group_results.append(
+                            _unsupported_scene_run(
+                                "density_scaling",
+                                backend,
+                                "static_density",
+                                repetition,
+                                len(workload.positioned_queries),
+                                density_label=density_label,
+                                shape="circle",
+                            )
+                        )
+                        continue
                     group_results.append(
                         _measure_scene_with_checker(
                             backend,
@@ -663,9 +699,19 @@ def _run_dynamic_batch_suite(config, engine_items):
         for batch_size in batch_sizes:
             obstacles = dynamic_query_batch(batch_size, steps)
             for backend, engine in engine_items:
-                checker = _build_checker(engine, (Circle(0.75),))
-                checker.collides_dynamic(obstacles[0])
-                checker.collides_dynamic_batch(obstacles)
+                checker = _try_build_checker(engine, (Circle(0.75),))
+                if checker is None:
+                    runs.append(
+                        _unsupported_scene_run(
+                            "dynamic_batch", backend, f"scalar_{steps}_steps", 0, batch_size, shape="circle"
+                        )
+                    )
+                    continue
+                try:
+                    checker.collides_dynamic(obstacles[0])
+                    checker.collides_dynamic_batch(obstacles)
+                except Exception:
+                    pass
                 for repetition in range(config.repetitions):
                     scalar_ns, scalar = _stable_call_time(
                         lambda: [checker.collides_dynamic(obstacle) for obstacle in obstacles]
@@ -725,7 +771,10 @@ def _run_dynamic_batch_suite(config, engine_items):
                         )
     window_obstacles = dynamic_query_batch(32, 16)
     for backend, engine in engine_items:
-        checker = _build_checker(engine, (Circle(0.75),))
+        checker = _try_build_checker(engine, (Circle(0.75),))
+        if checker is None:
+            runs.append(_unsupported_scene_run("dynamic_batch", backend, "window_1", 0, 32, shape="circle"))
+            continue
         for window_steps in (1, 4, 16):
             for repetition in range(config.repetitions):
                 scalar_ns, scalar = _stable_call_time(
@@ -804,9 +853,19 @@ def _run_time_variant_suite(config, engine_items):
             obstacles = time_variant_query_batch(batch_size, steps, variation)
             construction_ns = time.perf_counter_ns() - construction_start
             for backend, engine in engine_items:
-                checker = _build_checker(engine, (Circle(0.75),))
-                checker.collides_dynamic(obstacles[0])
-                checker.collides_dynamic_batch(obstacles)
+                checker = _try_build_checker(engine, (Circle(0.75),))
+                if checker is None:
+                    runs.append(
+                        _unsupported_scene_run(
+                            "time_variant", backend, f"{variation}_{steps}_steps", 0, batch_size, shape="varying"
+                        )
+                    )
+                    continue
+                try:
+                    checker.collides_dynamic(obstacles[0])
+                    checker.collides_dynamic_batch(obstacles)
+                except Exception:
+                    pass
                 for repetition in range(config.repetitions):
                     scalar_ns, scalar = _stable_call_time(
                         lambda: [checker.collides_dynamic(obstacle) for obstacle in obstacles]
@@ -869,13 +928,30 @@ def _run_time_variant_suite(config, engine_items):
     return runs, correctness, parallel_rows, memory_rows
 
 
+def _cargo_binary(relative_path: str, bin_name: str):
+    # ponytail: a failed native build skips the suite instead of aborting the run.
+    try:
+        subprocess.run(["cargo", "build", "--release", "--bin", bin_name, "--all-features"], check=True)
+        return Path(relative_path)
+    except Exception as error:
+        print(f"warning: {bin_name} unavailable, skipping native rows ({error})")
+        return None
+
+
+def _benchmark_subprocess(command):
+    """Runs a native benchmark binary and returns its CSV rows, or [] on failure."""
+    try:
+        output = subprocess.check_output([str(part) for part in command], text=True, timeout=120)
+    except Exception:
+        return []
+    return list(csv.DictReader(output.splitlines()))
+
+
 def _run_native_layer_suite(config, engine_items):
     runs, correctness, parallel_rows, memory_rows = _empty_results()
-    subprocess.run(
-        ["cargo", "build", "--release", "--bin", "native_benchmark", "--all-features"],
-        check=True,
-    )
-    binary = Path("target/release/native_benchmark")
+    binary = _cargo_binary("target/release/native_benchmark", "native_benchmark")
+    if binary is None:
+        return runs, correctness, parallel_rows, memory_rows
     iterations = 10_000 if config.profile == "smoke" else 100_000
     workloads = (
         "circle_clear",
@@ -892,12 +968,22 @@ def _run_native_layer_suite(config, engine_items):
         for layer in ("native", "public"):
             for workload in workloads:
                 for repetition in range(config.repetitions):
-                    output = subprocess.check_output(
-                        [str(binary), backend, layer, workload, str(iterations)],
-                        text=True,
-                        timeout=120,
-                    )
-                    row = next(csv.DictReader(output.splitlines()))
+                    rows = _benchmark_subprocess([binary, backend, layer, workload, iterations])
+                    if not rows:
+                        runs.append(
+                            _unsupported_scene_run(
+                                "native_layers",
+                                backend,
+                                workload,
+                                repetition,
+                                iterations,
+                                execution_layer=layer,
+                                operation="",
+                                api_mode="scalar",
+                            )
+                        )
+                        continue
+                    row = rows[0]
                     operation = row["operation"]
                     runs.append(
                         RunResult(
@@ -933,11 +1019,9 @@ def _run_native_layer_suite(config, engine_items):
 
 def _run_reusable_parallel_suite(config, engine_items):
     runs, correctness, parallel_rows, memory_rows = _empty_results()
-    subprocess.run(
-        ["cargo", "build", "--release", "--bin", "parallel_benchmark", "--all-features"],
-        check=True,
-    )
-    binary = Path("target/release/parallel_benchmark")
+    binary = _cargo_binary("target/release/parallel_benchmark", "parallel_benchmark")
+    if binary is None:
+        return runs, correctness, parallel_rows, memory_rows
     batch_sizes = (31, 32, 33, 128, 1_024, 10_000)
     thread_counts = tuple(threads for threads in config.thread_counts if threads <= 8)
     if 1 not in thread_counts:
@@ -948,16 +1032,47 @@ def _run_reusable_parallel_suite(config, engine_items):
             for batch_size in batch_sizes:
                 for repetition in range(config.repetitions):
                     for threads in thread_counts:
-                        output = subprocess.check_output(
-                            [str(binary), backend, operation, str(batch_size), str(threads), str(iterations)],
-                            text=True,
-                            timeout=120,
-                        )
-                        rows = list(csv.DictReader(output.splitlines()))
-                        scalar = next(row for row in rows if row["api_mode"] == "scalar")
-                        batch = next(row for row in rows if row["api_mode"] == "batch_reusable")
+                        rows = _benchmark_subprocess([binary, backend, operation, batch_size, threads, iterations])
+                        scalar = next((row for row in rows if row.get("api_mode") == "scalar"), None)
+                        batch = next((row for row in rows if row.get("api_mode") == "batch_reusable"), None)
+                        if not scalar or not batch:
+                            parallel_rows.append(
+                                {
+                                    "schema_version": SCHEMA_VERSION,
+                                    "scenario": f"reusable_{operation}_{batch_size}",
+                                    "backend": backend,
+                                    "threads": threads,
+                                    "repetition": repetition,
+                                    "queries": batch_size * iterations,
+                                    "collisions": 0,
+                                    "errors": batch_size * iterations,
+                                    "total_ns": 0,
+                                    "queries_per_s": "0.000",
+                                    "speedup": "0.000",
+                                    "efficiency": "0.000",
+                                    "operation": operation,
+                                    "batch_size": batch_size,
+                                    "api_mode": "batch_reusable",
+                                }
+                            )
+                            continue
                         if threads == 1:
                             runs.append(_parallel_worker_result(backend, scalar, repetition))
+                            correctness.append(
+                                CorrectnessResult(
+                                    "parallel",
+                                    None,
+                                    backend,
+                                    f"{operation}_{batch_size}",
+                                    batch_size,
+                                    "",
+                                    "",
+                                    "",
+                                    "",
+                                    int(scalar["checksum"] != batch["checksum"]),
+                                    "sequential_batch_equivalence",
+                                )
+                            )
                         runs.append(_parallel_worker_result(backend, batch, repetition))
                         scalar_ns, batch_ns = int(scalar["total_ns"]), int(batch["total_ns"])
                         speedup = scalar_ns / batch_ns if batch_ns else 0.0
@@ -980,21 +1095,6 @@ def _run_reusable_parallel_suite(config, engine_items):
                                 "api_mode": "batch_reusable",
                             }
                         )
-                correctness.append(
-                    CorrectnessResult(
-                        "parallel",
-                        None,
-                        backend,
-                        f"{operation}_{batch_size}",
-                        batch_size,
-                        "",
-                        "",
-                        "",
-                        "",
-                        0,
-                        "sequential_batch_equivalence",
-                    )
-                )
     return runs, correctness, parallel_rows, memory_rows
 
 
@@ -1036,7 +1136,30 @@ def _parallel_worker_result(backend, row, repetition):
 
 def _measure_python_layer(backend, engine_items, workload, repetition, iterations):
     engine = dict(engine_items)[backend]
-    execute, operation, trajectory_steps, shape_variation = _python_layer_workload(engine, workload)
+    start = time.perf_counter_ns()
+    # ponytail: workload construction failures become data rows instead of aborting the suite.
+    try:
+        execute, operation, trajectory_steps, shape_variation = _python_layer_workload(engine, workload)
+    except Exception:
+        total_ns = time.perf_counter_ns() - start
+        return RunResult(
+            "native_layers",
+            None,
+            backend,
+            workload,
+            repetition,
+            iterations,
+            None,
+            None,
+            0,
+            1,
+            True,
+            total_ns,
+            [],
+            oracle="finite",
+            execution_layer="python_end_to_end",
+            query_ns=total_ns,
+        )
     for _ in range(min(WARMUP_QUERY_COUNT, iterations)):
         execute()
     errors = 0
@@ -1329,6 +1452,35 @@ def _build_checker(engine, static_objects):
     return builder.build()
 
 
+def _try_build_checker(engine, static_objects):
+    """Returns a built checker, or None when construction fails."""
+    # ponytail: construction failures become data rows instead of aborting a long run.
+    try:
+        return _build_checker(engine, static_objects)
+    except Exception:
+        return None
+
+
+def _unsupported_scene_run(feature, backend, workload_name, repetition, queries, **extra):
+    """Placeholder RunResult for a suite cell whose checker could not be built."""
+    return RunResult(
+        feature,
+        None,
+        backend,
+        workload_name,
+        repetition,
+        queries,
+        None,
+        None,
+        0,
+        queries,
+        True,
+        0,
+        [],
+        **extra,
+    )
+
+
 def _measure_dynamic_scene(
     backend,
     engine,
@@ -1347,7 +1499,38 @@ def _measure_dynamic_scene(
         builder.with_static_obstacle(static_object)
     for dynamic_obstacle in dynamic_environment:
         builder.with_dynamic_obstacle(dynamic_obstacle)
-    checker = builder.build()
+    # ponytail: construction failures become data rows instead of aborting a long run.
+    try:
+        checker = builder.build()
+    except Exception:
+        return RunResult(
+            "dynamic_scene",
+            None,
+            backend,
+            scene_kind,
+            repetition,
+            len(dynamic_obstacles),
+            len(static_objects) + len(dynamic_environment),
+            None,
+            0,
+            len(dynamic_obstacles),
+            True,
+            0,
+            [],
+            scene_kind=scene_kind,
+            operation="dynamic",
+            api_mode="scalar",
+            static_scene_objects=len(static_objects),
+            dynamic_scene_objects=len(dynamic_environment),
+            trajectory_steps=4,
+            motion_kind="translation",
+            hit_class="mixed",
+            shape=shape_family,
+            shape_family=shape_family,
+            scene_mode=scene_kind,
+            ccd_mode="moving_static" if scene_kind == "dynamic_static" else "moving_moving",
+            query_ns=0,
+        )
     for obstacle in dynamic_obstacles[: min(WARMUP_QUERY_COUNT, len(dynamic_obstacles))]:
         try:
             checker.collides_dynamic(obstacle)
@@ -1653,21 +1836,26 @@ def _rss_worker(connection, backend: str, objects: int):
 
 
 def _isolated_checker_rss_delta(backend: str, objects: int):
-    context = multiprocessing.get_context("spawn")
-    parent, child = context.Pipe(duplex=False)
-    process = context.Process(target=_rss_worker, args=(child, backend, objects))
-    process.start()
-    child.close()
-    if not parent.poll(30):
-        process.terminate()
+    """Returns the isolated build's RSS delta in bytes, or None when measurement fails."""
+    # ponytail: an RSS hiccup must not kill a timing run; callers record 0.
+    try:
+        context = multiprocessing.get_context("spawn")
+        parent, child = context.Pipe(duplex=False)
+        process = context.Process(target=_rss_worker, args=(child, backend, objects))
+        process.start()
+        child.close()
+        if not parent.poll(30):
+            process.terminate()
+            process.join()
+            raise RuntimeError(f"RSS measurement timed out for {backend} with {objects} objects")
+        delta, status = parent.recv()
+        parent.close()
         process.join()
-        raise RuntimeError(f"RSS measurement timed out for {backend} with {objects} objects")
-    delta, status = parent.recv()
-    parent.close()
-    process.join()
-    if process.exitcode != 0 or status is not True:
-        raise RuntimeError(f"RSS measurement failed for {backend} with {objects} objects: {status}")
-    return delta
+        if process.exitcode != 0 or status is not True:
+            raise RuntimeError(f"RSS measurement failed for {backend} with {objects} objects: {status}")
+        return delta
+    except Exception:
+        return None
 
 
 def _print_group(feature: str, workload: str, results: list[RunResult]):

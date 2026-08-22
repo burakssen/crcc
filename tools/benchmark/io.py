@@ -56,11 +56,11 @@ class ArtifactBundle:
 
 def write_artifacts(config: BenchmarkConfig, runs, correctness, parallel_rows, memory_rows):
     config.output_dir.mkdir(parents=True, exist_ok=True)
-    summary_rows, comparison_rows, correctness_rows = write_result_csvs(
-        config.output_dir, runs, correctness, parallel_rows, memory_rows
-    )
+    write_result_csvs(config.output_dir, runs, correctness, parallel_rows, memory_rows)
     write_metadata(config.output_dir / "metadata.json", config)
-    write_report(config.output_dir / "benchmark_report.md", config, summary_rows, comparison_rows, correctness_rows)
+    # ponytail: report from the artifacts just written so step=run produces the
+    # complete tables without a second plot step.
+    write_report_from_artifacts(config.output_dir)
 
 
 def write_suite_artifacts(config: BenchmarkConfig, suite: str, runs, correctness, parallel_rows, memory_rows):
@@ -191,37 +191,6 @@ def write_report_from_artifacts(output_dir: Path, artifacts: ArtifactBundle | No
     output_dir = Path(output_dir)
     artifacts = artifacts or load_artifacts(output_dir)
     write_report_rows(output_dir / "benchmark_report.md", artifacts)
-
-
-def read_aggregate_or_suite_rows(output_dir: Path, filename: str):
-    aggregate = output_dir / filename
-    if aggregate.exists():
-        return read_dicts(aggregate)
-    rows = []
-    for path in sorted((output_dir / "suites").glob(f"*/{filename}")):
-        rows.extend(read_dicts(path))
-    return rows
-
-
-def write_report(path: Path, config: BenchmarkConfig, summary_rows, comparison_rows, correctness_rows):
-    metadata = {
-        "command": {
-            "sample_count": config.sample_count,
-            "repetitions": config.repetitions,
-            "seed": config.seed,
-            "thread_counts": list(config.thread_counts),
-            "engines": list(config.engines),
-            "scenarios": [str(path) for path in config.scenario_paths],
-            "profile": config.profile,
-            "suites": list(config.suites),
-            "include_stress": config.include_stress,
-        }
-    }
-    rows = {filename: [] for filename in ARTIFACT_FIELDS}
-    rows["summary.csv"] = summary_rows
-    rows["comparisons.csv"] = comparison_rows
-    rows["correctness.csv"] = correctness_rows
-    write_report_rows(path, ArtifactBundle(metadata, rows, "memory"))
 
 
 def write_report_rows(path: Path, artifacts: ArtifactBundle):
