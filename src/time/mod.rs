@@ -1,12 +1,16 @@
 pub type TimeStepSet = std::collections::BTreeSet<TimeStep>;
-use derive_more::{Add, From, Mul, Sub, Sum};
+use derive_more::From;
 use std::fmt::Display;
 use std::ops::RangeBounds;
 
 pub(crate) type TimeStepInner = i32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Add, Mul, Sub, Sum, From)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, From)]
 /// A discrete trajectory time step.
+///
+/// Arithmetic is intentionally absent: overflow-panicking derives would defeat the
+/// crate's deny(panic) posture, and every internal computation uses checked or
+/// saturating helpers instead.
 pub struct TimeStep(pub TimeStepInner);
 
 impl TimeStep {

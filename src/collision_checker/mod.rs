@@ -127,7 +127,13 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
             return Ok(CollisionStatus::CollidesStatic);
         }
 
-        let active_times: TimeStepSet = self.active_times.range(time_range).copied().collect();
+        // ponytail: BTreeSet::range panics on inverted ranges, so filter instead.
+        let active_times: TimeStepSet = self
+            .active_times
+            .iter()
+            .copied()
+            .filter(|t| time_range.contains(t))
+            .collect();
         for &time_step in &active_times {
             let ccd_collider = time_step
                 .checked_succ()
@@ -156,7 +162,11 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
         let obstacle_active_times = dynamic_obstacle.active_times();
-        let active_times: TimeStepSet = obstacle_active_times.range(time_range).copied().collect();
+        let active_times: TimeStepSet = obstacle_active_times
+            .iter()
+            .copied()
+            .filter(|t| time_range.contains(t))
+            .collect();
         for &time_step in &active_times {
             if self.dynamic_query_collides_at(
                 dynamic_obstacle,
@@ -1349,6 +1359,35 @@ mod selected_tests {
                     "{engine:?}, {count}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn inverted_time_ranges_are_empty_instead_of_panicking() {
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
+                .build_with_engine(engine)
+                .unwrap();
+
+            let query = CollisionObject::circle((10.0, 0.0), 0.25).unwrap();
+            let dynamic = DynamicObstacle::new(
+                query.clone(),
+                vec![DPose2::translation(10.0, 0.0)],
+                TimeStep(5),
+            )
+            .unwrap();
+
+            assert_eq!(
+                checker.collides_static_range(&query, DPose2::IDENTITY, TimeStep(3)..TimeStep(1)),
+                Ok(CollisionStatus::NoCollision),
+                "{engine:?}"
+            );
+            assert_eq!(
+                checker.collides_dynamic_range(&dynamic, TimeStep(3)..=TimeStep(1)),
+                Ok(CollisionStatus::NoCollision),
+                "{engine:?}"
+            );
         }
     }
 }

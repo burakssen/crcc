@@ -124,24 +124,30 @@ pub fn road_boundary(lanelets: &[Polygon]) -> CollisionObject {
         return CollisionObject::full_space();
     }
 
+    // ponytail: geometry we cannot represent must fail toward over-approximation,
+    // so an unrepresentable edge or hole turns the whole boundary into full space.
     let road_convex_hull = road.convex_hull();
+    let mut objects = Vec::new();
 
-    let outer_half_spaces = road_convex_hull
-        .exterior()
-        .points_ccw()
-        .tuple_windows()
-        .filter_map(|(start_point, end_point)| {
-            SimpleCollisionObject::half_space_from_points(start_point.into(), end_point.into()).ok()
-        });
+    for (start_point, end_point) in road_convex_hull.exterior().points_ccw().tuple_windows() {
+        match SimpleCollisionObject::half_space_from_points(start_point.into(), end_point.into()) {
+            Ok(half_space) => objects.push(half_space),
+            Err(_) => return CollisionObject::full_space(),
+        }
+    }
 
-    let holes = road_convex_hull
-        .difference(&road)
-        .into_iter()
+    for hole in road_convex_hull.difference(&road) {
         // Ignore holes smaller than 10 cm² because they are likely artifacts.
-        .filter(|hole| hole.unsigned_area() > 0.001)
-        .filter_map(|hole| SimpleCollisionObject::polygon(hole).ok());
+        if hole.unsigned_area() <= 0.001 {
+            continue;
+        }
+        match SimpleCollisionObject::polygon(hole) {
+            Ok(polygon) => objects.push(polygon),
+            Err(_) => return CollisionObject::full_space(),
+        }
+    }
 
-    outer_half_spaces.chain(holes).collect()
+    objects.into_iter().collect()
 }
 
 #[cfg(test)]

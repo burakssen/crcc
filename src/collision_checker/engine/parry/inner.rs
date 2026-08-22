@@ -180,7 +180,12 @@ impl NonTrivial {
         }
 
         let local_aabb = compound.compute_aabb(&DPose2::IDENTITY);
-        let radius = local_aabb.mins.length().max(local_aabb.maxs.length());
+        let radius = local_aabb
+            .mins
+            .x
+            .abs()
+            .max(local_aabb.maxs.x.abs())
+            .hypot(local_aabb.mins.y.abs().max(local_aabb.maxs.y.abs()));
 
         let minimum = DVec2::new(
             start.translation.x.min(end.translation.x).sub(radius),

@@ -90,6 +90,9 @@ def test_distance_merge_and_half_space_public_api(engine):
     right = crcc.Circle(1.0, (5.0, 0.0))
     assert left.distance(right, engine=engine) == pytest.approx(3.0)
     assert left.distance(crcc.Circle(1.0, (1.0, 0.0)), engine=engine) == 0.0
+    with pytest.raises(ValueError, match="not supported"):
+        crcc.Empty().distance(left, engine=engine)
+    assert crcc.FullSpace().distance(left, engine=engine) == 0.0
 
     merged = left.merge(right)
     assert merged.collides(crcc.Circle(0.1), engine=engine)

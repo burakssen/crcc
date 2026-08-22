@@ -260,7 +260,7 @@ const fn default_collision_engine() -> CollisionEngine {
 #[cfg(all(test, any(feature = "parry", feature = "rhusics", feature = "collide")))]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use super::{CollisionEngine, collides, collides_continuous, distance};
+    use super::{CollisionEngine, CrccError, collides, collides_continuous, distance};
     use crate::collision_checker::{CollisionCheckerBuilder, CollisionStatus};
     use crate::collision_object::CollisionObject;
     use crate::collision_object::simple::SimpleCollisionObject;
@@ -506,6 +506,26 @@ mod tests {
             let separation =
                 distance(&left, DPose2::IDENTITY, &right, DPose2::IDENTITY, engine).unwrap();
             assert!((separation - 3.0).abs() < 1e-9);
+        }
+    }
+
+    #[test]
+    fn distance_contract_for_empty_and_full_space() {
+        let circle = CollisionObject::circle((0.0, 0.0), 1.0).unwrap();
+        let empty = CollisionObject::empty();
+        let full = CollisionObject::full_space();
+
+        for engine in engines() {
+            assert_eq!(
+                distance(&empty, DPose2::IDENTITY, &circle, DPose2::IDENTITY, engine),
+                Err(CrccError::Unsupported),
+                "{engine:?}"
+            );
+            assert_eq!(
+                distance(&full, DPose2::IDENTITY, &circle, DPose2::IDENTITY, engine),
+                Ok(0.0),
+                "{engine:?}"
+            );
         }
     }
 
