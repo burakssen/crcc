@@ -4,14 +4,13 @@ from pathlib import Path
 
 from crcc import CollisionEngine
 
-SCHEMA_VERSION = "7"
+SCHEMA_VERSION = "8"
 BENCHMARK_SAMPLE_COUNT = 20_000
 BENCHMARK_REPETITIONS = 5
 WARMUP_QUERY_COUNT = 100
 MIN_RECOMMENDED_SAMPLE_COUNT = 100
 DEFAULT_OUTPUT_DIR = Path("target/crcc-python-bench")
 DEFAULT_DENSITIES = (0.0, 0.50)
-DENSITY_STUDY_VALUES = (0.0, 0.10, 0.50, 1.0)
 DEFAULT_SCENE_SIZES = (100, 1_000)
 SPEC_SCENE_SIZES = (100, 1_000, 5_000, 10_000, 25_000, 50_000)
 STRESS_SCENE_SIZES = (100_000,)
@@ -21,7 +20,6 @@ DEFAULT_UPDATE_TRANSFORMS = ("translation", "rotation", "translation_rotation", 
 DEFAULT_DENSITY_LABELS = ("clear", "medium", "dense", "worst_case")
 DEFAULT_THREAD_COUNTS = (1, 2, 4, 8)
 MATRIX_SHAPE_FAMILIES = ("circle", "rectangle", "polygon32", "compound16_polygon32")
-MATRIX_CCD_MODES = ("discrete", "stationary", "moving_static", "moving_moving")
 BENCHMARK_SUITES = (
     "pair",
     "continuous",
@@ -68,9 +66,9 @@ class BenchmarkConfig:
         cls,
         *,
         scenario_paths=None,
-        sample_count: int = BENCHMARK_SAMPLE_COUNT,
-        repetitions: int = BENCHMARK_REPETITIONS,
-        output_dir=DEFAULT_OUTPUT_DIR,
+        sample_count: int | None = None,
+        repetitions: int | None = None,
+        output_dir=None,
         seed: int = 2026,
         thread_counts=None,
         engines=None,
@@ -93,9 +91,9 @@ class BenchmarkConfig:
         selected_suites = normalize_suites(suites)
         return cls(
             scenario_paths=tuple(selected_scenarios),
-            sample_count=max(1, int(sample_count)),
-            repetitions=max(1, int(repetitions)),
-            output_dir=Path(output_dir),
+            sample_count=max(1, int(BENCHMARK_SAMPLE_COUNT if sample_count is None else sample_count)),
+            repetitions=max(1, int(BENCHMARK_REPETITIONS if repetitions is None else repetitions)),
+            output_dir=Path(DEFAULT_OUTPUT_DIR if output_dir is None else output_dir),
             seed=int(seed),
             thread_counts=normalize_thread_counts(thread_counts),
             engines=selected_engines,

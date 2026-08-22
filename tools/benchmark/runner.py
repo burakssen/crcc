@@ -64,11 +64,9 @@ def run_all(
 ):
     config = BenchmarkConfig.from_args(
         scenario_paths=scenario_paths,
-        sample_count=BenchmarkConfig.__dataclass_fields__["sample_count"].default
-        if sample_count is None
-        else sample_count,
-        repetitions=BenchmarkConfig.__dataclass_fields__["repetitions"].default if repetitions is None else repetitions,
-        output_dir=BenchmarkConfig.__dataclass_fields__["output_dir"].default if output_dir is None else output_dir,
+        sample_count=sample_count,
+        repetitions=repetitions,
+        output_dir=output_dir,
         seed=seed,
         thread_counts=thread_counts,
         engines=engines,
@@ -255,9 +253,7 @@ def _run_scene_scaling_suite(config, engine_items, scene_sizes):
                     )
                     group_results.append(run_res)
                 else:
-                    run_res = _measure_scene_with_checker(
-                        backend, engine, workload, checker, repetition, shape=shape_family
-                    )
+                    run_res = _measure_scene_with_checker(backend, workload, checker, repetition, shape=shape_family)
                     run_kwargs: dict[str, Any] = {**run_res.__dict__, "build_ns": build_ns}
                     run_res = RunResult(**cast(Any, run_kwargs))
                     group_results.append(run_res)
@@ -290,7 +286,7 @@ def _run_capacity_point(config, engine_items):
             try:
                 checker = _build_checker(engine, workload.static_objects)
                 build_ns = time.perf_counter_ns() - start
-                result = _measure_scene_with_checker(backend, engine, workload, checker, repetition, shape="circle")
+                result = _measure_scene_with_checker(backend, workload, checker, repetition, shape="circle")
                 kwargs: dict[str, Any] = {**result.__dict__, "workload": "capacity_static_scene", "build_ns": build_ns}
                 runs.append(RunResult(**cast(Any, kwargs)))
             except Exception:
@@ -358,7 +354,6 @@ def _run_update_proxy_suite(config, engine_items, scene_sizes):
                     group_results.append(
                         _measure_scene_with_checker(
                             backend,
-                            engine,
                             workload,
                             checker,
                             repetition,
@@ -626,7 +621,6 @@ def _run_density_scaling_suite(config, engine_items, scene_sizes):
                     group_results.append(
                         _measure_scene_with_checker(
                             backend,
-                            engine,
                             workload,
                             checker,
                             repetition,
@@ -1395,7 +1389,6 @@ def _synthetic_correctness(backend, engine, workload):
 
 def _measure_scene_with_checker(
     backend,
-    engine,
     workload,
     checker,
     repetition,
@@ -1579,45 +1572,8 @@ def _measure_dynamic_scene(
 
 
 def _measure_scene_parallel_scaling(backend, checker, workload, thread_counts, repetition):
-    rows = []
-    baseline_ns = None
-    for threads in thread_counts:
-        try:
-            checker._collides_static_batch_threads(
-                workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))], threads
-            )
-        except Exception:
-            pass
-        start = time.perf_counter_ns()
-        try:
-            results = checker._collides_static_batch_threads(workload.positioned_queries, threads)
-            errors = 0
-        except Exception:
-            results = []
-            errors = len(workload.positioned_queries)
-        total_ns = time.perf_counter_ns() - start
-        if threads == 1:
-            baseline_ns = total_ns
-        speedup = baseline_ns / total_ns if baseline_ns and total_ns else 0.0
-        rows.append(
-            {
-                "schema_version": SCHEMA_VERSION,
-                "scenario": f"scene_scaling_objects_{workload.objects}_density_{workload.density:.2f}",
-                "backend": backend,
-                "threads": threads,
-                "repetition": repetition,
-                "queries": len(workload.positioned_queries),
-                "collisions": count_collisions(results),
-                "errors": errors,
-                "total_ns": total_ns,
-                "queries_per_s": f"{len(workload.positioned_queries) * 1_000_000_000 / total_ns:.3f}"
-                if total_ns
-                else "0.000",
-                "speedup": f"{speedup:.3f}",
-                "efficiency": f"{speedup / threads:.3f}" if threads else "0.000",
-            }
-        )
-    return rows
+    scenario = f"scene_scaling_objects_{workload.objects}_density_{workload.density:.2f}"
+    return _static_parallel_scaling_rows(backend, checker, workload, scenario, thread_counts, repetition)
 
 
 def _measure_checker_static(backend, checker, workload, repetition):
@@ -1688,6 +1644,10 @@ def _measure_checker_parallel(backend, checker, workload, repetition):
 
 
 def _measure_parallel_scaling(backend, checker, workload, thread_counts, repetition):
+    return _static_parallel_scaling_rows(backend, checker, workload, workload.name, thread_counts, repetition)
+
+
+def _static_parallel_scaling_rows(backend, checker, workload, scenario, thread_counts, repetition):
     rows = []
     baseline_ns = None
     for threads in thread_counts:
@@ -1711,7 +1671,7 @@ def _measure_parallel_scaling(backend, checker, workload, thread_counts, repetit
         rows.append(
             {
                 "schema_version": SCHEMA_VERSION,
-                "scenario": workload.name,
+                "scenario": scenario,
                 "backend": backend,
                 "threads": threads,
                 "repetition": repetition,

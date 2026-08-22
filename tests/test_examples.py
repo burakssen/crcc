@@ -246,7 +246,7 @@ def test_playground_unselect_click_outside(monkeypatch, engine):
     bounds = utils.scenario_pose_bounds(scenario)
     pose_bounds = bounds
 
-    state = playground.run(scenario, checker, main.DEFAULT_SCENARIO_PATH, pose_bounds)
+    state = playground.run(scenario, checker, pose_bounds)
     try:
         assert state.selected_id is not None
         selected_obj = state.selected

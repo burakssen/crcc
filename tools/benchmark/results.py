@@ -44,7 +44,6 @@ class RunResult:
     scene_mode: str = ""
     ccd_mode: str = ""
     construction_ns: int = 0
-    conversion_ns: int = 0
     query_ns: int = 0
 
     @property
@@ -87,10 +86,6 @@ class MemoryResult:
     @property
     def bytes_per_object(self) -> float:
         return self.peak_bytes / self.objects if self.objects else 0.0
-
-    @property
-    def bytes_per_query(self) -> float:
-        return self.peak_bytes / self.queries if self.queries else 0.0
 
 
 RUN_FIELDS = [
@@ -138,7 +133,6 @@ RUN_FIELDS = [
     "scene_mode",
     "ccd_mode",
     "construction_ns",
-    "conversion_ns",
     "query_ns",
 ]
 
@@ -189,7 +183,6 @@ SUMMARY_FIELDS = [
     "scene_mode",
     "ccd_mode",
     "construction_ns_median",
-    "conversion_ns_median",
     "query_ns_median",
 ]
 
@@ -317,7 +310,6 @@ MEMORY_FIELDS = [
     "current_bytes",
     "peak_bytes",
     "bytes_per_object",
-    "bytes_per_query",
     "measurement",
 ]
 
@@ -368,7 +360,6 @@ def run_row(result: RunResult):
         "scene_mode": result.scene_mode,
         "ccd_mode": result.ccd_mode,
         "construction_ns": result.construction_ns,
-        "conversion_ns": result.conversion_ns,
         "query_ns": result.query_ns,
     }
 
@@ -403,7 +394,6 @@ def memory_row(result: MemoryResult):
         "current_bytes": result.current_bytes,
         "peak_bytes": result.peak_bytes,
         "bytes_per_object": f"{result.bytes_per_object:.3f}",
-        "bytes_per_query": f"{result.bytes_per_query:.3f}",
         "measurement": result.measurement,
     }
 
@@ -524,7 +514,6 @@ def summarize_runs(results: list[RunResult]):
                 "scene_mode": scene_mode,
                 "ccd_mode": ccd_mode,
                 "construction_ns_median": median([result.construction_ns for result in group]),
-                "conversion_ns_median": median([result.conversion_ns for result in group]),
                 "query_ns_median": median([result.query_ns for result in group]),
             }
         )

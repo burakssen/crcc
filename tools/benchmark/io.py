@@ -709,7 +709,7 @@ def _layer_observations(summary):
     ]
 
 
-def _plot_interpretation(name, observations):
+def _plot_interpretation(_name, observations):
     if not observations or observations == ["No plottable rows are available."]:
         return "The current artifacts do not support a comparative interpretation."
     return f"Artifact-derived result: {observations[0]}"

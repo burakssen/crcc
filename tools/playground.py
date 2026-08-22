@@ -590,7 +590,8 @@ def draw_scene(ax, scenario, state, bounds, *, reset_view=False):
     return artists
 
 
-def run(scenario, checker, scenario_path, pose_bounds):
+def run(scenario, checker, pose_bounds):
+    # ponytail: scenario_path was never used; callers pass the engine via checker.
     from matplotlib import pyplot as plt
     from matplotlib.widgets import Button, RadioButtons, Slider
 

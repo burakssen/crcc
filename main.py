@@ -94,7 +94,7 @@ def run_action(action: ExampleAction, scenario_path: str, engine: CollisionEngin
 
         scenario, checker = load_collision_checker(scenario_path, engine)
         bounds = cast(Any, scenario_pose_bounds(scenario))
-        return cast(Any, run_playground)(scenario, checker, scenario_path, bounds)
+        return cast(Any, run_playground)(scenario, checker, bounds)
     if action in {ExampleAction.COMMONROAD, ExampleAction.SCENARIO}:
         from examples.commonroad import run as run_cr
         from examples.utils import load_collision_checker, scenario_pose_bounds

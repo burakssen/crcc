@@ -905,70 +905,6 @@ def _plot_correctness_summary(path_base: Path, rows):
     _save_plot(fig, path_base)
 
 
-def _plot_throughput_variability_ratio(path_base: Path, rows):
-    synthetic_rows = _synthetic_run_rows(rows)
-    labels = _ordered_workload_labels(synthetic_rows)
-    backends = _present_backends(synthetic_rows)
-    repetition_count = len({row["repetition"] for row in synthetic_rows})
-    if not labels:
-        _plot_status(path_base, "Throughput Variability", "No per-run synthetic rows")
-        return
-    if repetition_count < 3:
-        _plot_status(
-            path_base,
-            "Throughput Variability",
-            "Requires at least 3 repetitions",
-            detail=f"Current artifact has {repetition_count} repetition",
-        )
-        return
-
-    x_base = np.arange(len(labels))
-    bar_width = 0.22
-    offsets = (
-        np.linspace(-bar_width * (len(backends) - 1) / 2, bar_width * (len(backends) - 1) / 2, len(backends))
-        if len(backends) > 1
-        else [0.0]
-    )
-
-    fig, ax = plt.subplots(figsize=(10.2, 5.8), layout="constrained")
-    for offset, backend in zip(offsets, backends, strict=True):
-        values = []
-        positions = []
-        for index, label in enumerate(labels):
-            throughputs = [
-                _float(row["queries_per_s"])
-                for row in synthetic_rows
-                if _row_workload_label(row) == label and row["backend"] == backend
-            ]
-            if len(throughputs) < 3:
-                val = 0.0
-            else:
-                low, median, high = _median_iqr(throughputs)
-                if median <= 0:
-                    val = 0.0
-                else:
-                    val = (high - low) / median
-            values.append(val)
-            positions.append(x_base[index] + offset)
-        ax.bar(
-            positions,
-            values,
-            width=bar_width,
-            color=BACKEND_COLORS.get(backend),
-            label=backend,
-            edgecolor="none",
-            zorder=3,
-        )
-
-    ax.set_title("Throughput Variability Across Repetitions", loc="left", pad=12)
-    ax.set_ylabel("relative IQR: (q75 - q25) / median")
-    ax.set_xticks(x_base)
-    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right", rotation_mode="anchor")
-    _style_axis(ax, axis="y")
-    _legend_outside(fig, ax, backends)
-    _save_plot(fig, path_base)
-
-
 def _plot_backend_speedup_forest(path_base: Path, rows):
     if not rows:
         _plot_status(path_base, "Backend Speedup vs Baseline", "No paired comparison rows")
@@ -1006,57 +942,7 @@ def _plot_backend_speedup_forest(path_base: Path, rows):
     _save_plot(fig, path_base)
 
 
-def _plot_throughput_repetition_strip(path_base: Path, rows):
-    synthetic_rows = _synthetic_run_rows(rows)
-    labels = _ordered_workload_labels(synthetic_rows)
-    backends = _present_backends(synthetic_rows)
-    if not labels or not backends:
-        _plot_status(path_base, "Throughput by Repetition", "No per-run synthetic rows")
-        return
-
-    x_base = np.arange(len(labels))
-    offsets = _offsets(backends, 0.24)
-    fig, ax = plt.subplots(figsize=(10.8, 5.8), layout="constrained")
-    for offset, backend in zip(offsets, backends, strict=True):
-        color = BACKEND_COLORS.get(backend)
-        for index, label in enumerate(labels):
-            values = [
-                _float(row["queries_per_s"])
-                for row in synthetic_rows
-                if _row_workload_label(row) == label and row["backend"] == backend and _float(row["queries_per_s"]) > 0
-            ]
-            if not values:
-                continue
-            x = x_base[index] + offset
-            jitter = np.linspace(-0.035, 0.035, len(values)) if len(values) > 1 else [0.0]
-            ax.scatter(
-                [x + item for item in jitter],
-                values,
-                color=color,
-                alpha=0.48,
-                s=18,
-                linewidth=0,
-                zorder=3,
-            )
-            ax.plot(
-                [x - 0.055, x + 0.055], [np.median(values), np.median(values)], color=color, linewidth=2.0, zorder=4
-            )
-
-    ax.set_title("Throughput Distribution Across Repetitions", loc="left", pad=12)
-    ax.set_ylabel("queries/s (log)")
-    ax.set_xticks(x_base)
-    ax.set_xticklabels([_display_workload(label) for label in labels], rotation=45, ha="right", rotation_mode="anchor")
-    ax.set_yscale("log")
-    _style_axis(ax, axis="y")
-    _legend_outside(fig, ax, backends, style="marker")
-    _save_plot(fig, path_base)
-
-
 def _synthetic_summary_rows(rows):
-    return [row for row in rows if row["feature"] not in {"api_overhead", "scenario", "scene_scaling"}]
-
-
-def _synthetic_run_rows(rows):
     return [row for row in rows if row["feature"] not in {"api_overhead", "scenario", "scene_scaling"}]
 
 
@@ -1133,7 +1019,7 @@ def _figure_height(labels):
     return max(4.8, len(labels) * 0.52)
 
 
-def _legend_outside(fig, ax, backends, *, style="bar"):
+def _legend_outside(_fig, ax, backends, *, style="bar"):
     legend = ax.legend(
         handles=_backend_handles(backends, style),
         title="Backend",
@@ -1241,100 +1127,3 @@ def _save_plot(fig, path_base: Path):
     fig.savefig(path_base.with_suffix(".png"), dpi=160)
     fig.savefig(path_base.with_suffix(".pdf"))
     plt.close(fig)
-
-
-def _plot_parallel_scene_scaling(path_base: Path, parallel_rows):
-    import re
-
-    from matplotlib import colormaps
-
-    scene_rows = [row for row in parallel_rows if "scene_scaling_objects_" in row["scenario"]]
-    if not scene_rows:
-        _plot_status(path_base, "Parallel Scene Scaling", "No scene scaling parallel rows")
-        return
-
-    parsed_rows = []
-    for r in scene_rows:
-        m = re.match(r"scene_scaling_objects_(\d+)_density_(.+)", r["scenario"])
-        if m:
-            objects = int(m.group(1))
-            density = float(m.group(2))
-            parsed_rows.append(
-                {
-                    "backend": r["backend"],
-                    "threads": int(r["threads"]),
-                    "objects": objects,
-                    "density": density,
-                    "queries_per_s": float(r["queries_per_s"]),
-                }
-            )
-
-    if not parsed_rows:
-        _plot_status(path_base, "Parallel Scene Scaling", "No parsed scene scaling parallel rows")
-        return
-
-    backends = sorted({r["backend"] for r in parsed_rows})
-    object_sizes = sorted({r["objects"] for r in parsed_rows})
-
-    fig, axes = plt.subplots(
-        len(backends), 1, figsize=(8.8, max(4.8, 3.0 * len(backends))), sharex=True, squeeze=False, layout="constrained"
-    )
-
-    colors = colormaps["viridis"](np.linspace(0.1, 0.9, len(object_sizes)))
-
-    for ax, backend in zip(axes.ravel(), backends):
-        backend_rows = [r for r in parsed_rows if r["backend"] == backend]
-        for color, obj_size in zip(colors, object_sizes):
-            obj_rows = [r for r in backend_rows if r["objects"] == obj_size]
-            threads_list = sorted({r["threads"] for r in obj_rows})
-            qps_by_threads = []
-            for t in threads_list:
-                vals = [r["queries_per_s"] for r in obj_rows if r["threads"] == t]
-                qps_by_threads.append(np.median(vals) if vals else 0.0)
-
-            if qps_by_threads and any(q > 0 for q in qps_by_threads):
-                ax.plot(
-                    threads_list,
-                    qps_by_threads,
-                    marker="o",
-                    color=color,
-                    label=f"{obj_size:,} objects",
-                    linewidth=1.8,
-                    markersize=5,
-                )
-
-        ax.set_title(f"Engine: {backend}", loc="left", fontsize=9.5, fontweight="semibold", color="#374151")
-        ax.set_ylabel("queries/s")
-        ax.set_yscale("log")
-        ax.set_xscale("log", base=2)
-        all_threads = sorted({r["threads"] for r in parsed_rows})
-        ax.set_xticks(all_threads)
-        ax.set_xticklabels([str(t) for t in all_threads])
-        _style_axis(ax)
-
-    axes.ravel()[-1].set_xlabel("thread count")
-    fig.suptitle(
-        "Parallel Throughput by Thread Count and Object Size",
-        x=0.02,
-        ha="left",
-        fontsize=11.5,
-        fontweight="bold",
-        color="#111827",
-    )
-
-    handles, labels_list = axes.ravel()[0].get_legend_handles_labels()
-    legend = axes.ravel()[0].legend(
-        handles,
-        labels_list,
-        loc="center left",
-        bbox_to_anchor=(1.02, 0.5),
-        title="Scene Size",
-        fontsize=8.5,
-        title_fontsize=9.5,
-        frameon=True,
-        facecolor="#f9fafb",
-        edgecolor="#e5e7eb",
-        fancybox=True,
-    )
-    legend.get_frame().set_linewidth(0.8)
-    _save_plot(fig, path_base)

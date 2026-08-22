@@ -93,8 +93,33 @@ isort.combine-as-imports = true
     "PLR0913",
 ] # Allow lazy imports, private member access, regex matches & helper arg count in test suite
 "main.py" = ["PLC0415"] # Allow lazy action dispatcher imports
-"tools/*" = ["ALL"]
-"examples/*" = ["ALL"]
+# ponytail: tools/ and examples/ keep bug-catching lints (E/F/B + ARG) but stay
+# exempt from style pedantry; E501 lines are unbreakable report strings and B023
+# lambdas are always invoked within their loop iteration.
+"tools/*" = [
+    "B023",
+    "C4",
+    "E501",
+    "PERF",
+    "PL",
+    "PTH",
+    "RUF",
+    "SIM",
+    "UP",
+    "W",
+]
+"examples/*" = [
+    "B023",
+    "C4",
+    "E501",
+    "PERF",
+    "PL",
+    "PTH",
+    "RUF",
+    "SIM",
+    "UP",
+    "W",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
