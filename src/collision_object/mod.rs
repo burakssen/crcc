@@ -189,7 +189,7 @@ impl CollisionObject {
 
     /// Returns whether this object occupies the full plane.
     #[must_use]
-    pub fn is_full_space(&self) -> bool {
+    pub const fn is_full_space(&self) -> bool {
         matches!(
             self.collision_objects.as_slice(),
             [object] if object.is_full_space()
