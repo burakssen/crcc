@@ -216,11 +216,14 @@ pub fn distance(
     }
 }
 
-#[cfg_attr(feature = "python_bindings", pyo3::pyclass(eq, eq_int))]
+#[cfg_attr(
+    feature = "python_bindings",
+    pyo3::pyclass(name = "CollisionBackend", eq, eq_int)
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// A runtime-selectable collision backend.
 ///
-/// Selecting an engine whose Cargo feature is disabled causes queries and
+/// Selecting a backend whose Cargo feature is disabled causes queries and
 /// checker construction to return [`CrccError::Unsupported`].
 pub enum CollisionEngine {
     /// The Parry backend; the default whenever the `parry` feature is enabled.

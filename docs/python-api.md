@@ -9,11 +9,14 @@ Angles are radians. Native `CrccError` values become Python `ValueError`. Python
 The following names are supported from `crcc`:
 
 ```text
-Circle CollisionChecker CollisionCheckerBuilder CollisionEngine
-CollisionObject CollisionStatus Compound DynamicObstacle Empty FullSpace
-HalfSpace Polygon Pose PreparedDynamicQuery PreparedStaticQuery Rectangle
-Triangle
+Circle CollisionBackend CollisionChecker CollisionCheckerBuilder
+CollisionEngine CollisionObject CollisionStatus Compound DynamicObstacle
+Empty FullSpace HalfSpace Polygon Pose PreparedDynamicQuery
+PreparedStaticQuery Rectangle Triangle road_boundary
 ```
+
+`CollisionEngine` is a deprecated alias of `CollisionBackend`.
+
 
 Import CommonRoad adapters from `crcc.commonroad`, not from the root package.
 
@@ -85,11 +88,12 @@ obj.collides(
     other: CollisionObject,
     pos_self: Pose = Pose.identity(),
     pos_other: Pose = Pose.identity(),
-    engine: CollisionEngine | None = None,
+    backend: CollisionBackend | None = None,
+    engine: CollisionEngine | None = None,  # Deprecated alias.
 ) -> bool
 ```
 
-Applies both poses and asks the selected engine whether occupied sets overlap. `None` selects the compiled default.
+Applies both poses and asks the selected backend whether occupied sets overlap. `None` selects the compiled default. The deprecated `engine=` keyword still works and warns.
 
 ### Continuous collision
 
@@ -100,7 +104,8 @@ obj.collides_continuous(
     other: CollisionObject,
     start_pos_other: Pose,
     end_pos_other: Pose,
-    engine: CollisionEngine | None = None,
+    backend: CollisionBackend | None = None,
+    engine: CollisionEngine | None = None,  # Deprecated alias.
 ) -> bool
 ```
 
@@ -113,7 +118,8 @@ obj.distance(
     other: CollisionObject,
     pos_self: Pose = Pose.identity(),
     pos_other: Pose = Pose.identity(),
-    engine: CollisionEngine | None = None,
+    backend: CollisionBackend | None = None,
+    engine: CollisionEngine | None = None,  # Deprecated alias.
 ) -> float
 ```
 
@@ -217,26 +223,26 @@ FullSpace()
 
 Empty never collides and has unsupported distance. Full space collides with every non-empty object and has distance zero to non-empty geometry.
 
-## `CollisionEngine`
+## `CollisionBackend`
 
 Runtime selector values:
 
 ```python
-CollisionEngine.Parry
-CollisionEngine.Rhusics
-CollisionEngine.Collide
+CollisionBackend.Parry
+CollisionBackend.Rhusics
+CollisionBackend.Collide
 ```
 
 The distributed build enables all three and defaults to Parry. Integer equality exists in the current extension but is not a stable serialization contract.
 
 ## `CollisionStatus`
 
-Constructors/variants:
+Checker queries return these instances; they are not constructed directly. Variants:
 
 ```python
-CollisionStatus.NoCollision() -> CollisionStatus
-CollisionStatus.CollidesStatic() -> CollisionStatus
-CollisionStatus.CollidesDynamic(t: int) -> CollisionStatus
+NoCollision
+CollidesStatic
+CollidesDynamic(t: int)
 ```
 
 | Member | Type | Description |
@@ -278,21 +284,25 @@ Shape and pose counts must match. `positions=None` supplies identity poses. An i
 
 ```python
 CollisionCheckerBuilder(
-    engine: CollisionEngine | None = None,
+    backend: CollisionBackend | None = None,
 )
 ```
 
-`None` selects the compiled default.
+`None` selects the compiled default. The backend is chosen once, in the constructor.
 
 | Method | Return | Description |
 | --- | --- | --- |
-| `with_engine(engine)` | same builder | Replace selected engine. |
-| `with_static_obstacle(query_shape)` | same builder | Add static geometry. |
-| `with_dynamic_obstacle(dynamic_obstacle)` | same builder | Add a trajectory. |
-| `with_road_boundary(lanelets)` | same builder | Add occupied space outside polygon sequences. |
+| `add_static_obstacle(query_shape)` | same builder | Add static geometry. |
+| `add_dynamic_obstacle(dynamic_obstacle)` | same builder | Add a trajectory. |
 | `build()` | `CollisionChecker` | Build immutable native scene. |
 
 The Python wrapper mutates and returns itself for chaining. The core state is cloned during build, so a builder can be reused.
+
+Road boundaries compose from primitives:
+
+```python
+builder.add_static_obstacle(road_boundary(lanelets))
+```
 
 ## `CollisionChecker`
 
@@ -301,60 +311,43 @@ Construct with `CollisionCheckerBuilder.build()`; direct construction is not pub
 ### Metadata and preparation
 
 ```python
-checker.engine -> CollisionEngine
+checker.backend -> CollisionBackend
 checker.prepare_static(query_shape: CollisionObject) -> PreparedStaticQuery
 checker.prepare_dynamic(dynamic_obstacle: DynamicObstacle) -> PreparedDynamicQuery
 ```
 
-Prepared classes cannot be directly constructed. Both expose `.engine`.
+Prepared classes cannot be directly constructed. Both expose `.backend`.
 
 ### Static query
 
 ```python
 checker.collides_static(
-    query_shape: CollisionObject,
+    query: CollisionObject | PreparedStaticQuery,
     position: Pose | None = None,
     min_time: int | None = None,
     max_time: int | None = None,
 ) -> CollisionStatus
 ```
 
-Static scene geometry is always checked first. Time bounds restrict dynamic-scene checks only.
-
-```python
-checker.collides_static_prepared(
-    query: PreparedStaticQuery,
-    position: Pose | None = None,
-    min_time: int | None = None,
-    max_time: int | None = None,
-) -> CollisionStatus
-```
+Static scene geometry is always checked first. Time bounds restrict dynamic-scene checks only. Passing a `PreparedStaticQuery` skips repeated geometry conversion; passing anything else raises `TypeError`.
 
 ### Dynamic query
 
 ```python
 checker.collides_dynamic(
-    dynamic_obstacle: DynamicObstacle,
+    query: DynamicObstacle | PreparedDynamicQuery,
     min_time: int | None = None,
     max_time: int | None = None,
 ) -> CollisionStatus
 ```
 
-```python
-checker.collides_dynamic_prepared(
-    query: PreparedDynamicQuery,
-    min_time: int | None = None,
-    max_time: int | None = None,
-) -> CollisionStatus
-```
-
-Dynamic queries check against static and dynamic scene geometry. A hit against static scene geometry is still attributed as `CollidesDynamic(t)`.
+Dynamic queries check against static and dynamic scene geometry. A hit against static scene geometry is still attributed as `CollidesDynamic(t)`. Passing a `PreparedDynamicQuery` skips repeated trajectory conversion.
 
 ### Ordered batches
 
 ```python
 checker.collides_static_batch(
-    positioned_query_shapes: Sequence[tuple[CollisionObject, Pose]],
+    queries: Sequence[tuple[CollisionObject | PreparedStaticQuery, Pose]],
     min_time: int | None = None,
     max_time: int | None = None,
 ) -> list[CollisionStatus]
@@ -362,19 +355,43 @@ checker.collides_static_batch(
 
 ```python
 checker.collides_dynamic_batch(
-    dynamic_obstacles: Sequence[DynamicObstacle],
+    queries: Sequence[DynamicObstacle | PreparedDynamicQuery],
     min_time: int | None = None,
     max_time: int | None = None,
 ) -> list[CollisionStatus]
 ```
 
-Results preserve input order. Empty input returns `[]`. Inputs below 32 execute sequentially; larger inputs use Rayon.
+Results preserve input order. Empty input returns `[]`. Automatic batching chooses sequential or Rayon execution from estimated work and active worker count; small batches are intentionally kept sequential. Entries may freely mix raw objects with prepared geometry:
 
-### Compatibility aliases
+```python
+prepared = checker.prepare_static(query)
+checker.collides_static_batch([
+    (query, Pose.identity()),
+    (prepared, Pose.from_translation((4.0, 0.0))),
+])
 
-`par_static(...)` and `par_dynamic(...)` delegate to the corresponding automatic batch methods. `par_static_threads(..., threads=...)` creates a dedicated Rayon pool and clamps zero threads to one. New code should prefer `collides_*_batch` unless it explicitly needs a dedicated static-query pool.
+prepared_dynamic = checker.prepare_dynamic(dynamic)
+checker.collides_dynamic_batch([dynamic, prepared_dynamic])
+```
 
-The underscore-prefixed `_collides_static_batch_threads` is an implementation detail even though it is visible in the extension stub.
+Repeated references to one prepared static query reuse the dedicated one-query/many-poses path; mixed batches share a single workload estimate and Rayon decision without re-converting prepared geometry.
+
+### Deprecated aliases
+
+These names still work but emit `DeprecationWarning`; they will be removed in the next breaking release:
+
+| Deprecated | Replacement |
+| --- | --- |
+| `CollisionEngine`, `.engine`, `engine=` | `CollisionBackend`, `.backend`, `backend=` |
+| `collides_static_prepared(query)` | `collides_static(query)` |
+| `collides_static_prepared_batch(query, poses)` | `collides_static_batch([(query, pose), ...])` |
+| `collides_dynamic_prepared(query)` | `collides_dynamic(query)` |
+| `collides_dynamic_prepared_batch([...])` | `collides_dynamic_batch([...])` |
+| `par_static(...)`, `par_dynamic(...)` | `collides_static_batch(...)`, `collides_dynamic_batch(...)` |
+| `par_static_threads(...)`, `_collides_static_batch_threads(...)` | removed; thread forcing lives only in `crcc._core._benchmark` for benchmarks |
+| `with_engine(engine)` | pass `backend=` to the constructor |
+| `with_static_obstacle(o)`, `with_dynamic_obstacle(o)` | `add_static_obstacle(o)`, `add_dynamic_obstacle(o)` |
+| `with_road_boundary(lanelets)` | `add_static_obstacle(road_boundary(lanelets))` |
 
 ### Time bounds
 
@@ -390,13 +407,13 @@ road_boundary(
 ) -> CollisionObject
 ```
 
-Returns occupied geometry outside the supplied drivable polygons. Empty input returns full space. This function is not exported from root `crcc`.
+Returns occupied geometry outside the supplied drivable polygons. Empty input returns full space. Also exported from root `crcc`.
 
 ## Exceptions
 
 | Exception | Typical cause |
 | --- | --- |
-| `ValueError` | Invalid geometry, invalid range, unsupported operation, engine mismatch, or invalid CommonRoad data. |
+| `ValueError` | Invalid geometry, invalid range, unsupported operation, backend mismatch, or invalid CommonRoad data. |
 | `TypeError` | Python value cannot convert to the declared native argument type. |
 | `OverflowError` | Integer does not fit signed 32-bit time or another native integer. |
 | `RuntimeError` | Dedicated Rayon pool construction failed. |

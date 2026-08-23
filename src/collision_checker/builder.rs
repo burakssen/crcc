@@ -103,7 +103,9 @@ impl CollisionCheckerBuilder {
         let mut active_times = TimeStepSet::new();
 
         for dynamic_obstacle in &self.dynamic_obstacles {
-            active_times.extend(dynamic_obstacle.active_times());
+            if let Some((start, end)) = dynamic_obstacle.active_time_bounds() {
+                active_times.extend(crate::time::TimeStep::iter_range(start..=end));
+            }
         }
 
         active_times

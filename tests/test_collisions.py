@@ -81,9 +81,9 @@ from crcc import Circle, Compound, Empty, FullSpace, Polygon, Pose, Rectangle, T
         "reference-second-triangle-rectangle-hit-high",
     ],
 )
-def test_static_shape_collisions(left, right, expected, engine):
+def test_static_shape_collisions(left, right, expected, backend):
     """Verify exact collision checker queries for various shape primitives."""
-    assert_collides(left, right, expected, engine=engine)
+    assert_collides(left, right, expected, backend=backend)
 
 
 @pytest.mark.parametrize(
@@ -96,7 +96,7 @@ def test_static_shape_collisions(left, right, expected, engine):
     ],
     ids=["clear", "first-triangle-hit", "first-triangle-offset-hit", "second-triangle-hit"],
 )
-def test_polygon_represented_as_compound_triangles(query, expected, engine):
+def test_polygon_represented_as_compound_triangles(query, expected, backend):
     """Test multi-triangle compound shapes against oriented rectangles."""
     polygon = Compound(
         [
@@ -104,28 +104,28 @@ def test_polygon_represented_as_compound_triangles(query, expected, engine):
             Triangle((10.0, 2.0), (2.0, 2.0), (5.0, 5.0)),
         ]
     )
-    assert_collides(polygon, query, expected, engine=engine)
+    assert_collides(polygon, query, expected, backend=backend)
 
 
-def test_rectangle_and_circle_with_offset_pose(engine):
+def test_rectangle_and_circle_with_offset_pose(backend):
     """Ensure shape collisions respect non-identity relative poses."""
     assert_collides(
         Rectangle(2.0, 2.0),
         Circle(0.75),
         True,
-        engine=engine,
+        backend=backend,
         pos_right=Pose.from_translation((1.0, 0.0)),
     )
 
 
-def test_polygon_with_hole_collisions(engine):
+def test_polygon_with_hole_collisions(backend):
     """Verify collision queries on complex polygon definitions containing interior holes."""
     polygon = Polygon(
         [(-3.0, -3.0), (3.0, -3.0), (3.0, 3.0), (-3.0, 3.0), (-3.0, -3.0)],
         [[(-0.5, -0.5), (-0.5, 0.5), (0.5, 0.5), (0.5, -0.5), (-0.5, -0.5)]],
     )
-    assert_collides(polygon, Circle(0.1), False, engine=engine)
-    assert_collides(polygon, Circle(0.1, (2.0, 0.0)), True, engine=engine)
+    assert_collides(polygon, Circle(0.1), False, backend=backend)
+    assert_collides(polygon, Circle(0.1, (2.0, 0.0)), True, backend=backend)
 
 
 def test_pose_composition_and_multiplication():
@@ -153,7 +153,7 @@ def test_pose_composition_and_multiplication():
     ],
     ids=["certified-clear", "endpoint-overlap", "moving-moving-crossing"],
 )
-def test_collides_continuous(self_motion, other_motion, expected, engine):
+def test_collides_continuous(self_motion, other_motion, expected, backend):
     """Cover CCD's certified-clear, endpoint, and two-moving-body contracts."""
     start_self, end_self = map(Pose.from_translation, self_motion)
     start_other, end_other = map(Pose.from_translation, other_motion)
@@ -165,7 +165,7 @@ def test_collides_continuous(self_motion, other_motion, expected, engine):
             Circle(1.0),
             start_other,
             end_other,
-            engine=engine,
+            backend=backend,
         )
         is expected
     )

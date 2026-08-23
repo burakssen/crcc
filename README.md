@@ -46,7 +46,7 @@ Convert CommonRoad XML scenarios into high-speed collision checkers:
 
 ```python
 from commonroad.common.file_reader import CommonRoadFileReader
-from crcc import CollisionCheckerBuilder, CollisionEngine
+from crcc import CollisionBackend, CollisionCheckerBuilder
 from crcc.commonroad import scenario_builder
 
 scenario, _ = CommonRoadFileReader("scenarios/DEU_MerzenichRather-2_870_T-149.xml").open()
@@ -54,7 +54,7 @@ scenario, _ = CommonRoadFileReader("scenarios/DEU_MerzenichRather-2_870_T-149.xm
 # Converts lanelet road boundary, static obstacles, and dynamic predictions
 checker = scenario_builder(
     scenario,
-    builder=CollisionCheckerBuilder(CollisionEngine.Parry),
+    builder=CollisionCheckerBuilder(CollisionBackend.Parry),
 ).build()
 ```
 
@@ -71,13 +71,13 @@ uv sync --frozen
 ```
 
 ```python
-from crcc import Circle, CollisionEngine, Pose
+from crcc import Circle, CollisionBackend, Pose
 
 robot = Circle(0.5)
 obstacle = Circle(1.0)
 obstacle_pose = Pose.from_translation((3.0, 0.0))
 
-assert not robot.collides(obstacle, pos_other=obstacle_pose, engine=CollisionEngine.Parry)
+assert not robot.collides(obstacle, pos_other=obstacle_pose, backend=CollisionBackend.Parry)
 assert robot.distance(obstacle, pos_other=obstacle_pose) == 1.5
 ```
 

@@ -34,7 +34,7 @@ graph TD
 
 ## Time
 
-`src/time/mod.rs` defines `TimeStep(i32)` and `TimeStepSet`, an ordered `BTreeSet`. Named predecessor, successor, and step-addition helpers provide saturating or checked behavior around integer limits.
+`src/time/mod.rs` defines `TimeStep(i32)` and `TimeStepSet`, an ordered `BTreeSet`. Named predecessor, successor, step-addition, and bounded-intersection helpers provide saturating or checked behavior around integer limits.
 
 Ordered sets are why scene queries can report the earliest dynamic result without separately sorting every query.
 
@@ -98,7 +98,7 @@ This two-stage design explains the asymmetric continuous-query contract: broad b
 
 Prepared queries own engine-converted query geometry and retain the selected engine for compatibility checks. They reduce conversion cost for reuse.
 
-Rayon-backed batch methods preserve input order. Runtime dispatch selects sequential execution below 32 items and the Rayon pool at or above 32. Python releases the GIL while native batch work executes.
+Rayon-backed batch methods preserve input order. Runtime dispatch uses estimated batch work, active worker count, and a minimum grain size rather than a fixed query-count cutoff. Python releases the GIL while native batch work executes.
 
 ## Python Boundary
 

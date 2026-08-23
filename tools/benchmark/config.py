@@ -4,7 +4,7 @@ from pathlib import Path
 
 from crcc import CollisionEngine
 
-SCHEMA_VERSION = "9"
+SCHEMA_VERSION = "10"
 BENCHMARK_SAMPLE_COUNT = 20_000
 BENCHMARK_REPETITIONS = 5
 WARMUP_QUERY_COUNT = 100
@@ -20,6 +20,8 @@ DEFAULT_UPDATE_TRANSFORMS = ("translation", "rotation", "translation_rotation", 
 DEFAULT_DENSITY_LABELS = ("clear", "medium", "dense", "worst_case")
 DEFAULT_THREAD_COUNTS = (1, 2, 4, 8)
 MATRIX_SHAPE_FAMILIES = ("circle", "rectangle", "polygon32", "compound16_polygon32")
+RAYON_MIN_QUERIES_PER_THREAD = 16
+RAYON_MIN_WORK_PER_THREAD = 128
 BENCHMARK_SUITES = (
     "pair",
     "continuous",

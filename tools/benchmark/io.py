@@ -8,7 +8,7 @@ from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-from .config import SCHEMA_VERSION, BenchmarkConfig
+from .config import RAYON_MIN_WORK_PER_THREAD, SCHEMA_VERSION, BenchmarkConfig
 from .results import (
     COMPARISON_FIELDS,
     CORRECTNESS_FIELDS,
@@ -445,7 +445,7 @@ PLOT_GUIDANCE = {
     "api_batch_amortization_sequential": (
         "Show Python scalar and below-threshold batch cost without Rayon dispatch.",
         "Each panel fixes a backend and reports median nanoseconds per query; lower is better.",
-        "Scalar calls cover every recorded size, while batch lines stop below the 32-query Rayon threshold.",
+        "Scalar calls cover every recorded size, while batch lines contain only rows classified as sequential by the automatic work policy.",
     ),
     "api_batch_amortization_rayon": (
         "Show Python batch cost after Rayon dispatch begins.",
@@ -459,7 +459,7 @@ PLOT_GUIDANCE = {
     ),
     "dynamic_batch_amortization_rayon": (
         "Show Rayon dynamic-batch cost as batch size and trajectory length increase.",
-        "Panels fix trajectory length and contain only batches at or above the 32-query dispatch threshold.",
+        "Panels fix trajectory length and contain only rows classified as Rayon by the automatic work policy.",
         "The synthetic trajectories use circles, translation, and a 50% hit mix; other shapes and hit positions may scale differently.",
     ),
     "dynamic_time_window_scaling_sequential": (
@@ -470,7 +470,7 @@ PLOT_GUIDANCE = {
     "dynamic_time_window_scaling_rayon": (
         "Isolate how the requested time range affects Rayon dynamic-batch cost.",
         "The x-axis is the number of trajectory steps searched and the y-axis is median batch nanoseconds per query.",
-        "All rows use a fixed 32-query batch, so this view does not characterize other Rayon batch sizes.",
+        "All rows use a fixed 32-query batch, so this view does not characterize other batch sizes; the execution policy may keep these rows sequential.",
     ),
     "time_variant_query_scaling_sequential": (
         "Measure sequential query cost for dynamic obstacles whose shape changes over time.",
@@ -479,7 +479,7 @@ PLOT_GUIDANCE = {
     ),
     "time_variant_query_scaling_rayon": (
         "Measure Rayon batch cost for dynamic obstacles whose shape changes over time.",
-        "Panels represent shape-variation classes for the fixed 32-query Rayon batch.",
+        "Panels represent shape-variation classes for the fixed 32-query batch; the automatic policy determines whether Rayon is used.",
         "Construction cost is recorded separately in CSV fields and the plot focuses on warmed query execution.",
     ),
     "execution_layer_cost": (
@@ -562,13 +562,13 @@ def _plot_observations(name, summary, comparisons, correctness, parallel, memory
         workload = "python_scalar" if name.endswith("sequential") else "python_batch"
         rows = [row for row in summary if row["feature"] == "api_overhead" and row["workload"] == workload]
         if name.endswith("rayon"):
-            rows = [row for row in rows if _int(row["batch_size"]) >= 32]
+            rows = [row for row in rows if _int(row["batch_size"]) >= RAYON_MIN_WORK_PER_THREAD]
         return _cost_observations(rows, "batch_size")
     if name in {"dynamic_batch_amortization_sequential", "dynamic_batch_amortization_rayon"}:
         workload = "dynamic_scalar" if name.endswith("sequential") else "dynamic_batch"
         rows = [row for row in summary if row["feature"] == "dynamic_batch" and row["workload"] == workload]
         if name.endswith("rayon"):
-            rows = [row for row in rows if _int(row["batch_size"]) >= 32]
+            rows = [row for row in rows if _int(row["batch_size"]) >= RAYON_MIN_WORK_PER_THREAD]
         return _cost_observations(rows, "batch_size")
     if name in {"dynamic_time_window_scaling_sequential", "dynamic_time_window_scaling_rayon"}:
         rows = [row for row in summary if row.get("scene_kind") == "dynamic_time_window"]

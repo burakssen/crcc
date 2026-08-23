@@ -1,6 +1,6 @@
 import random
 
-from crcc import Circle, CollisionEngine, Compound, Pose, Rectangle, Triangle
+from crcc import Circle, CollisionBackend, Compound, Pose, Rectangle, Triangle
 
 
 def random_shape(rng):
@@ -23,9 +23,9 @@ def test_engines_match_for_seeded_random_shapes():
     for index in range(500):
         left = random_shape(rng)
         right = random_shape(rng)
-        parry = left.collides(right, engine=CollisionEngine.Parry)
-        rhusics = left.collides(right, engine=CollisionEngine.Rhusics)
-        collide = left.collides(right, engine=CollisionEngine.Collide)
+        parry = left.collides(right, backend=CollisionBackend.Parry)
+        rhusics = left.collides(right, backend=CollisionBackend.Rhusics)
+        collide = left.collides(right, backend=CollisionBackend.Collide)
         context = (
             f"seed={seed} case={index} left={type(left).__name__} right={type(right).__name__} "
             f"parry={parry} rhusics={rhusics} collide={collide}"
@@ -71,14 +71,14 @@ def test_compounds_match_expanded_children_for_seeded_random_shapes():
         pos_left = random_pose(rng)
         pos_right = random_pose(rng)
 
-        for engine in [CollisionEngine.Parry, CollisionEngine.Rhusics, CollisionEngine.Collide]:
-            compound = left.collides(right, pos_self=pos_left, pos_other=pos_right, engine=engine)
+        for backend in [CollisionBackend.Parry, CollisionBackend.Rhusics, CollisionBackend.Collide]:
+            compound = left.collides(right, pos_self=pos_left, pos_other=pos_right, backend=backend)
             expanded = any(
-                left_part.collides(right_part, pos_self=pos_left, pos_other=pos_right, engine=engine)
+                left_part.collides(right_part, pos_self=pos_left, pos_other=pos_right, backend=backend)
                 for left_part in left_parts
                 for right_part in right_parts
             )
             assert compound == expanded, (
-                f"seed={seed} case={index} engine={engine} pos_left={pos_left} pos_right={pos_right} "
+                f"seed={seed} case={index} backend={backend} pos_left={pos_left} pos_right={pos_right} "
                 f"compound={compound} expanded={expanded}"
             )

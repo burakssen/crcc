@@ -75,6 +75,28 @@ impl TimeStep {
         };
         (start..=end).filter_map(|value| i32::try_from(value).ok().map(TimeStep))
     }
+
+    /// Iterates the intersection of a Rust range and an inclusive active window.
+    pub(crate) fn iter_intersection(
+        range: impl RangeBounds<Self>,
+        active_start: Self,
+        active_end: Self,
+    ) -> impl Iterator<Item = Self> {
+        let range_start = match range.start_bound() {
+            std::ops::Bound::Included(t) => i64::from(t.0),
+            std::ops::Bound::Excluded(t) => i64::from(t.0).saturating_add(1),
+            std::ops::Bound::Unbounded => i64::from(Self::MIN.0),
+        };
+        let range_end = match range.end_bound() {
+            std::ops::Bound::Included(t) => i64::from(t.0),
+            std::ops::Bound::Excluded(t) => i64::from(t.0).saturating_sub(1),
+            std::ops::Bound::Unbounded => i64::from(Self::MAX.0),
+        };
+        let start = range_start.max(i64::from(active_start.0));
+        let end = range_end.min(i64::from(active_end.0));
+
+        (start..=end).filter_map(|value| i32::try_from(value).ok().map(TimeStep))
+    }
 }
 
 impl Display for TimeStep {
@@ -185,6 +207,24 @@ mod tests {
         assert_eq!(
             TimeStep::iter_range(TimeStep::MIN..=TimeStep::MIN).collect::<Vec<_>>(),
             vec![TimeStep::MIN],
+        );
+    }
+
+    #[test]
+    fn iter_intersection_clips_and_rejects_inverted_ranges() {
+        assert_eq!(
+            TimeStep::iter_intersection(TimeStep(2)..=TimeStep(8), TimeStep(3), TimeStep(5))
+                .collect::<Vec<_>>(),
+            vec![TimeStep(3), TimeStep(4), TimeStep(5)],
+        );
+        assert_eq!(
+            TimeStep::iter_intersection(TimeStep(8)..=TimeStep(2), TimeStep(3), TimeStep(5))
+                .count(),
+            0,
+        );
+        assert_eq!(
+            TimeStep::iter_intersection(.., TimeStep::MAX, TimeStep::MAX).collect::<Vec<_>>(),
+            vec![TimeStep::MAX],
         );
     }
 }

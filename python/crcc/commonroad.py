@@ -63,7 +63,7 @@ def add_static_obstacle(
     collision_object = from_occupancy(
         static_obstacle.occupancy_at_time(_exact_time_step(static_obstacle.initial_state.time_step))
     )
-    builder.with_static_obstacle(collision_object)
+    builder.add_static_obstacle(collision_object)
     return builder
 
 
@@ -72,7 +72,7 @@ def add_dynamic_obstacle(
     dynamic_obstacle: cr_obstacle.DynamicObstacle,
 ) -> CollisionCheckerBuilder:
     """Adds a CommonRoad dynamic obstacle to the builder."""
-    builder.with_dynamic_obstacle(from_dynamic_obstacle(dynamic_obstacle))
+    builder.add_dynamic_obstacle(from_dynamic_obstacle(dynamic_obstacle))
     return builder
 
 
@@ -126,7 +126,7 @@ def add_road_boundary(
     """Adds the road boundary from a lanelet network to the builder."""
     if lanelet_network.lanelets:
         # An absent map supplies no road-boundary constraint.
-        builder.with_static_obstacle(road_boundary(lanelet_network))
+        builder.add_static_obstacle(road_boundary(lanelet_network))
     return builder
 
 

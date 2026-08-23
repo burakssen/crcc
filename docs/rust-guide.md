@@ -265,7 +265,7 @@ fn main() -> Result<(), crcc::CrccError> {
 }
 ```
 
-Results preserve input order. Fewer than 32 queries run sequentially; 32 or more use the active Rayon pool.
+Results preserve input order. Automatic execution uses estimated work, active worker count, and indexed iterator grain sizing to choose between sequential execution and the active Rayon pool.
 
 ## Handle Errors
 

@@ -42,7 +42,7 @@ uv sync --frozen
 This installs project dependencies and builds the native `crcc._core` extension through Maturin. Verify the import:
 
 ```bash
-uv run python -c "import crcc; print(crcc.CollisionEngine.Parry)"
+uv run python -c "import crcc; print(crcc.CollisionBackend.Parry)"
 ```
 
 ### Pre-built Release Wheel
@@ -103,7 +103,7 @@ CommonRoad support is built into the Python-only `crcc.commonroad` module. CRCC 
 
 ```python
 from commonroad.common.file_reader import CommonRoadFileReader
-from crcc import CollisionCheckerBuilder, CollisionEngine
+from crcc import CollisionBackend, CollisionCheckerBuilder
 from crcc.commonroad import from_dynamic_obstacle, road_boundary, scenario_builder
 
 # Load CommonRoad XML scenario
@@ -114,13 +114,13 @@ scenario, _ = CommonRoadFileReader(
 # scenario_builder populates road boundaries, static obstacles, and dynamic predictions
 builder = scenario_builder(
     scenario,
-    builder=CollisionCheckerBuilder(CollisionEngine.Parry),
+    builder=CollisionCheckerBuilder(CollisionBackend.Parry),
 )
 
 # You can add custom vehicle query geometry or ego trajectory before building
 checker = builder.build()
 
-assert checker.engine == CollisionEngine.Parry
+assert checker.backend == CollisionBackend.Parry
 ```
 
 ### Low-Level CommonRoad Helpers
@@ -139,7 +139,7 @@ Missing intermediate CommonRoad occupancies become empty geometry. The adapter s
 Use pair methods when no reusable scene is needed:
 
 ```python
-from crcc import Circle, CollisionEngine, Pose
+from crcc import Circle, CollisionBackend, Pose
 
 left = Circle(1.0)
 right = Circle(1.0)
@@ -148,7 +148,7 @@ right_pose = Pose.from_translation((3.0, 0.0))
 assert not left.collides(
     right,
     pos_other=right_pose,
-    engine=CollisionEngine.Parry,
+    backend=CollisionBackend.Parry,
 )
 assert left.distance(right, pos_other=right_pose) == 1.0
 ```
@@ -182,19 +182,19 @@ Interpret the result conservatively: `False` certifies the complete interval is 
 The builder accepts static objects, dynamic trajectories, and road boundaries:
 
 ```python
-from crcc import Circle, CollisionCheckerBuilder, CollisionEngine, Pose, Rectangle
+from crcc import Circle, CollisionBackend, CollisionCheckerBuilder, Pose, Rectangle
 
 checker = (
-    CollisionCheckerBuilder(CollisionEngine.Rhusics)
-    .with_static_obstacle(Rectangle(2.0, 2.0))
-    .with_static_obstacle(Circle(0.25, center=(3.0, 0.0)))
+    CollisionCheckerBuilder(backend=CollisionBackend.Rhusics)
+    .add_static_obstacle(Rectangle(2.0, 2.0))
+    .add_static_obstacle(Circle(0.25, center=(3.0, 0.0)))
     .build()
 )
 
 status = checker.collides_static(Circle(0.5), position=Pose.identity())
 assert status.collides
 assert status.time_step is None
-assert checker.engine == CollisionEngine.Rhusics
+assert checker.backend == CollisionBackend.Rhusics
 ```
 
 Static scene geometry is checked before dynamic geometry. If it collides, the result is `CollidesStatic` regardless of time bounds.
@@ -217,7 +217,7 @@ trajectory = DynamicObstacle(
 
 checker = (
     CollisionCheckerBuilder()
-    .with_static_obstacle(Rectangle(0.25, 3.0))
+    .add_static_obstacle(Rectangle(0.25, 3.0))
     .build()
 )
 
@@ -257,20 +257,20 @@ Prepared queries avoid backend conversion when the same geometry or trajectory i
 ```python
 from crcc import Circle, CollisionCheckerBuilder, Pose
 
-checker = CollisionCheckerBuilder().with_static_obstacle(Circle(1.0)).build()
+checker = CollisionCheckerBuilder().add_static_obstacle(Circle(1.0)).build()
 query = Circle(0.25)
 prepared = checker.prepare_static(query)
 
-near = checker.collides_static_prepared(prepared, Pose.identity())
-far = checker.collides_static_prepared(
+near = checker.collides_static(prepared, Pose.identity())
+far = checker.collides_static(
     prepared,
     Pose.from_translation((5.0, 0.0)),
 )
 assert near.collides and not far.collides
-assert prepared.engine == checker.engine
+assert prepared.backend == checker.backend
 ```
 
-A prepared query belongs to one engine. Passing it to a checker built with another engine raises `ValueError` as an unsupported operation.
+A prepared query belongs to one backend. Passing it to a checker built with another backend raises `ValueError` as an unsupported operation.
 
 ## Run Ordered Batches
 
@@ -279,7 +279,7 @@ Batch results preserve input order:
 ```python
 from crcc import Circle, CollisionCheckerBuilder, Pose, Rectangle
 
-checker = CollisionCheckerBuilder().with_static_obstacle(Rectangle(2.0, 2.0)).build()
+checker = CollisionCheckerBuilder().add_static_obstacle(Rectangle(2.0, 2.0)).build()
 results = checker.collides_static_batch(
     [
         (Circle(0.25), Pose.identity()),
@@ -289,7 +289,7 @@ results = checker.collides_static_batch(
 assert [result.collides for result in results] == [True, False]
 ```
 
-Use `collides_dynamic_batch` for trajectories. Inputs below 32 run sequentially; larger batches use Rayon and release the GIL during native work. Legacy `par_static` and `par_dynamic` are aliases of this automatic behavior.
+Use `collides_dynamic_batch` for trajectories. Automatic batching chooses the execution mode from estimated work and active worker count, and releases the GIL during native work. Batch entries may mix raw objects with prepared geometry, so converted geometry is never rebuilt.
 
 ## Handle Errors
 

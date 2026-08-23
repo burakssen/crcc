@@ -267,7 +267,7 @@ collides_static_range
 collides_dynamic_range
 ```
 
-Range forms accept `impl RangeBounds<TimeStep>`. Provide ordered valid bounds; invalid `BTreeSet::range` combinations can panic.
+Range forms accept `impl RangeBounds<TimeStep>`. Inverted ranges are empty and do not panic.
 
 ### Prepared execution
 
@@ -285,6 +285,17 @@ fn collides_dynamic_prepared_range(
     query: &PreparedDynamicQuery,
     time_range: impl RangeBounds<TimeStep>,
 ) -> CollisionResult
+fn collides_static_prepared_batch(
+    &self,
+    query: &PreparedStaticQuery,
+    positions: &[Pose],
+    time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+) -> Vec<CollisionResult>
+fn collides_dynamic_prepared_batch(
+    &self,
+    queries: &[PreparedDynamicQuery],
+    time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+) -> Vec<CollisionResult>
 ```
 
 ### Batches (`rayon`)
@@ -305,7 +316,39 @@ fn collides_dynamic_batch(
 ) -> Vec<CollisionResult>
 ```
 
-Order is preserved. Fewer than 32 items execute sequentially; 32 or more use Rayon. `par_static` and `par_dynamic` are compatibility aliases.
+Order is preserved. Automatic batches use estimated work, active worker count, and indexed grain sizing to choose between sequential execution and Rayon.
+
+Mixed batches of raw and prepared queries share one workload estimate and one parallelism decision:
+
+```rust
+enum StaticBatchQuery<'a> {
+    Raw(&'a CollisionObject),
+    Prepared(&'a PreparedStaticQuery),
+}
+
+enum DynamicBatchQuery<'a> {
+    Raw(&'a DynamicObstacle),
+    Prepared(&'a PreparedDynamicQuery),
+}
+
+fn collides_static_heterogeneous_batch<'a, I>(
+    &self,
+    sources: I,
+    time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+) -> Vec<CollisionResult>
+where
+    I: IntoIterator<Item = (StaticBatchQuery<'a>, Pose)>,
+
+fn collides_dynamic_heterogeneous_batch<'a, I>(
+    &self,
+    sources: I,
+    time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+) -> Vec<CollisionResult>
+where
+    I: IntoIterator<Item = DynamicBatchQuery<'a>>,
+```
+
+A prepared query built for a different backend makes every slot return `CrccError::Unsupported`.
 
 ## Engine-Level API
 

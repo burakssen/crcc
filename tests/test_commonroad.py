@@ -54,7 +54,7 @@ def test_empty_occupancy_group():
     assert not collision_object.collides(Circle(1.0))
 
 
-def test_occupancy_group_time_variant_dynamic_obstacle(engine):
+def test_occupancy_group_time_variant_dynamic_obstacle(backend):
     """Ensure occupancy groups can be used as time-variant dynamic obstacle shapes."""
     occupancy_group = OccupancyGroup(
         (
@@ -70,7 +70,7 @@ def test_occupancy_group_time_variant_dynamic_obstacle(engine):
         ],
         time_offset=4,
     )
-    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.5)).build()
+    checker = CollisionCheckerBuilder(backend=backend).add_static_obstacle(Circle(0.5)).build()
 
     assert collision_status(checker.collides_dynamic(trajectory, min_time=5, max_time=5)) == (True, 5)
 
@@ -115,13 +115,13 @@ def test_commonroad_shape_converters_preserve_geometry():
     assert polygon.collides(Circle(0.1, (0.5, 0.5)))
 
 
-def test_commonroad_road_boundary_uses_lanelet_vertices(engine):
+def test_commonroad_road_boundary_uses_lanelet_vertices(backend):
     vertices = np.array(((-2.0, -2.0), (2.0, -2.0), (2.0, 2.0), (-2.0, 2.0), (-2.0, -2.0)))
     network = SimpleNamespace(lanelets=[SimpleNamespace(polygon=SimpleNamespace(vertices=vertices))])
     boundary = road_boundary(cast(LaneletNetwork, network))
 
-    assert not boundary.collides(Circle(0.1), engine=engine)
-    assert boundary.collides(Circle(0.1, (3.0, 0.0)), engine=engine)
+    assert not boundary.collides(Circle(0.1), backend=backend)
+    assert boundary.collides(Circle(0.1, (3.0, 0.0)), backend=backend)
 
 
 def set_based_commonroad_obstacle():
@@ -142,10 +142,10 @@ def set_based_commonroad_obstacle():
     )
 
 
-def test_set_based_prediction_dynamic_obstacle_conversion(engine):
+def test_set_based_prediction_dynamic_obstacle_conversion(backend):
     """Set-based predictions map occupancies by timestep and keep gaps non-colliding."""
     trajectory = from_dynamic_obstacle(set_based_commonroad_obstacle())
-    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75)).build()
+    checker = CollisionCheckerBuilder(backend=backend).add_static_obstacle(Circle(0.75)).build()
 
     assert collision_status(checker.collides_dynamic(trajectory, min_time=3, max_time=3)) == (False, None)
     assert collision_status(checker.collides_dynamic(trajectory, min_time=4, max_time=4)) == (False, None)
@@ -154,9 +154,9 @@ def test_set_based_prediction_dynamic_obstacle_conversion(engine):
     assert collision_status(checker.collides_dynamic(trajectory, min_time=8, max_time=8)) == (True, 8)
 
 
-def test_set_based_prediction_keeps_initial_occupancy_and_gap(engine):
+def test_set_based_prediction_keeps_initial_occupancy_and_gap(backend):
     trajectory = from_dynamic_obstacle(set_based_commonroad_obstacle())
-    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.75, (10.0, 0.0))).build()
+    checker = CollisionCheckerBuilder(backend=backend).add_static_obstacle(Circle(0.75, (10.0, 0.0))).build()
 
     assert collision_status(checker.collides_dynamic(trajectory, min_time=0, max_time=0)) == (True, 0)
     assert collision_status(checker.collides_dynamic(trajectory, min_time=1, max_time=1)) == (False, None)
@@ -164,16 +164,16 @@ def test_set_based_prediction_keeps_initial_occupancy_and_gap(engine):
     assert collision_status(checker.collides_dynamic(trajectory, min_time=3, max_time=3)) == (True, 3)
 
 
-def test_set_based_prediction_gap_has_no_phantom_continuous_motion(engine):
+def test_set_based_prediction_gap_has_no_phantom_continuous_motion(backend):
     trajectory = from_dynamic_obstacle(set_based_commonroad_obstacle())
-    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.25, (5.0, 0.0))).build()
+    checker = CollisionCheckerBuilder(backend=backend).add_static_obstacle(Circle(0.25, (5.0, 0.0))).build()
 
     assert collision_status(checker.collides_dynamic(trajectory, min_time=0, max_time=3)) == (False, None)
     prepared = checker.prepare_dynamic(trajectory)
-    assert collision_status(checker.collides_dynamic_prepared(prepared, min_time=0, max_time=3)) == (False, None)
+    assert collision_status(checker.collides_dynamic(prepared, min_time=0, max_time=3)) == (False, None)
 
 
-def test_trajectory_prediction_keeps_between_step_motion(engine):
+def test_trajectory_prediction_keeps_between_step_motion(backend):
     shape = RectObstacleShape(width=1.0, length=1.0)
     prediction = TrajectoryPrediction(
         Trajectory(
@@ -190,24 +190,24 @@ def test_trajectory_prediction_keeps_between_step_motion(engine):
         prediction=prediction,
     )
     trajectory = from_dynamic_obstacle(obstacle)
-    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Circle(0.25)).build()
+    checker = CollisionCheckerBuilder(backend=backend).add_static_obstacle(Circle(0.25)).build()
 
     assert collision_status(checker.collides_dynamic(trajectory)) == (True, 0)
 
 
-def test_scenario_builder_includes_set_based_dynamic_obstacles(engine):
+def test_scenario_builder_includes_set_based_dynamic_obstacles(backend):
     scenario = SimpleNamespace(
         lanelet_network=SimpleNamespace(lanelets=[]),
         static_obstacles=[],
         dynamic_obstacles=[set_based_commonroad_obstacle()],
     )
-    checker = scenario_builder(cast(Scenario, scenario), CollisionCheckerBuilder(engine=engine)).build()
+    checker = scenario_builder(cast(Scenario, scenario), CollisionCheckerBuilder(backend=backend)).build()
 
     assert collision_status(checker.collides_static(Circle(0.75), min_time=5, max_time=5)) == (True, 5)
     assert collision_status(checker.collides_static(Circle(0.75), min_time=4, max_time=4)) == (False, None)
 
 
-def test_polygon_occupancy_with_duplicate_vertex_does_not_poison_queries(engine):
+def test_polygon_occupancy_with_duplicate_vertex_does_not_poison_queries(backend):
     """Regression: a duplicated consecutive vertex once made parry reject
     every query against a scene containing the converted occupancy."""
     clean = ShapelyPolygon([(0.0, 0.0), (4.0, 0.0), (4.0, 2.0), (0.0, 2.0)])
@@ -225,9 +225,9 @@ def test_polygon_occupancy_with_duplicate_vertex_does_not_poison_queries(engine)
 
     def scene_with(occupancy):
         return (
-            CollisionCheckerBuilder(engine=engine)
-            .with_static_obstacle(Circle(0.1, (50.0, 50.0)))
-            .with_dynamic_obstacle(from_dynamic_obstacle(obstacle_with_occupancy(occupancy)))
+            CollisionCheckerBuilder(backend=backend)
+            .add_static_obstacle(Circle(0.1, (50.0, 50.0)))
+            .add_dynamic_obstacle(from_dynamic_obstacle(obstacle_with_occupancy(occupancy)))
             .build()
         )
 

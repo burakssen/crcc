@@ -2,7 +2,7 @@ import io
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from crcc import CollisionEngine
+from crcc import CollisionBackend
 from matplotlib import pyplot as plt
 
 import main
@@ -30,8 +30,8 @@ def test_interactive_menu_uses_new_order():
         assert main.prompt_for_action(prompt=lambda _: "commonroad") == main.ExampleAction.COMMONROAD
 
 
-def test_basic_tutorial_is_deterministic_and_preserves_unsupported(engine):
-    results = basic.basic_results(engine)
+def test_basic_tutorial_is_deterministic_and_preserves_unsupported(backend):
+    results = basic.basic_results(backend)
     outcomes = {name: outcome for name, outcome, _detail in results}
     assert outcomes["overlapping primitives"] == "hit"
     assert outcomes["boundary contact"] in {"hit", "clear"}
@@ -55,8 +55,8 @@ def test_basic_tutorial_is_deterministic_and_preserves_unsupported(engine):
     assert set(outcomes.values()) <= {"hit", "clear", "unsupported"}
 
 
-def test_continuous_tutorial_distinguishes_endpoints_from_sweep(engine):
-    results = continuous.continuous_results(engine)
+def test_continuous_tutorial_distinguishes_endpoints_from_sweep(backend):
+    results = continuous.continuous_results(backend)
     outcomes = {name: outcome for name, outcome, _detail in results}
     assert outcomes["translation start"] == "clear"
     assert outcomes["translation end"] == "clear"
@@ -68,23 +68,23 @@ def test_continuous_tutorial_distinguishes_endpoints_from_sweep(engine):
     }
 
 
-def test_playground_uses_the_exact_sweep_shown(engine):
+def test_playground_uses_the_exact_sweep_shown(backend):
     state = playground.InspectorState()
-    results = playground.inspect(state, engine)
+    results = playground.inspect(state, backend)
     assert results[0][1] == "clear"
     assert results[1][1] == "clear"
     assert results[2][1] in {"potential collision", "unsupported"}
 
     fig, ax = plt.subplots()
     try:
-        assert playground.draw_inspector(ax, state, engine) == results
+        assert playground.draw_inspector(ax, state, backend) == results
         assert ax.get_title()
     finally:
         plt.close(fig)
 
 
-def test_playground_scene_supports_all_occupancy_modes(engine):
-    state = playground.PlaygroundState(engine, (0, 1, 2, 3))
+def test_playground_scene_supports_all_occupancy_modes(backend):
+    state = playground.PlaygroundState(backend, (0, 1, 2, 3))
     state.shape_kind = "rectangle"
     state.mode = "static"
     environment = state.add_object((0.0, 0.0), role="environment")
@@ -99,14 +99,14 @@ def test_playground_scene_supports_all_occupancy_modes(engine):
         if mode != "dynamic":
             assert query.variants
     assert state.evaluate()
-    state.set_engine(engine)
+    state.set_engine(backend)
     assert state.step() == 1
 
 
-def test_playground_presets_color_every_collision_participant(engine):
+def test_playground_presets_color_every_collision_participant(backend):
     bounds = (-10.0, 10.0, -10.0, 10.0)
     for preset in ("Tunneling", "Intersection", "Overtaking"):
-        state = playground.PlaygroundState(engine, (0, 1, 2))
+        state = playground.PlaygroundState(backend, (0, 1, 2))
         state.load_preset(preset, bounds)
         assert set(state._results) == {obj.object_id for obj in state.objects}
         assert {result.verdict for result in state._results.values()} == {playground.Verdict.EXACT_CLEAR}
@@ -114,7 +114,7 @@ def test_playground_presets_color_every_collision_participant(engine):
             playground.Verdict.POTENTIAL_COLLISION
         }
 
-    state = playground.PlaygroundState(engine, (0, 1))
+    state = playground.PlaygroundState(backend, (0, 1))
     state.shape_kind, state.mode = "rectangle", "static"
     colliding = state.add_object((0.0, 0.0), role="environment")
     separated = state.add_object((20.0, 0.0), role="environment")
@@ -129,10 +129,10 @@ def test_playground_presets_color_every_collision_participant(engine):
     assert state._interval_results[separated.object_id].verdict == playground.Verdict.CERTIFIED_CLEAR
 
 
-def test_playground_tunneling_outlines_every_interval_collision(engine):
+def test_playground_tunneling_outlines_every_interval_collision(backend):
     from matplotlib.colors import to_rgba
 
-    state = playground.PlaygroundState(engine, (0, 1, 2, 3, 4))
+    state = playground.PlaygroundState(backend, (0, 1, 2, 3, 4))
     state.load_preset("Tunneling", (-10.0, 10.0, -10.0, 10.0))
     state.current_time = 1
 
@@ -162,8 +162,8 @@ def test_playground_freehand_polygon_uses_local_coordinates():
     assert abs(sum(ys)) < 1e-12
 
 
-def test_playground_paths_do_not_obscure_scene_and_zoom_is_preserved(engine):
-    state = playground.PlaygroundState(engine, (0, 1, 2, 3))
+def test_playground_paths_do_not_obscure_scene_and_zoom_is_preserved(backend):
+    state = playground.PlaygroundState(backend, (0, 1, 2, 3))
     state.mode = "dynamic"
     state.draft_path = [playground.Pose.from_translation((-3.0, 0.0)), playground.Pose.from_translation((3.0, 0.0))]
     state.add_object((-3.0, 0.0))
@@ -201,10 +201,10 @@ def test_playground_paths_do_not_obscure_scene_and_zoom_is_preserved(engine):
 
 
 def test_playground_tunneling_checks_every_object_against_the_scenario():
-    scenario, checker = utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionEngine.Rhusics)
+    scenario, checker = utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionBackend.Rhusics)
     lower, upper = utils.scenario_pose_bounds(scenario)
     bounds = (lower[0], upper[0], lower[1], upper[1])
-    state = playground.PlaygroundState(checker.engine, tuple(utils.scenario_time_steps(scenario)), scenario)
+    state = playground.PlaygroundState(checker.backend, tuple(utils.scenario_time_steps(scenario)), scenario)
 
     state.load_preset("Tunneling", bounds)
 
@@ -219,7 +219,7 @@ def test_playground_tunneling_checks_every_object_against_the_scenario():
 
 
 def test_commonroad_probes_are_geometry_derived_and_repeatable():
-    scenario, checker = utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionEngine.Rhusics)
+    scenario, checker = utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, CollisionBackend.Rhusics)
     bounds = utils.scenario_pose_bounds(scenario)
     first = commonroad.deterministic_probes(scenario, bounds)
     second = commonroad.deterministic_probes(scenario, bounds)
@@ -234,15 +234,15 @@ def test_commonroad_probes_are_geometry_derived_and_repeatable():
 
 def test_all_bundled_scenarios_load():
     for scenario_path in Path("scenarios").glob("*.xml"):
-        scenario, checker = utils.load_collision_checker(str(scenario_path), CollisionEngine.Rhusics)
+        scenario, checker = utils.load_collision_checker(str(scenario_path), CollisionBackend.Rhusics)
         lower, upper = utils.scenario_pose_bounds(scenario)
         assert lower[0] < upper[0]
-        assert checker.engine == CollisionEngine.Rhusics
+        assert checker.backend == CollisionBackend.Rhusics
 
 
-def test_playground_unselect_click_outside(monkeypatch, engine):
+def test_playground_unselect_click_outside(monkeypatch, backend):
     monkeypatch.setattr(plt, "show", lambda: None)
-    scenario, checker = utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, engine)
+    scenario, checker = utils.load_collision_checker(main.DEFAULT_SCENARIO_PATH, backend)
     bounds = utils.scenario_pose_bounds(scenario)
     pose_bounds = bounds
 

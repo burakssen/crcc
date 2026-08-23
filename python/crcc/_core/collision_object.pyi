@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from .collision_checker import CollisionEngine
+from .collision_checker import CollisionBackend
 from .pose import Pose
 
 class CollisionObject:
@@ -13,7 +13,8 @@ class CollisionObject:
         other: CollisionObject,
         pos_self: Pose = Pose.identity(),
         pos_other: Pose = Pose.identity(),
-        engine: CollisionEngine | None = None,
+        backend: CollisionBackend | None = None,
+        engine: CollisionBackend | None = None,  # Deprecated: use backend.
     ) -> bool: ...
     def collides_continuous(
         self,
@@ -22,14 +23,16 @@ class CollisionObject:
         other: CollisionObject,
         start_pos_other: Pose,
         end_pos_other: Pose,
-        engine: CollisionEngine | None = None,
+        backend: CollisionBackend | None = None,
+        engine: CollisionBackend | None = None,  # Deprecated: use backend.
     ) -> bool: ...
     def distance(
         self,
         other: CollisionObject,
         pos_self: Pose = Pose.identity(),
         pos_other: Pose = Pose.identity(),
-        engine: CollisionEngine | None = None,
+        backend: CollisionBackend | None = None,
+        engine: CollisionBackend | None = None,  # Deprecated: use backend.
     ) -> float: ...
     def merge(self, other: CollisionObject) -> CollisionObject: ...
     @staticmethod

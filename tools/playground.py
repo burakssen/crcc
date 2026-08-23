@@ -231,7 +231,7 @@ class PlaygroundState:
 
     def _evaluate_object(self, query, *, obstacles=None, include_scenario=True, interval=False):
         try:
-            builder = CollisionCheckerBuilder(engine=self.engine)
+            builder = CollisionCheckerBuilder(backend=self.engine)
             if include_scenario and self.scenario is not None:
                 builder = scenario_builder(self.scenario, builder)
             candidates = obstacles if obstacles is not None else self.objects
@@ -239,9 +239,9 @@ class PlaygroundState:
                 if obj.object_id == query.object_id or (obstacles is None and obj.role != "environment"):
                     continue
                 if obj.mode == "static":
-                    builder.with_static_obstacle(positioned_shape(obj, self.current_time, self.time_steps[0]))
+                    builder.add_static_obstacle(positioned_shape(obj, self.current_time, self.time_steps[0]))
                 else:
-                    builder.with_dynamic_obstacle(obj.dynamic_obstacle(self.time_steps))
+                    builder.add_dynamic_obstacle(obj.dynamic_obstacle(self.time_steps))
             checker = builder.build()
             max_time = self.current_time
             if interval and self.time_steps:
@@ -311,7 +311,7 @@ class PlaygroundState:
 
     def _preset_frame(self, bounds):
         if self.scenario is not None:
-            checker = scenario_builder(self.scenario, CollisionCheckerBuilder(engine=self.engine)).build()
+            checker = scenario_builder(self.scenario, CollisionCheckerBuilder(backend=self.engine)).build()
             time_step = self.time_steps[0]
             for lanelet in self.scenario.lanelet_network.lanelets:
                 points = np.asarray(lanelet.center_vertices)
@@ -599,7 +599,7 @@ def run(scenario, checker, pose_bounds):
 
     time_steps = tuple(scenario_time_steps(scenario))
     bounds = (pose_bounds[0][0], pose_bounds[1][0], pose_bounds[0][1], pose_bounds[1][1])
-    state = PlaygroundState(checker.engine, time_steps, scenario)
+    state = PlaygroundState(checker.backend, time_steps, scenario)
     state.load_preset("Tunneling", bounds)
 
     fig, ax = plt.subplots(figsize=(14, 8))
@@ -615,7 +615,7 @@ def run(scenario, checker, pose_bounds):
     engine = RadioButtons(
         fig.add_axes((0.84, 0.72, 0.14, 0.18)),
         ["rhusics", "parry", "collide"],
-        active=["rhusics", "parry", "collide"].index(str(checker.engine).split(".")[-1].lower()),
+        active=["rhusics", "parry", "collide"].index(str(checker.backend).split(".")[-1].lower()),
     )
     role = RadioButtons(fig.add_axes((0.84, 0.54, 0.14, 0.13)), ["query", "environment"])
     play = Button(fig.add_axes((0.84, 0.43, 0.065, 0.05)), "play")
@@ -713,7 +713,7 @@ def run(scenario, checker, pose_bounds):
                 obj_geom = obj.shape_at(state.current_time, state.time_steps[0]).collision_object()
                 obj_pose = obj.pose_at(state.current_time)
                 try:
-                    if obj_geom.collides(click_geom, obj_pose, click_pose, engine=state.engine):
+                    if obj_geom.collides(click_geom, obj_pose, click_pose, backend=state.engine):
                         dist = np.linalg.norm(np.asarray(obj_pose.translation) - point)
                         clicked_objects.append((dist, obj))
                 except Exception:

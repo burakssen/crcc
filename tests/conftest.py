@@ -1,9 +1,9 @@
 import pytest
-from crcc import CollisionEngine
+from crcc import CollisionBackend
 
-ENGINES = [CollisionEngine.Parry, CollisionEngine.Rhusics, CollisionEngine.Collide]
+BACKENDS = [CollisionBackend.Parry, CollisionBackend.Rhusics, CollisionBackend.Collide]
 
 
-@pytest.fixture(params=ENGINES, ids=["parry", "rhusics", "collide"])
-def engine(request: pytest.FixtureRequest) -> CollisionEngine:
+@pytest.fixture(params=BACKENDS, ids=["parry", "rhusics", "collide"])
+def backend(request: pytest.FixtureRequest) -> CollisionBackend:
     return request.param

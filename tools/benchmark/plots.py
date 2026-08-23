@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-from .config import ENGINE_ITEMS
+from .config import ENGINE_ITEMS, RAYON_MIN_QUERIES_PER_THREAD, RAYON_MIN_WORK_PER_THREAD
 from .io import ArtifactBundle, load_artifacts
 
 # Apply a clean, modern design styling globally
@@ -34,7 +34,6 @@ plt.rcParams.update(
 
 BACKEND_COLORS = {"parry": "#3b82f6", "rhusics": "#f43f5e", "collide": "#10b981"}
 BACKEND_MARKERS = {"parry": "o", "rhusics": "s", "collide": "^"}
-RAYON_QUERY_THRESHOLD = 32
 PLOT_NAMES = {
     "backend_throughput_iqr",
     "backend_speedup_forest",
@@ -350,6 +349,7 @@ def _plot_scenario_throughput(path_base: Path, rows, execution_mode: str):
 
 
 def _plot_parallel_summary(path_base: Path, rows, metric: str, ylabel: str):
+    rows = [row for row in rows if row.get("api_mode") == "batch_reusable"]
     if not rows:
         _plot_status(path_base, ylabel.title(), "No parallel scaling rows")
         return
@@ -578,7 +578,6 @@ def _plot_api_batch_amortization(path_base: Path, rows, execution_mode: str):
     mode_styles = {
         "python_scalar": ("--", "scalar calls"),
         "python_batch": ("-", "global-pool batch"),
-        "python_batch_fresh_pool_1t": (":", "fresh 1-thread pool"),
     }
     if execution_mode == "rayon":
         mode_styles.pop("python_scalar")
@@ -1113,10 +1112,16 @@ def _execution_mode(row):
     workload = row.get("workload", "")
     if workload == "static_sequential" or row.get("api_mode") == "scalar" or workload.endswith("_scalar"):
         return "sequential"
-    if workload == "static_parallel" or row.get("api_mode") == "batch_reusable":
+    if workload == "static_parallel":
         return "rayon"
     batch_size = _int(row.get("batch_size") or row.get("queries"))
-    return "rayon" if batch_size >= RAYON_QUERY_THRESHOLD else "sequential"
+    estimated_work = 2 if str(row.get("operation", "")).startswith("dynamic") else 1
+    if row.get("api_mode") == "batch_reusable":
+        threads = max(1, _int(row.get("threads")))
+        enough_items = batch_size >= threads * RAYON_MIN_QUERIES_PER_THREAD
+        enough_work = batch_size * estimated_work >= threads * RAYON_MIN_WORK_PER_THREAD
+        return "rayon" if threads > 1 and enough_items and enough_work else "sequential"
+    return "rayon" if batch_size >= RAYON_MIN_WORK_PER_THREAD else "sequential"
 
 
 def _is_true(value):

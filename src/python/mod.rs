@@ -2,6 +2,7 @@ use crate::error::CrccError;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
+mod benchmark;
 mod collision_checker;
 mod collision_object;
 mod dynamic_obstacle;
@@ -20,6 +21,8 @@ compile_error!(
 
 #[pymodule]
 mod _core {
+    #[pymodule_export]
+    use super::benchmark::benchmark;
     #[pymodule_export]
     use super::collision_checker::collision_checker;
     #[pymodule_export]

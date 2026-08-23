@@ -1,10 +1,8 @@
 use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_checker::{CollisionChecker, CollisionResult};
-use crate::collision_object::dynamic::GenericDynamicObstacle;
 use crate::time::TimeStep;
 use glamx::DPose2;
 use rayon::prelude::*;
-use std::ops::RangeBounds;
 
 /// A trait for parallel collision checking using Rayon.
 /// This trait is sealed.
@@ -14,20 +12,13 @@ pub(crate) trait ParallelCollisionChecker: private::Sealed {
     fn collides_static_batch<'a, I>(
         &self,
         positioned_static_obstacles: I,
-        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+        active_times: &[TimeStep],
+        min_len: usize,
     ) -> Vec<CollisionResult>
     where
         Self::ECollisionObject: 'a,
-        I: IntoParallelIterator<Item = (&'a Self::ECollisionObject, DPose2)>;
-
-    fn collides_dynamic_batch<'a, I>(
-        &self,
-        dynamic_obstacles: I,
-        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
-    ) -> Vec<CollisionResult>
-    where
-        Self::ECollisionObject: 'a,
-        I: IntoParallelIterator<Item = &'a GenericDynamicObstacle<Self::ECollisionObject>>;
+        I: IntoParallelIterator<Item = (&'a Self::ECollisionObject, DPose2)>,
+        I::Iter: IndexedParallelIterator;
 }
 
 impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for CollisionChecker<E> {
@@ -36,32 +27,20 @@ impl<E: EngineCollisionObject + Sync + Send> ParallelCollisionChecker for Collis
     fn collides_static_batch<'a, I>(
         &self,
         positioned_static_obstacles: I,
-        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+        active_times: &[TimeStep],
+        min_len: usize,
     ) -> Vec<CollisionResult>
     where
         Self::ECollisionObject: 'a,
         I: IntoParallelIterator<Item = (&'a Self::ECollisionObject, DPose2)>,
+        I::Iter: IndexedParallelIterator,
     {
         positioned_static_obstacles
             .into_par_iter()
+            .with_min_len(min_len)
             .map(|(obstacle, position)| {
-                self.collides_static_range(obstacle, position, time_range.clone())
+                self.collides_static_active_times(obstacle, position, active_times)
             })
-            .collect()
-    }
-
-    fn collides_dynamic_batch<'a, I>(
-        &self,
-        dynamic_obstacles: I,
-        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
-    ) -> Vec<CollisionResult>
-    where
-        Self::ECollisionObject: 'a,
-        I: IntoParallelIterator<Item = &'a GenericDynamicObstacle<Self::ECollisionObject>>,
-    {
-        dynamic_obstacles
-            .into_par_iter()
-            .map(|obstacle| self.collides_dynamic_range(obstacle, time_range.clone()))
             .collect()
     }
 }

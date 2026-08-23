@@ -70,7 +70,7 @@ A collision found between `t` and `t+1` is reported as `CollidesDynamic(t)`. The
 
 Static scene geometry is always checked first and is not suppressed by dynamic time bounds. A dynamic query that strikes static scene geometry still returns `CollidesDynamic(t)` because the status attributes the dynamic query's first colliding sample or interval.
 
-Rust callers must provide valid ordered range bounds. The checker delegates to `BTreeSet::range`, whose invalid bound combinations can panic. Python validates `min_time <= max_time` and raises `ValueError` otherwise.
+Rust callers may provide inverted range bounds; they are treated as empty. Python validates `min_time <= max_time` and raises `ValueError` otherwise.
 
 ## Missing Occupancy and Varying Shapes
 
@@ -123,7 +123,7 @@ Use Rhusics or Collide when comparing backend behavior, reproducing an existing 
 
 ## Batch Execution
 
-Batch methods preserve input order. With Rayon enabled, the selected checker executes batches with fewer than 32 items sequentially and batches of 32 or more in the Rayon pool. The legacy `par_static` and `par_dynamic` Python names use the same automatic threshold; their names do not guarantee parallel execution.
+Batch methods preserve input order. With Rayon enabled, the selected checker estimates query work and only enters the active Rayon pool when the batch has enough work for the available workers. Parallel execution is an implementation detail of `collides_static_batch` and `collides_dynamic_batch`; callers cannot force it through the public API.
 
 Prepared queries avoid repeated conversion for one query reused many times. Batch methods improve execution amortization for many distinct queries. They solve different costs and can be chosen independently.
 

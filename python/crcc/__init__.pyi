@@ -1,10 +1,12 @@
 from crcc.collision_checker import (
+    CollisionBackend,
     CollisionChecker,
     CollisionCheckerBuilder,
     CollisionEngine,
     CollisionStatus,
     PreparedDynamicQuery,
     PreparedStaticQuery,
+    road_boundary,
 )
 from crcc.collision_object import (
     Circle,
@@ -22,6 +24,7 @@ from crcc.pose import Pose
 
 __all__ = [
     "Circle",
+    "CollisionBackend",
     "CollisionChecker",
     "CollisionCheckerBuilder",
     "CollisionEngine",
@@ -38,4 +41,5 @@ __all__ = [
     "PreparedStaticQuery",
     "Rectangle",
     "Triangle",
+    "road_boundary",
 ]

@@ -1,6 +1,8 @@
 use crate::collision_object::CollisionObject;
 use crate::error::{CrccError, CrccResult};
-use crate::time::{TimeStep, TimeStepSet};
+use crate::time::TimeStep;
+#[cfg(test)]
+use crate::time::TimeStepSet;
 use glamx::DPose2;
 
 #[derive(Debug, Clone)]
@@ -119,8 +121,18 @@ impl DynamicObstacle {
         self.0.obstacle_at(time_step)
     }
 
+    #[cfg(test)]
     pub(crate) fn active_times(&self) -> TimeStepSet {
         self.0.active_times()
+    }
+
+    pub(crate) fn active_time_bounds(&self) -> Option<(TimeStep, TimeStep)> {
+        self.0.active_time_bounds()
+    }
+
+    #[cfg(feature = "rayon")]
+    pub(crate) fn work_estimate(&self) -> usize {
+        self.0.len().max(1)
     }
 }
 
@@ -205,14 +217,23 @@ impl<E> GenericDynamicObstacle<E> {
         self.trajectory.obstacle_at(index)
     }
 
+    #[cfg(test)]
     pub(crate) fn active_times(&self) -> TimeStepSet {
-        let Some(last_index) = self.len().checked_sub(1) else {
+        let Some((start, end)) = self.active_time_bounds() else {
             return TimeStepSet::new();
         };
-        let Some(end) = self.time_offset.checked_add_steps(last_index) else {
-            return TimeStepSet::new();
-        };
-        TimeStep::iter_range(self.time_offset..=end).collect()
+        TimeStep::iter_range(start..=end).collect()
+    }
+
+    pub(crate) fn active_time_bounds(&self) -> Option<(TimeStep, TimeStep)> {
+        let last_index = self.len().checked_sub(1)?;
+        let end = self.time_offset.checked_add_steps(last_index)?;
+        Some((self.time_offset, end))
+    }
+
+    #[cfg(feature = "rayon")]
+    pub(crate) fn work_estimate(&self) -> usize {
+        self.len().max(1)
     }
 
     fn len(&self) -> usize {

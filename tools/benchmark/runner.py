@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, TypeVar, cast
 
 from crcc import Circle, Compound, DynamicObstacle, Pose, Rectangle, Triangle
+from crcc._core import benchmark as _benchmark
 
 from examples.utils import count_collisions
 
@@ -203,9 +204,9 @@ def _run_scene_scaling_suite(config, engine_items, scene_sizes):
             for repetition in range(config.repetitions):
                 from crcc import CollisionCheckerBuilder
 
-                builder = CollisionCheckerBuilder(engine=engine)
+                builder = CollisionCheckerBuilder(backend=engine)
                 for static_object in workload.static_objects:
-                    builder.with_static_obstacle(static_object)
+                    builder.add_static_obstacle(static_object)
                 build_start = time.perf_counter_ns()
                 try:
                     checker = builder.build()
@@ -477,7 +478,7 @@ def _run_api_overhead_suite(config, engine_items):
                 if positioned:
                     checker.collides_static(*positioned[0])
                 checker.collides_static_batch(positioned)
-                checker._collides_static_batch_threads(positioned, 1)
+                _benchmark.collides_static_batch_fresh_pool(checker, positioned, 1)
             except Exception:
                 pass
             for repetition in range(config.repetitions):
@@ -489,7 +490,7 @@ def _run_api_overhead_suite(config, engine_items):
                     return checker.collides_static_batch(positioned)
 
                 def fresh_pool_call():
-                    return checker._collides_static_batch_threads(positioned, 1)
+                    return _benchmark.collides_static_batch_fresh_pool(checker, positioned, 1)
 
                 if repetition % 2:
                     batch_ns, batch = _stable_call_time(batch_call)
@@ -548,38 +549,39 @@ def _run_api_overhead_suite(config, engine_items):
                             query_ns=total_ns,
                         )
                     )
-                if batch_size >= 32:
-                    for threads in config.thread_counts:
-                        threaded_ns, threaded = _stable_call_time(
-                            lambda threads=threads: checker._collides_static_batch_threads(positioned, threads)
+                for threads in config.thread_counts:
+                    threaded_ns, threaded = _stable_call_time(
+                        lambda threads=threads: _benchmark.collides_static_batch_fresh_pool(
+                            checker, positioned, threads
                         )
-                        runs.append(
-                            RunResult(
-                                "api_overhead",
-                                None,
-                                backend,
-                                "python_batch_threaded",
-                                repetition,
-                                batch_size,
-                                1,
-                                0.5,
-                                count_collisions(threaded),
-                                0,
-                                False,
-                                threaded_ns,
-                                [round(threaded_ns / batch_size)],
-                                shape="circle",
-                                scene_kind="python_end_to_end",
-                                operation="static_discrete",
-                                api_mode="batch_threaded_fresh_pool",
-                                batch_size=batch_size,
-                                threads=threads,
-                                sample_semantics="batch_average",
-                                static_scene_objects=1,
-                                hit_class="mixed_50pct",
-                                query_ns=threaded_ns,
-                            )
+                    )
+                    runs.append(
+                        RunResult(
+                            "api_overhead",
+                            None,
+                            backend,
+                            "python_batch_threaded",
+                            repetition,
+                            batch_size,
+                            1,
+                            0.5,
+                            count_collisions(threaded),
+                            0,
+                            False,
+                            threaded_ns,
+                            [round(threaded_ns / max(1, batch_size))],
+                            shape="circle",
+                            scene_kind="python_end_to_end",
+                            operation="static_discrete",
+                            api_mode="batch_threaded_fresh_pool",
+                            batch_size=batch_size,
+                            threads=threads,
+                            sample_semantics="batch_average",
+                            static_scene_objects=1,
+                            hit_class="mixed_50pct",
+                            query_ns=threaded_ns,
                         )
+                    )
     return runs, correctness, parallel_rows, memory_rows
 
 
@@ -1445,9 +1447,9 @@ def _measure_scene_with_checker(
 def _build_checker(engine, static_objects):
     from crcc import CollisionCheckerBuilder
 
-    builder = CollisionCheckerBuilder(engine=engine)
+    builder = CollisionCheckerBuilder(backend=engine)
     for static_object in static_objects:
-        builder.with_static_obstacle(static_object)
+        builder.add_static_obstacle(static_object)
     return builder.build()
 
 
@@ -1493,11 +1495,11 @@ def _measure_dynamic_scene(
 ):
     from crcc import CollisionCheckerBuilder
 
-    builder = CollisionCheckerBuilder(engine=engine)
+    builder = CollisionCheckerBuilder(backend=engine)
     for static_object in static_objects:
-        builder.with_static_obstacle(static_object)
+        builder.add_static_obstacle(static_object)
     for dynamic_obstacle in dynamic_environment:
-        builder.with_dynamic_obstacle(dynamic_obstacle)
+        builder.add_dynamic_obstacle(dynamic_obstacle)
     # ponytail: construction failures become data rows instead of aborting a long run.
     try:
         checker = builder.build()
@@ -1658,14 +1660,16 @@ def _static_parallel_scaling_rows(backend, checker, workload, scenario, thread_c
     baseline_ns = None
     for threads in thread_counts:
         try:
-            checker._collides_static_batch_threads(
-                workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))], threads
+            _benchmark.collides_static_batch_fresh_pool(
+                checker,
+                workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))],
+                threads,
             )
         except Exception:
             pass
         start = time.perf_counter_ns()
         try:
-            results = checker._collides_static_batch_threads(workload.positioned_queries, threads)
+            results = _benchmark.collides_static_batch_fresh_pool(checker, workload.positioned_queries, threads)
             errors = 0
         except Exception:
             results = []
@@ -1795,7 +1799,7 @@ def _rss_worker(connection, backend: str, objects: int):
         baseline = _current_rss_bytes()
         builder = CollisionCheckerBuilder(engine=engines[backend])
         for index in range(objects):
-            builder.with_static_obstacle(Circle(0.75, (float(index) * 4.0, 0.0)))
+            builder.add_static_obstacle(Circle(0.75, (float(index) * 4.0, 0.0)))
         _ = builder.build()
         delta = max(0, _current_rss_bytes() - baseline)
         connection.send((delta, True))

@@ -55,7 +55,7 @@ def continuous_results(engine: CollisionEngine) -> tuple[ResultRow, ...]:
         [Pose.from_translation((-3.0, 0.0)), Pose.from_translation((3.0, 0.0)), Pose.from_translation((5.0, 0.0))],
         10,
     )
-    checker = CollisionCheckerBuilder(engine=engine).with_static_obstacle(Rectangle(0.3, 3.0)).build()
+    checker = CollisionCheckerBuilder(backend=engine).add_static_obstacle(Rectangle(0.3, 3.0)).build()
     for time_step in (10, 11):
         status = checker.collides_dynamic(trajectory, min_time=time_step, max_time=time_step)
         results += ((f"dynamic sample t={time_step}", "hit" if status.collides else "clear", str(status)),)

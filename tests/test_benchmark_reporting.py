@@ -167,8 +167,10 @@ def test_plot_names_exclude_mixed_sequential_rayon_views():
 def test_execution_mode_classifies_rayon_threshold():
     assert _execution_mode({"api_mode": "scalar", "batch_size": "32"}) == "sequential"
     assert _execution_mode({"api_mode": "batch_global", "batch_size": "31"}) == "sequential"
-    assert _execution_mode({"api_mode": "batch_global", "batch_size": "32"}) == "rayon"
-    assert _execution_mode({"api_mode": "batch_global", "batch_size": "33"}) == "rayon"
+    assert _execution_mode({"api_mode": "batch_global", "batch_size": "128"}) == "rayon"
+    assert _execution_mode({"api_mode": "batch_global", "batch_size": "127"}) == "sequential"
+    assert _execution_mode({"api_mode": "batch_reusable", "batch_size": "512", "threads": "2"}) == "rayon"
+    assert _execution_mode({"api_mode": "batch_reusable", "batch_size": "128", "threads": "2"}) == "sequential"
     assert _execution_mode({"workload": "static_sequential"}) == "sequential"
     assert _execution_mode({"workload": "static_parallel"}) == "rayon"
 

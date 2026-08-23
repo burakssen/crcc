@@ -31,7 +31,7 @@ Convert any CommonRoad XML scenario directly into a collision checker:
 
 ```python
 from commonroad.common.file_reader import CommonRoadFileReader
-from crcc import CollisionCheckerBuilder, CollisionEngine
+from crcc import CollisionBackend, CollisionCheckerBuilder
 from crcc.commonroad import scenario_builder
 
 # Load CommonRoad scenario
@@ -40,10 +40,10 @@ scenario, _ = CommonRoadFileReader("scenarios/DEU_MerzenichRather-2_870_T-149.xm
 # Build collision checker with road boundaries, static obstacles, and dynamic predictions
 checker = scenario_builder(
     scenario,
-    builder=CollisionCheckerBuilder(CollisionEngine.Parry),
+    builder=CollisionCheckerBuilder(CollisionBackend.Parry),
 ).build()
 
-assert checker.engine == CollisionEngine.Parry
+assert checker.backend == CollisionBackend.Parry
 ```
 
 ## Python Query in One Minute
@@ -61,7 +61,7 @@ from crcc import Circle, CollisionCheckerBuilder, Pose, Rectangle
 
 checker = (
     CollisionCheckerBuilder()
-    .with_static_obstacle(Rectangle(length=0.25, width=3.0))
+    .add_static_obstacle(Rectangle(length=0.25, width=3.0))
     .build()
 )
 

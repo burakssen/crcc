@@ -1,19 +1,32 @@
-use crate::collision_checker::SelectedCollisionChecker as RustCollisionChecker;
 pub use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_checker::{
     CollisionCheckerBuilder as RustCollisionCheckerBuilder, CollisionStatus as RustCollisionStatus,
-    PreparedDynamicQuery as RustPreparedDynamicQuery,
+    DynamicBatchQuery as RustDynamicBatchQuery, PreparedDynamicQuery as RustPreparedDynamicQuery,
     PreparedStaticQuery as RustPreparedStaticQuery,
+    SelectedCollisionChecker as RustCollisionChecker, StaticBatchQuery as RustStaticBatchQuery,
+};
+use crate::collision_object::{
+    CollisionObject as RustCollisionObject, DynamicObstacle as RustDynamicObstacle,
 };
 use crate::python::collision_object::CollisionObject;
 use crate::python::dynamic_obstacle::DynamicObstacle;
 use crate::python::pose::Pose;
 use crate::time::{TimeStep, TimeStepInner};
 use glamx::DPose2;
+use pyo3::exceptions::{PyDeprecationWarning, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use replace_with::replace_with;
+use std::ffi::CStr;
 use std::fmt::Display;
 use std::ops::RangeInclusive;
+use std::sync::Arc;
+
+/// Emits a `DeprecationWarning` pointing at the calling Python frame.
+pub(super) fn warn_deprecated(py: Python<'_>, message: &CStr) -> PyResult<()> {
+    PyErr::warn(py, &py.get_type::<PyDeprecationWarning>(), message, 2)
+}
+
+const ENGINE_PROPERTY_MESSAGE: &CStr = c"engine is deprecated; use backend instead";
 
 /// The outcome of a checker query.
 ///
@@ -78,26 +91,66 @@ impl From<RustCollisionStatus> for CollisionStatus {
 
 /// Fixed geometry converted for repeated queries against one backend.
 #[pyclass]
-pub struct PreparedStaticQuery(RustPreparedStaticQuery);
+pub struct PreparedStaticQuery(Arc<RustPreparedStaticQuery>);
 
 #[pymethods]
 impl PreparedStaticQuery {
     #[getter]
-    pub const fn engine(&self) -> CollisionEngine {
+    pub fn backend(&self) -> CollisionEngine {
         self.0.engine()
+    }
+
+    #[getter]
+    /// Deprecated alias for [`Self::backend`].
+    pub fn engine(&self, py: Python<'_>) -> PyResult<CollisionEngine> {
+        warn_deprecated(py, ENGINE_PROPERTY_MESSAGE)?;
+        Ok(self.backend())
     }
 }
 
 /// A dynamic trajectory converted for repeated queries against one backend.
 #[pyclass]
-pub struct PreparedDynamicQuery(RustPreparedDynamicQuery);
+pub struct PreparedDynamicQuery(Arc<RustPreparedDynamicQuery>);
 
 #[pymethods]
 impl PreparedDynamicQuery {
     #[getter]
-    pub const fn engine(&self) -> CollisionEngine {
+    pub fn backend(&self) -> CollisionEngine {
         self.0.engine()
     }
+
+    #[getter]
+    /// Deprecated alias for [`Self::backend`].
+    pub fn engine(&self, py: Python<'_>) -> PyResult<CollisionEngine> {
+        warn_deprecated(py, ENGINE_PROPERTY_MESSAGE)?;
+        Ok(self.backend())
+    }
+}
+
+/// One classified entry of a static batch.
+enum StaticSource {
+    Raw(RustCollisionObject),
+    Prepared(Arc<RustPreparedStaticQuery>),
+}
+
+/// One classified entry of a dynamic batch.
+enum DynamicSource {
+    Raw(RustDynamicObstacle),
+    Prepared(Arc<RustPreparedDynamicQuery>),
+}
+
+/// How a parsed batch maps onto the optimized execution paths.
+enum StaticBatchPlan {
+    Raw(Vec<(RustCollisionObject, DPose2)>),
+    Prepared(Arc<RustPreparedStaticQuery>, Vec<DPose2>),
+    Heterogeneous(Vec<(StaticSource, DPose2)>),
+}
+
+/// How a parsed dynamic batch maps onto the optimized execution paths.
+enum DynamicBatchPlan {
+    Raw(Vec<RustDynamicObstacle>),
+    Prepared(Vec<RustPreparedDynamicQuery>),
+    Heterogeneous(Vec<DynamicSource>),
 }
 
 /// An immutable scene containing merged static geometry and dynamic trajectories.
@@ -116,16 +169,23 @@ impl AsRef<RustCollisionChecker> for CollisionChecker {
 #[pymethods]
 impl CollisionChecker {
     #[getter]
-    /// The runtime collision backend used by this checker.
-    pub const fn engine(&self) -> CollisionEngine {
+    /// The collision backend used by this checker.
+    pub const fn backend(&self) -> CollisionEngine {
         self.0.engine()
+    }
+
+    #[getter]
+    /// Deprecated alias for [`Self::backend`].
+    pub fn engine(&self, py: Python<'_>) -> PyResult<CollisionEngine> {
+        warn_deprecated(py, ENGINE_PROPERTY_MESSAGE)?;
+        Ok(self.backend())
     }
 
     /// Converts fixed geometry once for repeated queries.
     pub fn prepare_static(&self, query_shape: &CollisionObject) -> PyResult<PreparedStaticQuery> {
-        Ok(PreparedStaticQuery(
+        Ok(PreparedStaticQuery(Arc::new(
             self.0.prepare_static(query_shape.as_ref())?,
-        ))
+        )))
     }
 
     /// Converts a dynamic trajectory once for repeated queries.
@@ -133,43 +193,133 @@ impl CollisionChecker {
         &self,
         dynamic_obstacle: &DynamicObstacle,
     ) -> PyResult<PreparedDynamicQuery> {
-        Ok(PreparedDynamicQuery(
+        Ok(PreparedDynamicQuery(Arc::new(
             self.0.prepare_dynamic(dynamic_obstacle.as_ref())?,
-        ))
+        )))
     }
 
-    #[pyo3(signature = (query_shape, position = None, min_time = None, max_time = None))]
-    /// Checks a fixed shape against the scene.
+    #[pyo3(signature = (query, position = None, min_time = None, max_time = None))]
+    /// Checks a fixed shape or prepared geometry against the scene.
     ///
     /// Raises `ValueError` when `min_time` exceeds `max_time` or an operation is
-    /// unsupported.
+    /// unsupported, and `TypeError` when `query` has neither accepted type.
+    #[allow(clippy::option_if_let_else)]
     pub fn collides_static(
         &self,
-        query_shape: &CollisionObject,
+        query: &Bound<'_, PyAny>,
         position: Option<&Pose>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<CollisionStatus> {
         let position = position.map_or(DPose2::IDENTITY, |position| position.0);
+        let time_range = min_max_to_range(min_time, max_time)?;
 
-        let result = self.0.collides_static_range(
-            query_shape.as_ref(),
-            position,
-            min_max_to_range(min_time, max_time)?,
-        )?;
+        if let Ok(raw) = query.extract::<PyRef<'_, CollisionObject>>() {
+            return Ok(self
+                .0
+                .collides_static_range(raw.as_ref(), position, time_range)?
+                .into());
+        }
+        if let Ok(prepared) = query.extract::<PyRef<'_, PreparedStaticQuery>>() {
+            return Ok(self
+                .0
+                .collides_static_prepared_range(&prepared.0, position, time_range)?
+                .into());
+        }
+        Err(PyTypeError::new_err(
+            "query must be a CollisionObject or PreparedStaticQuery",
+        ))
+    }
 
-        Ok(result.into())
+    #[pyo3(signature = (queries, min_time = None, max_time = None))]
+    /// Checks positioned fixed shapes and returns statuses in input order.
+    ///
+    /// Entries may mix raw objects with prepared geometry. Small batches run
+    /// sequentially; larger batches are dispatched to Rayon automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Python exception when the time range is invalid, an entry has
+    /// an unsupported type or backend, or a collision query fails.
+    #[allow(clippy::option_if_let_else)]
+    pub fn collides_static_batch(
+        &self,
+        py: Python<'_>,
+        queries: Vec<(Bound<'_, PyAny>, Pose)>,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<Vec<CollisionStatus>> {
+        let time_range = min_max_to_range(min_time, max_time)?;
+        let sources = queries
+            .into_iter()
+            .map(|(query, position)| {
+                if let Ok(raw) = query.extract::<PyRef<'_, CollisionObject>>() {
+                    Ok((StaticSource::Raw(raw.as_ref().clone()), position.0))
+                } else if let Ok(prepared) = query.extract::<PyRef<'_, PreparedStaticQuery>>() {
+                    Ok((StaticSource::Prepared(Arc::clone(&prepared.0)), position.0))
+                } else {
+                    Err(PyTypeError::new_err(
+                        "each query must be a CollisionObject or PreparedStaticQuery",
+                    ))
+                }
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        run_static_batch(&self.0, py, sources, time_range)
+    }
+
+    #[pyo3(signature = (queries, min_time=None, max_time=None))]
+    /// Checks moving obstacles or prepared trajectories over an inclusive time
+    /// window and returns statuses in input order.
+    ///
+    /// Entries may mix raw obstacles with prepared trajectories. Small batches
+    /// run sequentially; larger batches are dispatched to Rayon automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns a Python exception when the time range is invalid, an entry has
+    /// an unsupported type or backend, or a collision query fails.
+    #[allow(clippy::option_if_let_else)]
+    pub fn collides_dynamic_batch(
+        &self,
+        py: Python<'_>,
+        queries: Vec<Bound<'_, PyAny>>,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<Vec<CollisionStatus>> {
+        let time_range = min_max_to_range(min_time, max_time)?;
+        let sources = queries
+            .into_iter()
+            .map(|query| {
+                if let Ok(raw) = query.extract::<PyRef<'_, DynamicObstacle>>() {
+                    Ok(DynamicSource::Raw(raw.as_ref().clone()))
+                } else if let Ok(prepared) = query.extract::<PyRef<'_, PreparedDynamicQuery>>() {
+                    Ok(DynamicSource::Prepared(Arc::clone(&prepared.0)))
+                } else {
+                    Err(PyTypeError::new_err(
+                        "each query must be a DynamicObstacle or PreparedDynamicQuery",
+                    ))
+                }
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+
+        run_dynamic_batch(&self.0, py, sources, time_range)
     }
 
     #[pyo3(signature = (query, position = None, min_time = None, max_time = None))]
-    /// Checks prepared fixed geometry against the scene.
+    /// Deprecated: pass the prepared query to [`Self::collides_static`].
     pub fn collides_static_prepared(
         &self,
+        py: Python<'_>,
         query: &PreparedStaticQuery,
         position: Option<&Pose>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<CollisionStatus> {
+        warn_deprecated(
+            py,
+            c"collides_static_prepared() is deprecated; pass the prepared query to collides_static()",
+        )?;
         let position = position.map_or(DPose2::IDENTITY, |position| position.0);
         Ok(self
             .0
@@ -181,198 +331,123 @@ impl CollisionChecker {
             .into())
     }
 
-    #[pyo3(
-    signature = (
-        positioned_query_shapes,
-        min_time = None,
-        max_time = None
-    )
-)]
-    /// Checks positioned fixed shapes and returns statuses in input order.
-    ///
-    /// # Errors
-    ///
-    /// Returns a Python exception when the time range is invalid or a collision
-    /// query fails.
-    pub fn collides_static_batch(
+    #[pyo3(signature = (query, positions, min_time = None, max_time = None))]
+    /// Deprecated: use `collides_static_batch([(query, pose), ...])`.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn collides_static_prepared_batch(
         &self,
-        python: Python<'_>,
-        positioned_query_shapes: Vec<(CollisionObject, Pose)>,
+        py: Python<'_>,
+        query: &PreparedStaticQuery,
+        positions: Vec<Pose>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Vec<CollisionStatus>> {
-        let positioned_query_shapes = positioned_query_shapes
-            .into_iter()
-            .map(|(obstacle, position)| (obstacle.as_ref().clone(), position.0))
-            .collect::<Vec<_>>();
-
-        let time_range = min_max_to_range(min_time, max_time)?;
-
-        python.detach(|| {
-            self.0
-                .collides_static_batch(&positioned_query_shapes, time_range)
-                .into_iter()
-                .map(|result| result.map(CollisionStatus::from))
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(Into::into)
-        })
-    }
-
-    #[pyo3(
-    signature = (
-        positioned_query_shapes,
-        min_time = None,
-        max_time = None
-    )
-)]
-    /// Alias for [`Self::collides_static_batch`].
-    ///
-    /// # Errors
-    ///
-    /// Returns a Python exception when the time range is invalid or a collision
-    /// query fails.
-    pub fn par_static(
-        &self,
-        python: Python<'_>,
-        positioned_query_shapes: Vec<(CollisionObject, Pose)>,
-        min_time: Option<TimeStepInner>,
-        max_time: Option<TimeStepInner>,
-    ) -> PyResult<Vec<CollisionStatus>> {
-        self.collides_static_batch(python, positioned_query_shapes, min_time, max_time)
-    }
-
-    #[pyo3(
-    name = "_collides_static_batch_threads",
-    signature = (
-        positioned_query_shapes,
-        threads,
-        min_time = None,
-        max_time = None
-    )
-)]
-    /// Checks positioned fixed shapes using a dedicated Rayon thread pool.
-    ///
-    /// # Errors
-    ///
-    /// Returns a Python exception when the thread pool cannot be constructed, the
-    /// time range is invalid, or a collision query fails.
-    pub fn collides_static_batch_with_threads(
-        &self,
-        python: Python<'_>,
-        positioned_query_shapes: Vec<(CollisionObject, Pose)>,
-        threads: usize,
-        min_time: Option<TimeStepInner>,
-        max_time: Option<TimeStepInner>,
-    ) -> PyResult<Vec<CollisionStatus>> {
-        let positioned_query_shapes = positioned_query_shapes
-            .into_iter()
-            .map(|(obstacle, position)| (obstacle.as_ref().clone(), position.0))
-            .collect::<Vec<_>>();
-
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(threads.max(1))
-            .build()
-            .map_err(|error| pyo3::exceptions::PyRuntimeError::new_err(error.to_string()))?;
-
-        let time_range = min_max_to_range(min_time, max_time)?;
-
-        python.detach(|| {
-            pool.install(|| {
-                self.0
-                    .collides_static_batch(&positioned_query_shapes, time_range)
-                    .into_iter()
-                    .map(|result| result.map(CollisionStatus::from))
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .map_err(Into::into)
-        })
-    }
-
-    #[pyo3(
-    signature = (
-        positioned_query_shapes,
-        threads,
-        min_time = None,
-        max_time = None
-    )
-)]
-    /// Checks positioned fixed shapes using a dedicated Rayon thread pool.
-    ///
-    /// # Errors
-    ///
-    /// Returns a Python exception when the thread pool cannot be constructed, the
-    /// time range is invalid, or a collision query fails.
-    pub fn par_static_threads(
-        &self,
-        python: Python<'_>,
-        positioned_query_shapes: Vec<(CollisionObject, Pose)>,
-        threads: usize,
-        min_time: Option<TimeStepInner>,
-        max_time: Option<TimeStepInner>,
-    ) -> PyResult<Vec<CollisionStatus>> {
-        self.collides_static_batch_with_threads(
-            python,
-            positioned_query_shapes,
-            threads,
-            min_time,
-            max_time,
-        )
-    }
-
-    #[pyo3(signature = (dynamic_obstacle, min_time=None, max_time=None))]
-    /// Checks a moving obstacle against the scene over an inclusive time window.
-    pub fn collides_dynamic(
-        &self,
-        dynamic_obstacle: &DynamicObstacle,
-        min_time: Option<TimeStepInner>,
-        max_time: Option<TimeStepInner>,
-    ) -> PyResult<CollisionStatus> {
-        let res = self.0.collides_dynamic_range(
-            dynamic_obstacle.as_ref(),
-            min_max_to_range(min_time, max_time)?,
+        warn_deprecated(
+            py,
+            c"collides_static_prepared_batch() is deprecated; use collides_static_batch([(query, pose), ...])",
         )?;
-        Ok(res.into())
+        let time_range = min_max_to_range(min_time, max_time)?;
+        let sources = positions
+            .into_iter()
+            .map(|position| (StaticSource::Prepared(Arc::clone(&query.0)), position.0))
+            .collect::<Vec<_>>();
+        run_static_batch(&self.0, py, sources, time_range)
     }
 
     #[pyo3(signature = (query, min_time=None, max_time=None))]
-    /// Checks a prepared dynamic trajectory against the scene.
+    /// Deprecated: pass the prepared trajectory to [`Self::collides_dynamic`].
     pub fn collides_dynamic_prepared(
         &self,
+        py: Python<'_>,
         query: &PreparedDynamicQuery,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<CollisionStatus> {
+        warn_deprecated(
+            py,
+            c"collides_dynamic_prepared() is deprecated; pass the prepared trajectory to collides_dynamic()",
+        )?;
         Ok(self
             .0
             .collides_dynamic_prepared_range(&query.0, min_max_to_range(min_time, max_time)?)?
             .into())
     }
 
-    #[pyo3(signature = (dynamic_obstacles, min_time=None, max_time=None))]
-    /// Checks moving obstacles and returns statuses in input order.
-    pub fn collides_dynamic_batch(
+    #[pyo3(signature = (queries, min_time = None, max_time = None))]
+    /// Deprecated: use `collides_dynamic_batch([...])`.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn collides_dynamic_prepared_batch(
         &self,
         py: Python<'_>,
-        dynamic_obstacles: Vec<DynamicObstacle>,
+        queries: Vec<Py<PreparedDynamicQuery>>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Vec<CollisionStatus>> {
-        let dynamic_obstacles = dynamic_obstacles
-            .into_iter()
-            .map(|obstacle| obstacle.as_ref().clone())
-            .collect::<Vec<_>>();
+        warn_deprecated(
+            py,
+            c"collides_dynamic_prepared_batch() is deprecated; use collides_dynamic_batch([...])",
+        )?;
         let time_range = min_max_to_range(min_time, max_time)?;
-        let res = py.detach(|| {
-            self.0
-                .collides_dynamic_batch(&dynamic_obstacles, time_range)
-                .into_iter()
-                .map(|result| result.map(CollisionStatus::from))
-                .collect::<Result<Vec<_>, _>>()
-        })?;
-        Ok(res)
+        let sources = queries
+            .iter()
+            .map(|query| DynamicSource::Prepared(Arc::clone(&query.bind(py).borrow().0)))
+            .collect::<Vec<_>>();
+        run_dynamic_batch(&self.0, py, sources, time_range)
+    }
+
+    #[pyo3(signature = (query, min_time=None, max_time=None))]
+    /// Checks a moving obstacle against the scene over an inclusive time window.
+    #[allow(clippy::option_if_let_else)]
+    pub fn collides_dynamic(
+        &self,
+        query: &Bound<'_, PyAny>,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<CollisionStatus> {
+        let time_range = min_max_to_range(min_time, max_time)?;
+
+        if let Ok(raw) = query.extract::<PyRef<'_, DynamicObstacle>>() {
+            return Ok(self
+                .0
+                .collides_dynamic_range(raw.as_ref(), time_range)?
+                .into());
+        }
+        if let Ok(prepared) = query.extract::<PyRef<'_, PreparedDynamicQuery>>() {
+            return Ok(self
+                .0
+                .collides_dynamic_prepared_range(&prepared.0, time_range)?
+                .into());
+        }
+        Err(PyTypeError::new_err(
+            "query must be a DynamicObstacle or PreparedDynamicQuery",
+        ))
+    }
+
+    #[pyo3(signature = (positioned_query_shapes, min_time = None, max_time = None))]
+    /// Deprecated: parallel execution is selected automatically by
+    /// [`Self::collides_static_batch`].
+    pub fn par_static(
+        &self,
+        py: Python<'_>,
+        positioned_query_shapes: Vec<(CollisionObject, Pose)>,
+        min_time: Option<TimeStepInner>,
+        max_time: Option<TimeStepInner>,
+    ) -> PyResult<Vec<CollisionStatus>> {
+        warn_deprecated(
+            py,
+            c"par_static() is deprecated; use collides_static_batch(), which selects parallel execution automatically",
+        )?;
+        let time_range = min_max_to_range(min_time, max_time)?;
+        let sources = positioned_query_shapes
+            .into_iter()
+            .map(|(obstacle, position)| (StaticSource::Raw(obstacle.as_ref().clone()), position.0))
+            .collect::<Vec<_>>();
+        run_static_batch(&self.0, py, sources, time_range)
     }
 
     #[pyo3(signature = (dynamic_obstacles, min_time=None, max_time=None))]
+    /// Deprecated: parallel execution is selected automatically by
+    /// [`Self::collides_dynamic_batch`].
     pub fn par_dynamic(
         &self,
         py: Python<'_>,
@@ -380,18 +455,175 @@ impl CollisionChecker {
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
     ) -> PyResult<Vec<CollisionStatus>> {
-        self.collides_dynamic_batch(py, dynamic_obstacles, min_time, max_time)
+        warn_deprecated(
+            py,
+            c"par_dynamic() is deprecated; use collides_dynamic_batch(), which selects parallel execution automatically",
+        )?;
+        let time_range = min_max_to_range(min_time, max_time)?;
+        let sources = dynamic_obstacles
+            .into_iter()
+            .map(|obstacle| DynamicSource::Raw(obstacle.as_ref().clone()))
+            .collect::<Vec<_>>();
+        run_dynamic_batch(&self.0, py, sources, time_range)
     }
 }
 
-fn min_max_to_range(
+/// Executes a classified static batch on the selected backend.
+fn run_static_batch(
+    checker: &RustCollisionChecker,
+    py: Python<'_>,
+    sources: Vec<(StaticSource, DPose2)>,
+    time_range: RangeInclusive<TimeStep>,
+) -> PyResult<Vec<CollisionStatus>> {
+    if sources.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut has_raw = false;
+    let mut has_prepared = false;
+    let mut uniform: Option<Arc<RustPreparedStaticQuery>> = None;
+    let mut multiple_prepared = false;
+    for (source, _) in &sources {
+        match source {
+            StaticSource::Raw(_) => has_raw = true,
+            StaticSource::Prepared(prepared) => {
+                has_prepared = true;
+                match &uniform {
+                    None => uniform = Some(Arc::clone(prepared)),
+                    Some(first) if !Arc::ptr_eq(first, prepared) => multiple_prepared = true,
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    let plan = if has_raw && has_prepared || multiple_prepared {
+        StaticBatchPlan::Heterogeneous(sources)
+    } else if has_prepared {
+        let positions = sources.iter().map(|(_, position)| *position).collect();
+        #[allow(clippy::option_if_let_else)]
+        uniform.map_or(StaticBatchPlan::Heterogeneous(sources), |query| {
+            StaticBatchPlan::Prepared(query, positions)
+        })
+    } else {
+        StaticBatchPlan::Raw(
+            sources
+                .into_iter()
+                .filter_map(|(source, position)| match source {
+                    StaticSource::Raw(object) => Some((object, position)),
+                    StaticSource::Prepared(_) => None,
+                })
+                .collect(),
+        )
+    };
+
+    let results: Vec<crate::collision_checker::CollisionResult> = py.detach(move || match plan {
+        StaticBatchPlan::Raw(positioned) => {
+            checker.collides_static_batch(&positioned, time_range.clone())
+        }
+        StaticBatchPlan::Prepared(query, positions) => {
+            checker.collides_static_prepared_batch(&query, &positions, time_range.clone())
+        }
+        StaticBatchPlan::Heterogeneous(entries) => {
+            let references: Vec<(RustStaticBatchQuery<'_>, DPose2)> = entries
+                .iter()
+                .map(|(source, position)| {
+                    let query = match source {
+                        StaticSource::Raw(object) => RustStaticBatchQuery::Raw(object),
+                        StaticSource::Prepared(prepared) => {
+                            RustStaticBatchQuery::Prepared(prepared)
+                        }
+                    };
+                    (query, *position)
+                })
+                .collect();
+            checker.collides_static_heterogeneous_batch(references, time_range)
+        }
+    });
+
+    let statuses = results
+        .into_iter()
+        .map(|result| result.map(CollisionStatus::from))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(statuses)
+}
+
+/// Executes a classified dynamic batch on the selected backend.
+fn run_dynamic_batch(
+    checker: &RustCollisionChecker,
+    py: Python<'_>,
+    sources: Vec<DynamicSource>,
+    time_range: RangeInclusive<TimeStep>,
+) -> PyResult<Vec<CollisionStatus>> {
+    if sources.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut has_raw = false;
+    let mut has_prepared = false;
+    for source in &sources {
+        match source {
+            DynamicSource::Raw(_) => has_raw = true,
+            DynamicSource::Prepared(_) => has_prepared = true,
+        }
+    }
+
+    let plan = if has_raw && has_prepared {
+        DynamicBatchPlan::Heterogeneous(sources)
+    } else if has_prepared {
+        DynamicBatchPlan::Prepared(
+            sources
+                .into_iter()
+                .filter_map(|source| match source {
+                    DynamicSource::Prepared(prepared) => Some((*prepared).clone()),
+                    DynamicSource::Raw(_) => None,
+                })
+                .collect(),
+        )
+    } else {
+        DynamicBatchPlan::Raw(
+            sources
+                .into_iter()
+                .filter_map(|source| match source {
+                    DynamicSource::Raw(obstacle) => Some(obstacle),
+                    DynamicSource::Prepared(_) => None,
+                })
+                .collect(),
+        )
+    };
+
+    let results: Vec<crate::collision_checker::CollisionResult> = py.detach(move || match plan {
+        DynamicBatchPlan::Raw(obstacles) => {
+            checker.collides_dynamic_batch(&obstacles, time_range.clone())
+        }
+        DynamicBatchPlan::Prepared(queries) => {
+            checker.collides_dynamic_prepared_batch(&queries, time_range.clone())
+        }
+        DynamicBatchPlan::Heterogeneous(entries) => {
+            let references: Vec<RustDynamicBatchQuery<'_>> = entries
+                .iter()
+                .map(|source| match source {
+                    DynamicSource::Raw(obstacle) => RustDynamicBatchQuery::Raw(obstacle),
+                    DynamicSource::Prepared(prepared) => RustDynamicBatchQuery::Prepared(prepared),
+                })
+                .collect();
+            checker.collides_dynamic_heterogeneous_batch(references, time_range)
+        }
+    });
+
+    let statuses = results
+        .into_iter()
+        .map(|result| result.map(CollisionStatus::from))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(statuses)
+}
+
+pub(super) fn min_max_to_range(
     min_time: Option<TimeStepInner>,
     max_time: Option<TimeStepInner>,
 ) -> PyResult<RangeInclusive<TimeStep>> {
     if min_time.zip(max_time).is_some_and(|(min, max)| min > max) {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            "min_time must not exceed max_time",
-        ));
+        return Err(PyValueError::new_err("min_time must not exceed max_time"));
     }
     Ok(match (min_time, max_time) {
         (Some(min_t), Some(max_t)) => TimeStep::from(min_t)..=TimeStep::from(max_t),

@@ -127,18 +127,42 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
             return Ok(CollisionStatus::CollidesStatic);
         }
 
-        // ponytail: BTreeSet::range panics on inverted ranges, so filter instead.
-        let active_times: TimeStepSet = self
-            .active_times
-            .iter()
-            .copied()
-            .filter(|t| time_range.contains(t))
-            .collect();
-        for &time_step in &active_times {
+        // Iterate the cached scene union directly; rebuilding a filtered set per query
+        // made batch bookkeeping compete with the collision kernel.
+        for &time_step in self.active_times.iter().filter(|t| time_range.contains(t)) {
             let ccd_collider = time_step
                 .checked_succ()
-                .is_some_and(|next| active_times.contains(&next))
+                .is_some_and(|next| self.active_times.contains(&next) && time_range.contains(&next))
                 .then_some(Self::stationary_ccd_collider(static_obstacle, position));
+            if self.static_query_collides_dynamic_at(
+                static_obstacle,
+                position,
+                time_step,
+                ccd_collider.as_ref(),
+            )? {
+                return Ok(CollisionStatus::CollidesDynamic(time_step));
+            }
+        }
+        Ok(CollisionStatus::NoCollision)
+    }
+
+    #[cfg(feature = "rayon")]
+    fn collides_static_active_times(
+        &self,
+        static_obstacle: &E,
+        position: DPose2,
+        active_times: &[TimeStep],
+    ) -> CollisionResult {
+        if self.check_collision_static_static(static_obstacle, position)? {
+            return Ok(CollisionStatus::CollidesStatic);
+        }
+
+        for (index, &time_step) in active_times.iter().enumerate() {
+            let ccd_collider = index
+                .checked_add(1)
+                .and_then(|next_index| active_times.get(next_index))
+                .and_then(|next| time_step.checked_succ().filter(|step| step == next))
+                .map(|_| Self::stationary_ccd_collider(static_obstacle, position));
             if self.static_query_collides_dynamic_at(
                 static_obstacle,
                 position,
@@ -161,24 +185,30 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         dynamic_obstacle: &GenericDynamicObstacle<E>,
         time_range: impl RangeBounds<TimeStep>,
     ) -> CollisionResult {
-        let obstacle_active_times = dynamic_obstacle.active_times();
-        let active_times: TimeStepSet = obstacle_active_times
-            .iter()
-            .copied()
-            .filter(|t| time_range.contains(t))
-            .collect();
-        for &time_step in &active_times {
+        let Some((active_start, active_end)) = dynamic_obstacle.active_time_bounds() else {
+            return Ok(CollisionStatus::NoCollision);
+        };
+        for time_step in TimeStep::iter_intersection(time_range, active_start, active_end) {
             if self.dynamic_query_collides_at(
                 dynamic_obstacle,
                 time_step,
                 time_step
                     .checked_succ()
-                    .is_some_and(|next| active_times.contains(&next)),
+                    .is_some_and(|next| next <= active_end),
             )? {
                 return Ok(CollisionStatus::CollidesDynamic(time_step));
             }
         }
         Ok(CollisionStatus::NoCollision)
+    }
+
+    #[cfg(feature = "rayon")]
+    fn active_times_in(&self, time_range: impl RangeBounds<TimeStep>) -> Vec<TimeStep> {
+        self.active_times
+            .iter()
+            .copied()
+            .filter(|time_step| time_range.contains(time_step))
+            .collect()
     }
 
     const fn stationary_ccd_collider(static_obstacle: &E, position: DPose2) -> CCDCollider<'_, E> {
@@ -642,7 +672,13 @@ use crate::collision_checker::engine::CollisionEngine;
     feature = "rayon",
     any(feature = "parry", feature = "rhusics", feature = "collide")
 ))]
-const PARALLEL_QUERY_THRESHOLD: usize = 32;
+const MIN_QUERIES_PER_THREAD: usize = 16;
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+const MIN_PARALLEL_WORK_PER_THREAD: usize = 128;
 
 pub(crate) enum SelectedCollisionCheckerInner {
     #[cfg(feature = "parry")]
@@ -670,8 +706,12 @@ enum PreparedStaticQueryInner {
 }
 
 /// Geometry converted once for repeated queries against a selected checker.
+///
+/// The second tuple element carries the parallel-policy work estimate and is
+/// only consulted when Rayon batching is compiled in.
+#[cfg_attr(not(feature = "rayon"), allow(dead_code))]
 #[derive(Clone)]
-pub struct PreparedStaticQuery(PreparedStaticQueryInner);
+pub struct PreparedStaticQuery(PreparedStaticQueryInner, usize);
 
 impl PreparedStaticQuery {
     /// Returns the backend representation stored by this query.
@@ -694,6 +734,12 @@ impl PreparedStaticQuery {
     pub fn engine(&self) -> CollisionEngine {
         let _ = &self.0;
         CollisionEngine::default()
+    }
+
+    /// Returns the estimated per-query work used by the parallel policy.
+    #[cfg(feature = "rayon")]
+    pub(crate) const fn work_estimate(&self) -> usize {
+        self.1
     }
 }
 
@@ -769,21 +815,28 @@ impl SelectedCollisionChecker {
     ) -> Result<PreparedStaticQuery, CrccError> {
         #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
         let _ = query;
+        let work_estimate = static_work_estimate(query);
         match &self.0 {
             #[cfg(feature = "parry")]
             SelectedCollisionCheckerInner::Parry(_) => Ok(PreparedStaticQuery(
                 PreparedStaticQueryInner::Parry(Box::new(query.clone().into())),
+                work_estimate,
             )),
             #[cfg(feature = "rhusics")]
             SelectedCollisionCheckerInner::Rhusics(_) => Ok(PreparedStaticQuery(
                 PreparedStaticQueryInner::Rhusics(Box::new(query.clone().into())),
+                work_estimate,
             )),
             #[cfg(feature = "collide")]
             SelectedCollisionCheckerInner::Collide(_) => Ok(PreparedStaticQuery(
                 PreparedStaticQueryInner::Collide(Box::new(query.clone().into())),
+                work_estimate,
             )),
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-            _ => Err(CrccError::Unsupported),
+            _ => {
+                let _ = work_estimate;
+                Err(CrccError::Unsupported)
+            }
         }
     }
 
@@ -962,6 +1015,38 @@ impl SelectedCollisionChecker {
         }
     }
 
+    #[cfg(feature = "rayon")]
+    /// Checks one prepared fixed query at multiple poses, preserving pose order.
+    #[must_use]
+    pub fn collides_static_prepared_batch(
+        &self,
+        query: &PreparedStaticQuery,
+        positions: &[DPose2],
+        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    ) -> Vec<CollisionResult> {
+        match (&self.0, &query.0) {
+            #[cfg(feature = "parry")]
+            (
+                SelectedCollisionCheckerInner::Parry(checker),
+                PreparedStaticQueryInner::Parry(query),
+            ) => collides_prepared_static_batch(checker, query, positions, time_range),
+            #[cfg(feature = "rhusics")]
+            (
+                SelectedCollisionCheckerInner::Rhusics(checker),
+                PreparedStaticQueryInner::Rhusics(query),
+            ) => collides_prepared_static_batch(checker, query, positions, time_range),
+            #[cfg(feature = "collide")]
+            (
+                SelectedCollisionCheckerInner::Collide(checker),
+                PreparedStaticQueryInner::Collide(query),
+            ) => collides_prepared_static_batch(checker, query, positions, time_range),
+            _ => positions
+                .iter()
+                .map(|_| Err(CrccError::Unsupported))
+                .collect(),
+        }
+    }
+
     /// Checks a moving obstacle against static and dynamic scene geometry.
     ///
     /// Continuous motion between adjacent active trajectory steps is included.
@@ -1025,6 +1110,58 @@ impl SelectedCollisionChecker {
                 all(feature = "rhusics", feature = "collide"),
             ))]
             _ => Err(CrccError::Unsupported),
+        }
+    }
+
+    #[cfg(feature = "rayon")]
+    /// Checks prepared dynamic queries in input order.
+    #[must_use]
+    pub fn collides_dynamic_prepared_batch(
+        &self,
+        queries: &[PreparedDynamicQuery],
+        time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    ) -> Vec<CollisionResult> {
+        use rayon::prelude::*;
+
+        let work = queries
+            .iter()
+            .map(|query| match &query.0 {
+                #[cfg(feature = "parry")]
+                PreparedDynamicQueryInner::Parry(query) => query.work_estimate(),
+                #[cfg(feature = "rhusics")]
+                PreparedDynamicQueryInner::Rhusics(query) => query.work_estimate(),
+                #[cfg(feature = "collide")]
+                PreparedDynamicQueryInner::Collide(query) => query.work_estimate(),
+            })
+            .fold(0_usize, usize::saturating_add);
+        let average_work = average_work(queries.len(), work);
+        let run = |query: &PreparedDynamicQuery| match (&self.0, &query.0) {
+            #[cfg(feature = "parry")]
+            (
+                SelectedCollisionCheckerInner::Parry(checker),
+                PreparedDynamicQueryInner::Parry(query),
+            ) => checker.collides_dynamic_range(query, time_range.clone()),
+            #[cfg(feature = "rhusics")]
+            (
+                SelectedCollisionCheckerInner::Rhusics(checker),
+                PreparedDynamicQueryInner::Rhusics(query),
+            ) => checker.collides_dynamic_range(query, time_range.clone()),
+            #[cfg(feature = "collide")]
+            (
+                SelectedCollisionCheckerInner::Collide(checker),
+                PreparedDynamicQueryInner::Collide(query),
+            ) => checker.collides_dynamic_range(query, time_range.clone()),
+            _ => Err(CrccError::Unsupported),
+        };
+
+        if should_parallelize(queries.len(), average_work) {
+            queries
+                .par_iter()
+                .with_min_len(parallel_grain_size(queries.len()))
+                .map(run)
+                .collect()
+        } else {
+            queries.iter().map(run).collect()
         }
     }
 
@@ -1112,26 +1249,134 @@ impl SelectedCollisionChecker {
     }
 
     #[cfg(feature = "rayon")]
-    /// Checks multiple positioned static obstacles in parallel using Rayon.
+    /// Checks static queries that mix raw objects with prepared geometry.
+    ///
+    /// Prepared queries built for a different backend make every slot return
+    /// [`CrccError::Unsupported`]; otherwise results preserve input order.
     #[must_use]
-    pub fn par_static(
+    pub fn collides_static_heterogeneous_batch<'a, I>(
         &self,
-        positioned_static_obstacles: &[(CollisionObject, DPose2)],
+        sources: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
-    ) -> Vec<CollisionResult> {
-        self.collides_static_batch(positioned_static_obstacles, time_range)
+    ) -> Vec<CollisionResult>
+    where
+        I: IntoIterator<Item = (StaticBatchQuery<'a>, DPose2)>,
+    {
+        match &self.0 {
+            #[cfg(feature = "parry")]
+            SelectedCollisionCheckerInner::Parry(checker) =>
+            {
+                #[allow(unreachable_patterns)]
+                collides_heterogeneous_static_batch(checker, sources, time_range, |query| {
+                    match &query.0 {
+                        PreparedStaticQueryInner::Parry(inner) => Some(inner.as_ref()),
+                        _ => None,
+                    }
+                })
+            }
+            #[cfg(feature = "rhusics")]
+            SelectedCollisionCheckerInner::Rhusics(checker) =>
+            {
+                #[allow(unreachable_patterns)]
+                collides_heterogeneous_static_batch(checker, sources, time_range, |query| {
+                    match &query.0 {
+                        PreparedStaticQueryInner::Rhusics(inner) => Some(inner.as_ref()),
+                        _ => None,
+                    }
+                })
+            }
+            #[cfg(feature = "collide")]
+            SelectedCollisionCheckerInner::Collide(checker) =>
+            {
+                #[allow(unreachable_patterns)]
+                collides_heterogeneous_static_batch(checker, sources, time_range, |query| {
+                    match &query.0 {
+                        PreparedStaticQueryInner::Collide(inner) => Some(inner.as_ref()),
+                        _ => None,
+                    }
+                })
+            }
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+            _ => {
+                let count = sources.into_iter().count();
+                (0..count).map(|_| Err(CrccError::Unsupported)).collect()
+            }
+        }
     }
 
     #[cfg(feature = "rayon")]
-    /// Checks multiple dynamic obstacles in parallel using Rayon.
+    /// Checks dynamic queries that mix raw obstacles with prepared trajectories.
+    ///
+    /// Prepared queries built for a different backend make every slot return
+    /// [`CrccError::Unsupported`]; otherwise results preserve input order.
     #[must_use]
-    pub fn par_dynamic(
+    pub fn collides_dynamic_heterogeneous_batch<'a, I>(
         &self,
-        dynamic_obstacles: &[DynamicObstacle],
+        sources: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
-    ) -> Vec<CollisionResult> {
-        self.collides_dynamic_batch(dynamic_obstacles, time_range)
+    ) -> Vec<CollisionResult>
+    where
+        I: IntoIterator<Item = DynamicBatchQuery<'a>>,
+    {
+        match &self.0 {
+            #[cfg(feature = "parry")]
+            SelectedCollisionCheckerInner::Parry(checker) =>
+            {
+                #[allow(unreachable_patterns)]
+                collides_heterogeneous_dynamic_batch(checker, sources, time_range, |query| {
+                    match &query.0 {
+                        PreparedDynamicQueryInner::Parry(inner) => Some(inner.as_ref()),
+                        _ => None,
+                    }
+                })
+            }
+            #[cfg(feature = "rhusics")]
+            SelectedCollisionCheckerInner::Rhusics(checker) =>
+            {
+                #[allow(unreachable_patterns)]
+                collides_heterogeneous_dynamic_batch(checker, sources, time_range, |query| {
+                    match &query.0 {
+                        PreparedDynamicQueryInner::Rhusics(inner) => Some(inner.as_ref()),
+                        _ => None,
+                    }
+                })
+            }
+            #[cfg(feature = "collide")]
+            SelectedCollisionCheckerInner::Collide(checker) =>
+            {
+                #[allow(unreachable_patterns)]
+                collides_heterogeneous_dynamic_batch(checker, sources, time_range, |query| {
+                    match &query.0 {
+                        PreparedDynamicQueryInner::Collide(inner) => Some(inner.as_ref()),
+                        _ => None,
+                    }
+                })
+            }
+            #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+            _ => {
+                let count = sources.into_iter().count();
+                (0..count).map(|_| Err(CrccError::Unsupported)).collect()
+            }
+        }
     }
+}
+
+/// A static batch entry referencing either a raw object or prepared geometry.
+#[cfg(feature = "rayon")]
+pub enum StaticBatchQuery<'a> {
+    /// A domain-level fixed shape converted per execution.
+    Raw(&'a CollisionObject),
+    /// Geometry already converted for the checker's backend.
+    Prepared(&'a PreparedStaticQuery),
+}
+
+/// A dynamic batch entry referencing either a raw obstacle or a prepared trajectory.
+#[cfg(feature = "rayon")]
+pub enum DynamicBatchQuery<'a> {
+    /// A domain-level moving obstacle converted per execution.
+    Raw(&'a DynamicObstacle),
+    /// A trajectory already converted for the checker's backend.
+    Prepared(&'a PreparedDynamicQuery),
 }
 
 #[cfg(all(
@@ -1143,29 +1388,36 @@ fn collides_static_batch<E: EngineCollisionObject + Send + Sync>(
     positioned_static_obstacles: &[(CollisionObject, DPose2)],
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
 ) -> Vec<CollisionResult> {
-    use crate::collision_checker::parallel::ParallelCollisionChecker;
     use rayon::prelude::*;
 
-    let converted = positioned_static_obstacles
+    if positioned_static_obstacles.is_empty() {
+        return Vec::new();
+    }
+    let active_times = checker.active_times_in(time_range);
+    let total_work = positioned_static_obstacles
         .iter()
-        .map(|(obstacle, position)| (E::from(obstacle.clone()), *position))
-        .collect::<Vec<_>>();
+        .map(|(obstacle, _)| obstacle.work_estimate())
+        .fold(0_usize, usize::saturating_add);
+    let average_work = average_work(positioned_static_obstacles.len(), total_work);
 
-    if converted.len() < PARALLEL_QUERY_THRESHOLD {
-        return converted
+    if should_parallelize(positioned_static_obstacles.len(), average_work) {
+        positioned_static_obstacles
+            .par_iter()
+            .with_min_len(parallel_grain_size(positioned_static_obstacles.len()))
+            .map(|(obstacle, position)| {
+                let converted = E::from(obstacle.clone());
+                checker.collides_static_active_times(&converted, *position, &active_times)
+            })
+            .collect()
+    } else {
+        positioned_static_obstacles
             .iter()
             .map(|(obstacle, position)| {
-                checker.collides_static_range(obstacle, *position, time_range.clone())
+                let converted = E::from(obstacle.clone());
+                checker.collides_static_active_times(&converted, *position, &active_times)
             })
-            .collect();
+            .collect()
     }
-
-    checker.collides_static_batch(
-        converted
-            .par_iter()
-            .map(|(obstacle, position)| (obstacle, *position)),
-        time_range,
-    )
 }
 
 #[cfg(all(
@@ -1177,23 +1429,270 @@ fn collides_dynamic_batch<E: EngineCollisionObject + Send + Sync>(
     dynamic_obstacles: &[DynamicObstacle],
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
 ) -> Vec<CollisionResult> {
+    use rayon::prelude::*;
+
+    let total_work = dynamic_obstacles
+        .iter()
+        .map(DynamicObstacle::work_estimate)
+        .fold(0_usize, usize::saturating_add);
+    let average_work = average_work(dynamic_obstacles.len(), total_work);
+
+    if should_parallelize(dynamic_obstacles.len(), average_work) {
+        dynamic_obstacles
+            .par_iter()
+            .with_min_len(parallel_grain_size(dynamic_obstacles.len()))
+            .map(|obstacle| {
+                let converted = obstacle.clone().convert_repr::<E>();
+                checker.collides_dynamic_range(&converted, time_range.clone())
+            })
+            .collect()
+    } else {
+        dynamic_obstacles
+            .iter()
+            .map(|obstacle| {
+                let converted = obstacle.clone().convert_repr::<E>();
+                checker.collides_dynamic_range(&converted, time_range.clone())
+            })
+            .collect()
+    }
+}
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+fn collides_prepared_static_batch<E: EngineCollisionObject + Send + Sync>(
+    checker: &CollisionChecker<E>,
+    query: &E,
+    positions: &[DPose2],
+    time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+) -> Vec<CollisionResult> {
     use crate::collision_checker::parallel::ParallelCollisionChecker;
     use rayon::prelude::*;
 
-    let converted = dynamic_obstacles
-        .iter()
-        .cloned()
-        .map(DynamicObstacle::convert_repr)
-        .collect::<Vec<GenericDynamicObstacle<E>>>();
-
-    if converted.len() < PARALLEL_QUERY_THRESHOLD {
-        return converted
+    if positions.is_empty() {
+        return Vec::new();
+    }
+    let active_times = checker.active_times_in(time_range);
+    if should_parallelize(positions.len(), 1) {
+        checker.collides_static_batch(
+            positions.par_iter().map(|position| (query, *position)),
+            &active_times,
+            parallel_grain_size(positions.len()),
+        )
+    } else {
+        positions
             .iter()
-            .map(|obstacle| checker.collides_dynamic_range(obstacle, time_range.clone()))
-            .collect();
+            .map(|position| checker.collides_static_active_times(query, *position, &active_times))
+            .collect()
+    }
+}
+
+/// Returns the parallel-policy work estimate for a raw static query.
+#[cfg(feature = "rayon")]
+fn static_work_estimate(query: &CollisionObject) -> usize {
+    query.work_estimate()
+}
+
+/// Placeholder estimate used when the Rayon policy is not compiled in.
+#[cfg(not(feature = "rayon"))]
+const fn static_work_estimate(query: &CollisionObject) -> usize {
+    let _ = query;
+    0
+}
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+enum HeterogeneousStaticEntry<'a, E> {
+    Raw(&'a CollisionObject),
+    Prepared { repr: &'a E, work_estimate: usize },
+}
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+enum HeterogeneousDynamicEntry<'a, E> {
+    Raw(&'a DynamicObstacle),
+    Prepared(&'a GenericDynamicObstacle<E>),
+}
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+fn collides_heterogeneous_static_batch<'a, E, F, I>(
+    checker: &CollisionChecker<E>,
+    sources: I,
+    time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    prepared_repr: F,
+) -> Vec<CollisionResult>
+where
+    E: EngineCollisionObject + Send + Sync,
+    F: Fn(&PreparedStaticQuery) -> Option<&E>,
+    I: IntoIterator<Item = (StaticBatchQuery<'a>, DPose2)>,
+{
+    use rayon::prelude::*;
+
+    let sources: Vec<(StaticBatchQuery<'a>, DPose2)> = sources.into_iter().collect();
+    let total = sources.len();
+    let mut entries: Vec<(HeterogeneousStaticEntry<'_, E>, DPose2)> = Vec::with_capacity(total);
+    let mut mismatched = false;
+    for (source, position) in sources {
+        let entry = match source {
+            StaticBatchQuery::Raw(object) => HeterogeneousStaticEntry::Raw(object),
+            StaticBatchQuery::Prepared(query) => {
+                let Some(repr) = prepared_repr(query) else {
+                    mismatched = true;
+                    break;
+                };
+                HeterogeneousStaticEntry::Prepared {
+                    repr,
+                    work_estimate: query.work_estimate(),
+                }
+            }
+        };
+        entries.push((entry, position));
+    }
+    if mismatched {
+        return (0..total).map(|_| Err(CrccError::Unsupported)).collect();
     }
 
-    checker.collides_dynamic_batch(converted.par_iter(), time_range)
+    let active_times = checker.active_times_in(time_range);
+    let total_work = entries
+        .iter()
+        .map(|(entry, _)| match entry {
+            HeterogeneousStaticEntry::Raw(object) => object.work_estimate(),
+            HeterogeneousStaticEntry::Prepared { work_estimate, .. } => *work_estimate,
+        })
+        .fold(0_usize, usize::saturating_add);
+    let average = average_work(entries.len(), total_work);
+    let run = |(entry, position): &(HeterogeneousStaticEntry<'_, E>, DPose2)| match entry {
+        HeterogeneousStaticEntry::Raw(object) => {
+            let converted = E::from((*object).clone());
+            checker.collides_static_active_times(&converted, *position, &active_times)
+        }
+        HeterogeneousStaticEntry::Prepared { repr, .. } => {
+            checker.collides_static_active_times(repr, *position, &active_times)
+        }
+    };
+
+    if should_parallelize(entries.len(), average) {
+        entries
+            .par_iter()
+            .with_min_len(parallel_grain_size(entries.len()))
+            .map(run)
+            .collect()
+    } else {
+        entries.iter().map(run).collect()
+    }
+}
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+fn collides_heterogeneous_dynamic_batch<'a, E, F, I>(
+    checker: &CollisionChecker<E>,
+    sources: I,
+    time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    prepared_repr: F,
+) -> Vec<CollisionResult>
+where
+    E: EngineCollisionObject + Send + Sync,
+    F: Fn(&PreparedDynamicQuery) -> Option<&GenericDynamicObstacle<E>>,
+    I: IntoIterator<Item = DynamicBatchQuery<'a>>,
+{
+    use rayon::prelude::*;
+
+    let sources: Vec<DynamicBatchQuery<'a>> = sources.into_iter().collect();
+    let total = sources.len();
+    let mut entries: Vec<HeterogeneousDynamicEntry<'_, E>> = Vec::with_capacity(total);
+    let mut mismatched = false;
+    for source in sources {
+        let entry = match source {
+            DynamicBatchQuery::Raw(obstacle) => HeterogeneousDynamicEntry::Raw(obstacle),
+            DynamicBatchQuery::Prepared(query) => {
+                let Some(repr) = prepared_repr(query) else {
+                    mismatched = true;
+                    break;
+                };
+                HeterogeneousDynamicEntry::Prepared(repr)
+            }
+        };
+        entries.push(entry);
+    }
+    if mismatched {
+        return (0..total).map(|_| Err(CrccError::Unsupported)).collect();
+    }
+
+    let total_work = entries
+        .iter()
+        .map(|entry| match entry {
+            HeterogeneousDynamicEntry::Raw(obstacle) => obstacle.work_estimate(),
+            HeterogeneousDynamicEntry::Prepared(query) => query.work_estimate(),
+        })
+        .fold(0_usize, usize::saturating_add);
+    let average = average_work(entries.len(), total_work);
+    let run = |entry: &HeterogeneousDynamicEntry<'_, E>| match entry {
+        HeterogeneousDynamicEntry::Raw(obstacle) => {
+            let converted = (**obstacle).clone().convert_repr::<E>();
+            checker.collides_dynamic_range(&converted, time_range.clone())
+        }
+        HeterogeneousDynamicEntry::Prepared(query) => {
+            checker.collides_dynamic_range(query, time_range.clone())
+        }
+    };
+
+    if should_parallelize(entries.len(), average) {
+        entries
+            .par_iter()
+            .with_min_len(parallel_grain_size(entries.len()))
+            .map(run)
+            .collect()
+    } else {
+        entries.iter().map(run).collect()
+    }
+}
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+fn average_work(query_count: usize, total_work: usize) -> usize {
+    if query_count == 0 {
+        return 0;
+    }
+    total_work
+        .saturating_add(query_count.saturating_sub(1))
+        .checked_div(query_count)
+        .unwrap_or(0)
+}
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+fn should_parallelize(query_count: usize, estimated_work_per_query: usize) -> bool {
+    let threads = rayon::current_num_threads();
+    threads > 1
+        && query_count >= threads.saturating_mul(MIN_QUERIES_PER_THREAD)
+        && query_count.saturating_mul(estimated_work_per_query)
+            >= threads.saturating_mul(MIN_PARALLEL_WORK_PER_THREAD)
+}
+
+#[cfg(all(
+    feature = "rayon",
+    any(feature = "parry", feature = "rhusics", feature = "collide")
+))]
+fn parallel_grain_size(query_count: usize) -> usize {
+    let threads = rayon::current_num_threads().max(1);
+    query_count
+        .checked_div(threads.saturating_mul(4))
+        .unwrap_or(1)
+        .max(16)
 }
 
 #[cfg(all(
@@ -1279,6 +1778,81 @@ mod selected_tests {
         }
     }
 
+    #[test]
+    fn prepared_static_batch_matches_scalar_queries() {
+        let query = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
+        let positions = vec![
+            DPose2::translation(0.5, 0.0),
+            DPose2::translation(4.0, 0.0),
+            DPose2::translation(0.0, 0.0),
+        ];
+
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
+                .build_with_engine(engine)
+                .unwrap();
+            let prepared = checker.prepare_static(&query).unwrap();
+            let expected = positions
+                .iter()
+                .map(|position| checker.collides_static_pos(&query, *position))
+                .collect::<Vec<_>>();
+
+            assert_eq!(
+                checker.collides_static_prepared_batch(&prepared, &positions, ..),
+                expected,
+                "{engine:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn prepared_dynamic_batch_matches_scalar_queries() {
+        let query = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
+        let dynamic = DynamicObstacle::new(
+            query,
+            vec![DPose2::translation(4.0, 0.0), DPose2::translation(0.5, 0.0)],
+            TimeStep(5),
+        )
+        .unwrap();
+
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
+                .build_with_engine(engine)
+                .unwrap();
+            let prepared = checker.prepare_dynamic(&dynamic).unwrap();
+            let prepared_queries = vec![prepared.clone(), prepared.clone()];
+            let expected = prepared_queries
+                .iter()
+                .map(|query| {
+                    checker.collides_dynamic_prepared_range(query, TimeStep(5)..=TimeStep(6))
+                })
+                .collect::<Vec<_>>();
+
+            assert_eq!(
+                checker
+                    .collides_dynamic_prepared_batch(&prepared_queries, TimeStep(5)..=TimeStep(6),),
+                expected,
+                "{engine:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn parallel_policy_requires_enough_work_per_worker() {
+        let pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(8)
+            .build()
+            .unwrap();
+
+        pool.install(|| {
+            assert!(!should_parallelize(128, 1));
+            assert!(should_parallelize(1_024, 1));
+            assert!(should_parallelize(128, 16));
+        });
+    }
+
     #[cfg(all(feature = "parry", feature = "rhusics"))]
     #[test]
     fn prepared_queries_reject_engine_mismatch() {
@@ -1321,9 +1895,9 @@ mod selected_tests {
                 .unwrap();
 
             for count in [
-                PARALLEL_QUERY_THRESHOLD - 1,
-                PARALLEL_QUERY_THRESHOLD,
-                PARALLEL_QUERY_THRESHOLD + 1,
+                MIN_QUERIES_PER_THREAD - 1,
+                MIN_QUERIES_PER_THREAD,
+                MIN_QUERIES_PER_THREAD + 1,
             ] {
                 let queries = (0..count)
                     .map(|index| {
@@ -1371,9 +1945,9 @@ mod selected_tests {
                 .unwrap();
 
             for count in [
-                PARALLEL_QUERY_THRESHOLD - 1,
-                PARALLEL_QUERY_THRESHOLD,
-                PARALLEL_QUERY_THRESHOLD + 1,
+                MIN_QUERIES_PER_THREAD - 1,
+                MIN_QUERIES_PER_THREAD,
+                MIN_QUERIES_PER_THREAD + 1,
             ] {
                 let queries = (0..count)
                     .map(|index| {
@@ -1431,5 +2005,131 @@ mod selected_tests {
                 "{engine:?}"
             );
         }
+    }
+
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn heterogeneous_batches_match_scalar_results() {
+        for engine in engines() {
+            let checker = CollisionCheckerBuilder::new()
+                .with_static_obstacle(SimpleCollisionObject::circle((0.0, 0.0), 1.0).unwrap())
+                .with_dynamic_obstacle(
+                    DynamicObstacle::new(
+                        CollisionObject::circle((0.0, 0.0), 1.0).unwrap(),
+                        vec![DPose2::translation(5.0, 0.0), DPose2::IDENTITY],
+                        TimeStep(0),
+                    )
+                    .unwrap(),
+                )
+                .build_with_engine(engine)
+                .unwrap();
+
+            let raw_static = CollisionObject::circle((0.0, 0.0), 0.25).unwrap();
+            let prepared_static = checker.prepare_static(&raw_static).unwrap();
+            let raw_dynamic = DynamicObstacle::new(
+                CollisionObject::circle((0.0, 0.0), 0.25).unwrap(),
+                vec![DPose2::translation(5.25, 0.0)],
+                TimeStep(0),
+            )
+            .unwrap();
+            let prepared_dynamic = checker.prepare_dynamic(&raw_dynamic).unwrap();
+
+            let static_sources = vec![
+                (StaticBatchQuery::Raw(&raw_static), DPose2::IDENTITY),
+                (
+                    StaticBatchQuery::Prepared(&prepared_static),
+                    DPose2::IDENTITY,
+                ),
+                (
+                    StaticBatchQuery::Raw(&raw_static),
+                    DPose2::translation(4.0, 0.0),
+                ),
+                (
+                    StaticBatchQuery::Prepared(&prepared_static),
+                    DPose2::translation(4.0, 0.0),
+                ),
+            ];
+            let static_expected = vec![
+                checker.collides_static_pos(&raw_static, DPose2::IDENTITY),
+                checker.collides_static_prepared(&prepared_static),
+                checker.collides_static_pos(&raw_static, DPose2::translation(4.0, 0.0)),
+                checker.collides_static_prepared_range(
+                    &prepared_static,
+                    DPose2::translation(4.0, 0.0),
+                    ..,
+                ),
+            ];
+            assert_eq!(
+                checker.collides_static_heterogeneous_batch(static_sources, ..),
+                static_expected,
+                "{engine:?}"
+            );
+
+            let dynamic_sources = vec![
+                DynamicBatchQuery::Raw(&raw_dynamic),
+                DynamicBatchQuery::Prepared(&prepared_dynamic),
+            ];
+            let expected = vec![
+                checker.collides_dynamic_range(&raw_dynamic, TimeStep(0)..=TimeStep(0)),
+                checker
+                    .collides_dynamic_prepared_range(&prepared_dynamic, TimeStep(0)..=TimeStep(0)),
+            ];
+            assert_eq!(
+                checker.collides_dynamic_heterogeneous_batch(
+                    dynamic_sources,
+                    TimeStep(0)..=TimeStep(0)
+                ),
+                expected,
+                "{engine:?}"
+            );
+        }
+    }
+
+    #[cfg(feature = "rayon")]
+    #[test]
+    fn heterogeneous_batches_reject_mismatched_backends_in_order() {
+        for engine in engines() {
+            let Some(other) = for_other_engine(engine) else {
+                continue;
+            };
+            let owner = CollisionCheckerBuilder::new()
+                .build_with_engine(engine)
+                .unwrap();
+            let prepared = owner
+                .prepare_static(&CollisionObject::circle((0.0, 0.0), 0.25).unwrap())
+                .unwrap();
+            let raw = CollisionObject::circle((10.0, 0.0), 0.25).unwrap();
+            let sources = vec![
+                (StaticBatchQuery::Raw(&raw), DPose2::IDENTITY),
+                (StaticBatchQuery::Prepared(&prepared), DPose2::IDENTITY),
+            ];
+
+            assert_eq!(
+                other.collides_static_heterogeneous_batch(sources, ..),
+                vec![Err(CrccError::Unsupported), Err(CrccError::Unsupported)],
+                "{engine:?}"
+            );
+        }
+    }
+
+    /// Returns a checker on a different backend, or `None` when only one backend is compiled.
+    #[cfg(feature = "rayon")]
+    fn for_other_engine(engine: CollisionEngine) -> Option<SelectedCollisionChecker> {
+        let alternatives = [
+            #[cfg(feature = "parry")]
+            CollisionEngine::Parry,
+            #[cfg(feature = "rhusics")]
+            CollisionEngine::Rhusics,
+            #[cfg(feature = "collide")]
+            CollisionEngine::Collide,
+        ];
+        alternatives
+            .into_iter()
+            .find(|candidate| *candidate != engine)
+            .map(|candidate| {
+                CollisionCheckerBuilder::new()
+                    .build_with_engine(candidate)
+                    .unwrap()
+            })
     }
 }

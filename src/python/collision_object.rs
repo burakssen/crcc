@@ -1,18 +1,41 @@
 use crate::collision_checker::engine::CollisionEngine;
 use crate::collision_object::CollisionObject as RustCollisionObject;
 use crate::collision_object::simple::SimpleCollisionObject;
+use crate::python::collision_checker::warn_deprecated;
 use crate::python::pose::Pose;
 use geo::{Polygon as GeoPolygon, Rect, Triangle as GeoTriangle, coord};
 use itertools::Itertools;
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
+use std::ffi::CStr;
 use std::ops::{Add, Div, Sub};
 use std::sync::Arc;
 
+const ENGINE_KEYWORD_MESSAGE: &CStr = c"engine= is deprecated; use backend=";
+
+/// Resolves the deprecated `engine=` keyword against the canonical `backend=`.
+fn select_pair_backend(
+    py: Python<'_>,
+    backend: Option<CollisionEngine>,
+    engine: Option<CollisionEngine>,
+) -> PyResult<CollisionEngine> {
+    match (backend, engine) {
+        (Some(_), Some(_)) => Err(PyTypeError::new_err(
+            "specify either backend or engine, not both",
+        )),
+        (Some(backend), None) => Ok(backend),
+        (None, Some(engine)) => {
+            warn_deprecated(py, ENGINE_KEYWORD_MESSAGE)?;
+            Ok(engine)
+        }
+        (None, None) => Ok(CollisionEngine::default()),
+    }
+}
+
 /// Base class for all queryable 2D geometry.
 ///
-/// Pair methods accept an optional `CollisionEngine` and raise `ValueError` for
-/// invalid geometry or unsupported engine and operation combinations.
+/// Pair methods accept an optional collision backend and raise `ValueError` for
+/// invalid geometry or unsupported backend and operation combinations.
 #[pyclass(subclass)]
 #[derive(Clone)]
 pub struct CollisionObject(Arc<RustCollisionObject>);
@@ -23,27 +46,31 @@ impl CollisionObject {
         other,
         pos_self = Pose::identity(),
         pos_other = Pose::identity(),
+        backend = None,
         engine = None
     ))]
     /// Returns whether two objects overlap at the supplied poses.
     ///
     /// # Errors
     ///
-    /// Returns a Python exception when the selected collision engine does not
+    /// Returns a Python exception when the selected collision backend does not
     /// support the requested operation.
     pub fn collides(
         &self,
+        py: Python<'_>,
         other: &Self,
         pos_self: Pose,
         pos_other: Pose,
+        backend: Option<CollisionEngine>,
         engine: Option<CollisionEngine>,
     ) -> PyResult<bool> {
+        let selected = select_pair_backend(py, backend, engine)?;
         Ok(crate::collision_checker::engine::collides(
             self.as_ref(),
             pos_self.0,
             other.as_ref(),
             pos_other.0,
-            engine.unwrap_or_default(),
+            selected,
         )?)
     }
 
@@ -53,6 +80,7 @@ impl CollisionObject {
         other,
         start_pos_other,
         end_pos_other,
+        backend = None,
         engine = None
     ))]
     /// Conservatively checks two motions over one continuous interval.
@@ -61,17 +89,21 @@ impl CollisionObject {
     ///
     /// # Errors
     ///
-    /// Returns a Python exception when the selected collision engine does not
+    /// Returns a Python exception when the selected collision backend does not
     /// support continuous collision detection for the supplied objects.
+    #[allow(clippy::too_many_arguments)]
     pub fn collides_continuous(
         &self,
+        py: Python<'_>,
         start_pos_self: Pose,
         end_pos_self: Pose,
         other: &Self,
         start_pos_other: Pose,
         end_pos_other: Pose,
+        backend: Option<CollisionEngine>,
         engine: Option<CollisionEngine>,
     ) -> PyResult<bool> {
+        let selected = select_pair_backend(py, backend, engine)?;
         Ok(crate::collision_checker::engine::collides_continuous(
             self.as_ref(),
             start_pos_self.0,
@@ -79,7 +111,7 @@ impl CollisionObject {
             other.as_ref(),
             start_pos_other.0,
             end_pos_other.0,
-            engine.unwrap_or_default(),
+            selected,
         )?)
     }
 
@@ -87,27 +119,31 @@ impl CollisionObject {
         other,
         pos_self = Pose::identity(),
         pos_other = Pose::identity(),
+        backend = None,
         engine = None
     ))]
     /// Returns the non-negative separation distance between two objects.
     ///
     /// # Errors
     ///
-    /// Returns a Python exception when the selected collision engine does not
+    /// Returns a Python exception when the selected collision backend does not
     /// support distance queries for the supplied objects.
     pub fn distance(
         &self,
+        py: Python<'_>,
         other: &Self,
         pos_self: Pose,
         pos_other: Pose,
+        backend: Option<CollisionEngine>,
         engine: Option<CollisionEngine>,
     ) -> PyResult<f64> {
+        let selected = select_pair_backend(py, backend, engine)?;
         Ok(crate::collision_checker::engine::distance(
             self.as_ref(),
             pos_self.0,
             other.as_ref(),
             pos_other.0,
-            engine.unwrap_or_default(),
+            selected,
         )?)
     }
 

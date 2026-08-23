@@ -123,7 +123,7 @@ fn convert_polygon_with_holes(polygon_with_holes: &PolygonWithHoles) -> ParrySim
     // triangles instead of poisoning the whole compound.
     TriMesh::new(vertices, indices).map_or_else(
         |_| ParrySimpleCollisionObject::Triangles(triangles),
-        |mesh| trimesh_collision_object(mesh),
+        trimesh_collision_object,
     )
 }
 
