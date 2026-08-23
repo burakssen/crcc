@@ -29,6 +29,7 @@ from tools.benchmark.runner import _parallel_speedup, _reusable_thread_counts
 from tools.benchmark.workloads import (
     coverage_matrix_workloads,
     dynamic_query_batch,
+    planning_frame_workload,
     robustness_queries,
     scene_workload,
     time_variant_query_batch,
@@ -449,6 +450,63 @@ def test_dynamic_workloads_cover_fixed_and_time_variant_shapes():
 
     assert len(fixed) == len(varying) == 3
     assert all(type(obstacle).__name__ == "DynamicObstacle" for obstacle in (*fixed, *varying))
+
+
+def test_planning_workload_contains_prepared_map_predictions_and_candidates():
+    workload = planning_frame_workload(9, 3, 5, 4, 2026)
+
+    assert len(workload.static_objects) == 9
+    assert len(workload.predicted_obstacles) == 3
+    assert len(workload.candidate_trajectories) == 5
+    assert workload.trajectory_steps == 4
+    assert all(type(obstacle).__name__ == "DynamicObstacle" for obstacle in workload.predicted_obstacles)
+    assert all(type(obstacle).__name__ == "DynamicObstacle" for obstacle in workload.candidate_trajectories)
+
+
+def test_planning_summary_preserves_cache_and_deadline_dimensions():
+    results = [
+        RunResult(
+            "planning",
+            None,
+            backend,
+            "static_100_dynamic_4_candidates_16_steps_8",
+            repetition,
+            16,
+            104,
+            None,
+            8,
+            0,
+            False,
+            total_ns,
+            [total_ns],
+            operation="planning_frame",
+            api_mode="batch_parallel",
+            batch_size=16,
+            sample_semantics="per_frame",
+            static_scene_objects=100,
+            dynamic_scene_objects=4,
+            trajectory_steps=8,
+            deadline_ns=20_000_000,
+            deadline_misses=int(total_ns > 20_000_000),
+            cache_state=cache_state,
+            candidate_count=16,
+        )
+        for backend in ("parry", "collide")
+        for cache_state in ("warm", "cold")
+        for repetition, total_ns in enumerate((10_000_000, 30_000_000))
+    ]
+
+    summary = summarize_runs(results)
+
+    assert {(row["backend"], row["cache_state"]) for row in summary} == {
+        ("parry", "warm"),
+        ("parry", "cold"),
+        ("collide", "warm"),
+        ("collide", "cold"),
+    }
+    assert all(row["candidate_count"] == 16 for row in summary)
+    assert all(row["deadline_misses"] == 1 for row in summary)
+    assert all(row["deadline_miss_rate"] == "0.500000" for row in summary)
 
 
 def test_coverage_matrix_contains_every_shape_and_detection_mode():

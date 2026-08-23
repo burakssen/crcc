@@ -249,6 +249,8 @@ def write_report_rows(path: Path, artifacts: ArtifactBundle):
         "- 2D equivalents are circle, rectangle, convex polygon, and compound shapes.",
         "- Exact tangency follows each backend's native contact semantics: Rhusics GJK excludes touching-only contact, while Parry and Collide include it.",
         "- API amortization uses one native worker to isolate call and collection overhead from parallel speedup.",
+        "- `planning` measures candidate trajectory batches against a prepared static map containing predicted dynamic obstacles; warm rows exclude checker construction and cold rows include it.",
+        "- Planning-frame latency samples represent the complete candidate batch, and deadline misses use a 20 ms frame budget.",
         "",
         "## Environment And Provenance",
         "",
@@ -496,6 +498,16 @@ PLOT_GUIDANCE = {
         "The top row reports absolute median nanoseconds per query; the bottom row reports the direct Python/native Rust cost ratio. Both use logarithmic axes and lower is better.",
         "All three layers reuse deterministic inputs with construction outside timed regions.",
     ),
+    "planning_frame_latency": (
+        "Measure p50, p95, and p99 latency for candidate trajectory batches against a prepared map and predicted obstacles.",
+        "Each panel fixes cache state and predicted-obstacle count. Lines show frame latency as candidate count increases; lower is better.",
+        "The plot fixes the largest static-map and trajectory-horizon values to keep the comparison interpretable; all dimensions remain in the CSV artifacts.",
+    ),
+    "planning_deadline_misses": (
+        "Show the fraction of planning frames that exceed the 20 ms planning budget.",
+        "Panels fix cache state and predicted-obstacle count. Lines report deadline-miss percentages as candidate count increases; lower is better.",
+        "Deadline misses are measured in this harness and are sensitive to machine load, allocator state, and the selected frame budget.",
+    ),
 }
 
 
@@ -532,6 +544,9 @@ def _plot_observations(name, summary, comparisons, correctness, parallel, memory
         queries = sum(_int(row["queries"]) for row in correctness)
         return [f"{mismatches:,} mismatches were recorded across {queries:,} checked queries."]
     if name == "backend_speedup_forest":
+        from .plots import _comparison_plot_rows
+
+        comparisons = _comparison_plot_rows(comparisons)
         verdicts = {
             verdict: sum(row["verdict"] == verdict for row in comparisons)
             for verdict in ("faster", "slower", "inconclusive")
@@ -593,6 +608,19 @@ def _plot_observations(name, summary, comparisons, correctness, parallel, memory
         return _cost_observations(rows, "trajectory_steps")
     if name == "execution_layer_cost":
         return _layer_observations(summary)
+    if name == "planning_frame_latency":
+        rows = [row for row in summary if row.get("feature") == "planning" and row.get("api_mode") == "batch_parallel"]
+        if not rows:
+            return ["No planning-frame latency rows are available."]
+        row = max(rows, key=lambda item: _float(item.get("p99_ns_median")))
+        return [
+            f"The largest recorded planning p99 is {_float(row['p99_ns_median']) / 1_000_000:.2f} ms for {_md(row['backend'])} with {_int(row.get('candidate_count'))} candidates and {_int(row.get('dynamic_scene_objects'))} predicted obstacles."
+        ]
+    if name == "planning_deadline_misses":
+        rows = [row for row in summary if row.get("feature") == "planning" and row.get("api_mode") == "batch_parallel"]
+        misses = sum(_int(row.get("deadline_misses")) for row in rows)
+        frames = sum(_int(row.get("repetitions")) for row in rows)
+        return [f"Planning artifacts record {misses:,} deadline misses across {frames:,} measured frames."]
     if name == "memory_growth":
         return _memory_observations(memory)
     if name == "update_time_scaling":

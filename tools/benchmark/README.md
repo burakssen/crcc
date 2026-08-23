@@ -63,6 +63,7 @@ native_layers         Native versus public Rust layers
 parallel              Reusable scalar/batch Rayon comparison
 density_scaling       Spatial-density workloads
 dynamic_scene         Dynamic scene-size/time behavior
+planning              Candidate trajectory batches against prepared maps and predicted obstacles
 scenario              CommonRoad scenario workloads
 ```
 

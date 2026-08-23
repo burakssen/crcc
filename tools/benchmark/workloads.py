@@ -65,6 +65,18 @@ class ScenarioWorkload:
     positioned_queries: tuple[tuple[Rectangle, Pose], ...]
 
 
+@dataclass(frozen=True)
+class PlanningWorkload:
+    static_objects: tuple[Any, ...]
+    predicted_obstacles: tuple[DynamicObstacle, ...]
+    candidate_trajectories: tuple[DynamicObstacle, ...]
+    static_count: int
+    dynamic_count: int
+    candidate_count: int
+    trajectory_steps: int
+    shape_family: str = "circle"
+
+
 def synthetic_workloads(sample_count: int, seed: int):
     for workload in ("circle_circle", "circle_rectangle", "rectangle_rectangle", "convex_polygon", "compound_polygon"):
         yield SyntheticWorkload("pair", workload, "collides", tuple(primitive_queries(sample_count, workload, seed)))
@@ -203,6 +215,48 @@ def dynamic_query_batch(count: int, steps: int):
             0,
         )
         for index in range(count)
+    )
+
+
+def planning_frame_workload(
+    static_count: int,
+    dynamic_count: int,
+    candidate_count: int,
+    trajectory_steps: int,
+    seed: int,
+    *,
+    shape_family: str = "circle",
+):
+    """Build one deterministic planning frame with a prepared map and predictions."""
+    generator = rng(seed + stable_hash(f"planning:{static_count}:{dynamic_count}:{candidate_count}:{trajectory_steps}"))
+    width = max(1, math.ceil(math.sqrt(static_count)))
+    static_objects = tuple(
+        matrix_shape(shape_family, ((index % width) * 6.0, (index // width) * 6.0)) for index in range(static_count)
+    )
+    predicted_obstacles = []
+    for index in range(dynamic_count):
+        x = float(index % max(1, min(dynamic_count, 16))) * 3.0 + 1.5
+        y = float(index // max(1, min(dynamic_count, 16))) * 3.0 + 1.5
+        poses = [Pose.from_translation((x + step * 0.08, y + step * 0.03)) for step in range(trajectory_steps)]
+        predicted_obstacles.append(DynamicObstacle(matrix_pair(shape_family)[1], poses, 0))
+
+    candidate_trajectories = []
+    for index in range(candidate_count):
+        lane = index % 8
+        x_offset = float(generator.uniform(-0.15, 0.15))
+        y = (lane - 3.5) * 1.6 + float(generator.uniform(-0.1, 0.1))
+        poses = [Pose.from_translation((x_offset + step * 0.45, y + step * 0.02)) for step in range(trajectory_steps)]
+        candidate_trajectories.append(DynamicObstacle(matrix_pair(shape_family)[1], poses, 0))
+
+    return PlanningWorkload(
+        tuple(static_objects),
+        tuple(predicted_obstacles),
+        tuple(candidate_trajectories),
+        static_count,
+        dynamic_count,
+        candidate_count,
+        trajectory_steps,
+        shape_family,
     )
 
 

@@ -45,6 +45,10 @@ class RunResult:
     ccd_mode: str = ""
     construction_ns: int = 0
     query_ns: int = 0
+    deadline_ns: int = 0
+    deadline_misses: int = 0
+    cache_state: str = ""
+    candidate_count: int = 0
 
     @property
     def queries_per_s(self) -> float:
@@ -135,6 +139,10 @@ RUN_FIELDS = [
     "ccd_mode",
     "construction_ns",
     "query_ns",
+    "deadline_ns",
+    "deadline_misses",
+    "cache_state",
+    "candidate_count",
 ]
 
 SUMMARY_FIELDS = [
@@ -185,6 +193,11 @@ SUMMARY_FIELDS = [
     "ccd_mode",
     "construction_ns_median",
     "query_ns_median",
+    "deadline_ns",
+    "deadline_misses",
+    "deadline_miss_rate",
+    "cache_state",
+    "candidate_count",
 ]
 
 COMPARISON_FIELDS = [
@@ -217,6 +230,9 @@ COMPARISON_FIELDS = [
     "shape_family",
     "scene_mode",
     "ccd_mode",
+    "deadline_ns",
+    "cache_state",
+    "candidate_count",
 ]
 
 MODE_COMPARISON_FIELDS = [
@@ -238,6 +254,10 @@ MODE_COMPARISON_FIELDS = [
     "ratio_ci_low",
     "ratio_ci_high",
     "verdict",
+    "static_scene_objects",
+    "dynamic_scene_objects",
+    "cache_state",
+    "candidate_count",
 ]
 
 LAYER_COMPARISON_FIELDS = [
@@ -363,6 +383,10 @@ def run_row(result: RunResult):
         "ccd_mode": result.ccd_mode,
         "construction_ns": result.construction_ns,
         "query_ns": result.query_ns,
+        "deadline_ns": result.deadline_ns,
+        "deadline_misses": result.deadline_misses,
+        "cache_state": result.cache_state,
+        "candidate_count": result.candidate_count,
     }
 
 
@@ -434,6 +458,9 @@ def summarize_runs(results: list[RunResult]):
             result.shape_family,
             result.scene_mode,
             result.ccd_mode,
+            result.deadline_ns,
+            result.cache_state,
+            result.candidate_count,
         )
         grouped.setdefault(key, []).append(result)
 
@@ -466,9 +493,13 @@ def summarize_runs(results: list[RunResult]):
         shape_family,
         scene_mode,
         ccd_mode,
+        deadline_ns,
+        cache_state,
+        candidate_count,
     ), group in sorted(grouped.items()):
         throughputs = [result.queries_per_s for result in group]
         totals = [result.total_ns for result in group]
+        deadline_misses = sum(result.deadline_misses for result in group)
         rows.append(
             {
                 "schema_version": SCHEMA_VERSION,
@@ -518,6 +549,11 @@ def summarize_runs(results: list[RunResult]):
                 "ccd_mode": ccd_mode,
                 "construction_ns_median": median([result.construction_ns for result in group]),
                 "query_ns_median": median([result.query_ns for result in group]),
+                "deadline_ns": deadline_ns,
+                "deadline_misses": deadline_misses,
+                "deadline_miss_rate": f"{deadline_misses / len(group):.6f}" if group else "0.000000",
+                "cache_state": cache_state,
+                "candidate_count": candidate_count,
             }
         )
     return rows
@@ -551,6 +587,9 @@ def compare_runs(results: list[RunResult], baseline_backend: str = "parry"):
             result.shape_family,
             result.scene_mode,
             result.ccd_mode,
+            result.deadline_ns,
+            result.cache_state,
+            result.candidate_count,
         )
         grouped.setdefault(key, []).append(result)
 
@@ -611,6 +650,9 @@ def compare_runs(results: list[RunResult], baseline_backend: str = "parry"):
                     "shape_family": group[0].shape_family,
                     "scene_mode": group[0].scene_mode,
                     "ccd_mode": group[0].ccd_mode,
+                    "deadline_ns": group[0].deadline_ns,
+                    "cache_state": group[0].cache_state,
+                    "candidate_count": group[0].candidate_count,
                 }
             )
     return rows
@@ -631,6 +673,8 @@ def compare_modes(results: list[RunResult]):
             result.shape_variation,
             result.static_scene_objects,
             result.dynamic_scene_objects,
+            result.cache_state,
+            result.candidate_count,
         )
         grouped.setdefault(key, []).append(result)
 
@@ -651,31 +695,49 @@ def compare_modes(results: list[RunResult]):
             if not ratios:
                 continue
             low, high = bootstrap_ci(ratios)
-            feature, backend, execution_layer, batch_size, trajectory_steps, time_window_steps, shape_variation, *_ = (
-                key
-            )
-            rows.append(
-                {
-                    "schema_version": SCHEMA_VERSION,
-                    "feature": feature,
-                    "backend": backend,
-                    "execution_layer": execution_layer,
-                    "baseline_mode": "scalar",
-                    "candidate_mode": candidate_mode,
-                    "batch_size": batch_size,
-                    "threads": threads,
-                    "trajectory_steps": trajectory_steps,
-                    "time_window_steps": time_window_steps,
-                    "shape_variation": shape_variation,
-                    "paired_repetitions": len(ratios),
-                    "ratio_median": f"{median(ratios):.6f}",
-                    "ratio_q25": f"{percentile_float(ratios, 25):.6f}",
-                    "ratio_q75": f"{percentile_float(ratios, 75):.6f}",
-                    "ratio_ci_low": f"{low:.6f}",
-                    "ratio_ci_high": f"{high:.6f}",
-                    "verdict": comparison_verdict(low, high) if len(ratios) >= 2 else "inconclusive",
-                }
-            )
+            (
+                feature,
+                backend,
+                execution_layer,
+                batch_size,
+                trajectory_steps,
+                time_window_steps,
+                shape_variation,
+                static_scene_objects,
+                dynamic_scene_objects,
+                cache_state,
+                candidate_count,
+            ) = key
+            row = {
+                "schema_version": SCHEMA_VERSION,
+                "feature": feature,
+                "backend": backend,
+                "execution_layer": execution_layer,
+                "baseline_mode": "scalar",
+                "candidate_mode": candidate_mode,
+                "batch_size": batch_size,
+                "threads": threads,
+                "trajectory_steps": trajectory_steps,
+                "time_window_steps": time_window_steps,
+                "shape_variation": shape_variation,
+                "paired_repetitions": len(ratios),
+                "ratio_median": f"{median(ratios):.6f}",
+                "ratio_q25": f"{percentile_float(ratios, 25):.6f}",
+                "ratio_q75": f"{percentile_float(ratios, 75):.6f}",
+                "ratio_ci_low": f"{low:.6f}",
+                "ratio_ci_high": f"{high:.6f}",
+                "verdict": comparison_verdict(low, high) if len(ratios) >= 2 else "inconclusive",
+            }
+            if feature == "planning":
+                row.update(
+                    {
+                        "static_scene_objects": static_scene_objects,
+                        "dynamic_scene_objects": dynamic_scene_objects,
+                        "cache_state": cache_state,
+                        "candidate_count": candidate_count,
+                    }
+                )
+            rows.append(row)
     return rows
 
 

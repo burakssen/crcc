@@ -57,6 +57,8 @@ PLOT_NAMES = {
     "time_variant_query_scaling_sequential",
     "time_variant_query_scaling_rayon",
     "execution_layer_cost",
+    "planning_frame_latency",
+    "planning_deadline_misses",
 }
 
 
@@ -135,6 +137,8 @@ def _write_plots(plot_dir: Path, summary, comparisons, correctness, parallel, me
             plot_dir / f"time_variant_query_scaling_{execution_mode}", plottable_summary, execution_mode
         )
     _plot_execution_layer_cost(plot_dir / "execution_layer_cost", plottable_summary)
+    _plot_planning_frame_latency(plot_dir / "planning_frame_latency", plottable_summary)
+    _plot_planning_deadline_misses(plot_dir / "planning_deadline_misses", plottable_summary)
 
 
 def _plot_backend_throughput_dotplot(path_base: Path, rows):
@@ -899,6 +903,137 @@ def _plot_execution_layer_cost(path_base: Path, rows):
     _save_plot(fig, path_base)
 
 
+def _planning_plot_rows(rows):
+    planning = [
+        row
+        for row in rows
+        if row.get("feature") == "planning"
+        and row.get("operation") == "planning_frame"
+        and row.get("api_mode") == "batch_parallel"
+    ]
+    if not planning:
+        return []
+    largest_static = max(_int(row.get("static_scene_objects")) for row in planning)
+    largest_steps = max(_int(row.get("trajectory_steps")) for row in planning)
+    return [
+        row
+        for row in planning
+        if _int(row.get("static_scene_objects")) == largest_static
+        and _int(row.get("trajectory_steps")) == largest_steps
+    ]
+
+
+def _planning_conditions(rows):
+    return sorted(
+        {(row.get("cache_state") or "unknown", _int(row.get("dynamic_scene_objects"))) for row in rows},
+        key=lambda item: (item[0], item[1]),
+    )
+
+
+def _plot_planning_frame_latency(path_base: Path, rows):
+    rows = _planning_plot_rows(rows)
+    conditions = _planning_conditions(rows)
+    if not conditions:
+        _plot_status(path_base, "Planning-Frame Latency", "No planning-frame batch rows")
+        return
+
+    percentiles = (("p50_ns_median", "p50"), ("p95_ns_median", "p95"), ("p99_ns_median", "p99"))
+    backends = _present_backends(rows)
+    fig, axes = plt.subplots(
+        len(percentiles),
+        len(conditions),
+        figsize=(4.2 * len(conditions), 8.4),
+        sharex="col",
+        sharey="row",
+        squeeze=False,
+        layout="constrained",
+    )
+    for column, (cache_state, dynamic_count) in enumerate(conditions):
+        selected = [
+            row
+            for row in rows
+            if (row.get("cache_state") or "unknown", _int(row.get("dynamic_scene_objects")))
+            == (cache_state, dynamic_count)
+        ]
+        for row_index, (field, label) in enumerate(percentiles):
+            ax = axes[row_index, column]
+            for backend in backends:
+                backend_rows = sorted(
+                    [row for row in selected if row["backend"] == backend],
+                    key=lambda row: _int(row.get("candidate_count")),
+                )
+                if not backend_rows:
+                    continue
+                ax.plot(
+                    [_int(row.get("candidate_count")) for row in backend_rows],
+                    [_float(row.get(field)) / 1_000_000 for row in backend_rows],
+                    marker=BACKEND_MARKERS.get(backend, "o"),
+                    color=BACKEND_COLORS.get(backend),
+                    linewidth=1.6,
+                    label=backend,
+                )
+            ax.set_title(f"{cache_state}, {dynamic_count} predicted", loc="left", fontsize=9)
+            ax.set_xscale("log", base=2)
+            ax.set_yscale("log")
+            ax.set_ylabel(f"{label} frame ms")
+            _style_axis(ax)
+    for ax in axes[-1, :]:
+        ax.set_xlabel("candidate trajectories per frame")
+    fig.suptitle("Planning-Frame Batch Latency", x=0.02, ha="left", fontsize=11.5, fontweight="bold")
+    _legend_outside(fig, axes[0, 0], backends, style="line")
+    _save_plot(fig, path_base)
+
+
+def _plot_planning_deadline_misses(path_base: Path, rows):
+    rows = _planning_plot_rows(rows)
+    conditions = _planning_conditions(rows)
+    if not conditions:
+        _plot_status(path_base, "Planning-Frame Deadline Misses", "No planning-frame batch rows")
+        return
+
+    backends = _present_backends(rows)
+    fig, axes = plt.subplots(
+        1,
+        len(conditions),
+        figsize=(4.2 * len(conditions), 4.8),
+        sharey=True,
+        squeeze=False,
+        layout="constrained",
+    )
+    for column, (cache_state, dynamic_count) in enumerate(conditions):
+        ax = axes[0, column]
+        selected = [
+            row
+            for row in rows
+            if (row.get("cache_state") or "unknown", _int(row.get("dynamic_scene_objects")))
+            == (cache_state, dynamic_count)
+        ]
+        for backend in backends:
+            backend_rows = sorted(
+                [row for row in selected if row["backend"] == backend],
+                key=lambda row: _int(row.get("candidate_count")),
+            )
+            if not backend_rows:
+                continue
+            ax.plot(
+                [_int(row.get("candidate_count")) for row in backend_rows],
+                [_float(row.get("deadline_miss_rate")) * 100 for row in backend_rows],
+                marker=BACKEND_MARKERS.get(backend, "o"),
+                color=BACKEND_COLORS.get(backend),
+                linewidth=1.7,
+                label=backend,
+            )
+        ax.set_title(f"{cache_state}, {dynamic_count} predicted", loc="left", fontsize=9)
+        ax.set_xlabel("candidate trajectories per frame")
+        ax.set_xscale("log", base=2)
+        ax.set_ylim(0, 100)
+        _style_axis(ax)
+    axes[0, 0].set_ylabel("frames missing 20 ms deadline (%)")
+    fig.suptitle("Planning-Frame Deadline Misses", x=0.02, ha="left", fontsize=11.5, fontweight="bold")
+    _legend_outside(fig, axes[0, 0], backends, style="line")
+    _save_plot(fig, path_base)
+
+
 def _plot_correctness_summary(path_base: Path, rows):
     if not rows:
         _plot_status(path_base, "Correctness Summary", "No correctness rows")
@@ -930,6 +1065,7 @@ def _plot_correctness_summary(path_base: Path, rows):
 
 
 def _plot_backend_speedup_forest(path_base: Path, rows):
+    rows = _comparison_plot_rows(rows)
     if not rows:
         _plot_status(path_base, "Backend Speedup vs Baseline", "No paired comparison rows")
         return
@@ -967,7 +1103,7 @@ def _plot_backend_speedup_forest(path_base: Path, rows):
 
 
 def _synthetic_summary_rows(rows):
-    return [row for row in rows if row["feature"] not in {"api_overhead", "scenario", "scene_scaling"}]
+    return [row for row in rows if row["feature"] in {"pair", "continuous", "distance"}]
 
 
 def _parallel_scaling_rows(rows):
@@ -1012,7 +1148,28 @@ def _comparison_label(row):
         base = f"{base} / n={row['objects']}, hit={_float(row['density']):.0%}"
     if row["feature"] == "api_overhead":
         base = f"{base} / batch={row['queries']}"
+    if row["feature"] == "planning":
+        base = (
+            f"{base} / candidates={_int(row.get('candidate_count'))}, "
+            f"dynamic={_int(row.get('dynamic_scene_objects'))}, cache={row.get('cache_state') or 'unknown'}"
+        )
     return base
+
+
+def _comparison_plot_rows(rows):
+    core = [row for row in rows if row.get("feature") in {"pair", "continuous", "distance", "shape_complexity"}]
+    planning = [row for row in rows if row.get("feature") == "planning" and row.get("api_mode") == "batch_parallel"]
+    if planning:
+        largest_static = max(_int(row.get("static_scene_objects")) for row in planning)
+        largest_steps = max(_int(row.get("trajectory_steps")) for row in planning)
+        planning = [
+            row
+            for row in planning
+            if row.get("cache_state") == "warm"
+            and _int(row.get("static_scene_objects")) == largest_static
+            and _int(row.get("trajectory_steps")) == largest_steps
+        ]
+    return core + planning
 
 
 def _summary_row(rows, label, backend):

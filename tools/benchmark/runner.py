@@ -22,6 +22,7 @@ from .config import (
     DEFAULT_UPDATE_TRANSFORMS,
     MATRIX_SHAPE_FAMILIES,
     MIN_RECOMMENDED_SAMPLE_COUNT,
+    PLANNING_DEADLINE_NS,
     SCHEMA_VERSION,
     SPEC_SCENE_SIZES,
     STRESS_SCENE_SIZES,
@@ -38,6 +39,7 @@ from .workloads import (
     density_scene_workload,
     dynamic_query_batch,
     dynamic_scene_workload,
+    planning_frame_workload,
     rebuild_update_workload,
     scenario_workload,
     scene_workload,
@@ -133,6 +135,8 @@ def _run_suite(suite, config, engine_items, shape_counts, compound_counts, scene
         return _run_density_scaling_suite(config, engine_items, scene_sizes)
     if suite == "dynamic_scene":
         return _run_dynamic_scene_suite(config, engine_items, scene_sizes)
+    if suite == "planning":
+        return _run_planning_suite(config, engine_items)
     if suite == "dynamic_batch":
         return _run_dynamic_batch_suite(config, engine_items)
     if suite == "time_variant":
@@ -843,6 +847,226 @@ def _run_dynamic_batch_suite(config, engine_items):
                         )
                     )
     return runs, correctness, parallel_rows, memory_rows
+
+
+def _run_planning_suite(config, engine_items):
+    runs, correctness, parallel_rows, memory_rows = _empty_results()
+    if config.profile == "smoke":
+        static_counts = (100, 1_000)
+        dynamic_counts = (4, 16)
+        candidate_counts = (16, 64)
+        step_counts = (8, 16)
+    else:
+        static_counts = (100, 1_000, 5_000)
+        dynamic_counts = (4, 16, 64)
+        candidate_counts = (16, 64, 256)
+        step_counts = (8, 16, 32)
+
+    for static_count in static_counts:
+        for dynamic_count in dynamic_counts:
+            for candidate_count in candidate_counts:
+                for trajectory_steps in step_counts:
+                    workload = planning_frame_workload(
+                        static_count,
+                        dynamic_count,
+                        candidate_count,
+                        trajectory_steps,
+                        config.seed,
+                    )
+                    cell_runs = []
+                    for backend, engine in engine_items:
+                        for repetition in range(config.repetitions):
+                            for cache_state in ("warm", "cold"):
+                                result_pair = _measure_planning_frame(
+                                    backend,
+                                    engine,
+                                    workload,
+                                    repetition,
+                                    cache_state=cache_state,
+                                )
+                                runs.extend(result_pair[0])
+                                cell_runs.extend(result_pair[0])
+                                if cache_state == "warm":
+                                    correctness.append(result_pair[1])
+                    _print_group(
+                        "planning",
+                        f"static={static_count},dynamic={dynamic_count},candidates={candidate_count},steps={trajectory_steps}",
+                        cell_runs,
+                    )
+    return runs, correctness, parallel_rows, memory_rows
+
+
+def _measure_planning_frame(backend, engine, workload, repetition, *, cache_state):
+    results = []
+    scalar = batch = None
+    build_ns = 0
+    warm_checker = None
+
+    if cache_state == "warm":
+        build_start = time.perf_counter_ns()
+        warm_checker = _try_build_planning_checker(engine, workload)
+        build_ns = time.perf_counter_ns() - build_start
+
+    if cache_state not in {"warm", "cold"}:
+        raise ValueError(f"unknown planning cache state: {cache_state}")
+
+    for api_mode in ("scalar", "batch_parallel"):
+        checker = warm_checker
+        if cache_state == "cold":
+            build_start = time.perf_counter_ns()
+            checker = _try_build_planning_checker(engine, workload)
+            build_ns = time.perf_counter_ns() - build_start
+        if checker is None:
+            results.append(
+                _unsupported_scene_run(
+                    "planning",
+                    backend,
+                    _planning_workload_name(workload),
+                    repetition,
+                    workload.candidate_count,
+                    scene_kind="planning_frame",
+                    operation="planning_frame",
+                    api_mode=api_mode,
+                    batch_size=workload.candidate_count,
+                    sample_semantics="per_frame",
+                    static_scene_objects=workload.static_count,
+                    dynamic_scene_objects=workload.dynamic_count,
+                    trajectory_steps=workload.trajectory_steps,
+                    motion_kind="predicted_translation",
+                    shape=workload.shape_family,
+                    shape_family=workload.shape_family,
+                    scene_mode="planning_frame",
+                    ccd_mode="moving_moving",
+                    build_ns=build_ns,
+                    construction_ns=build_ns,
+                    deadline_ns=PLANNING_DEADLINE_NS,
+                    deadline_misses=1,
+                    cache_state=cache_state,
+                    candidate_count=workload.candidate_count,
+                )
+            )
+            continue
+        active_checker = checker
+
+        try:
+            active_checker.collides_dynamic(workload.candidate_trajectories[0])
+            active_checker.collides_dynamic_batch(workload.candidate_trajectories[:1], parallel=True)
+        except Exception:
+            pass
+
+        if api_mode == "scalar":
+
+            def query_call():
+                return [active_checker.collides_dynamic(candidate) for candidate in workload.candidate_trajectories]
+        else:
+
+            def query_call():
+                return active_checker.collides_dynamic_batch(workload.candidate_trajectories, parallel=True)
+
+        query_failed = False
+        try:
+            query_ns, values = _stable_call_time(query_call)
+        except Exception:
+            query_ns, values = 0, None
+            query_failed = True
+        errors = 0
+        collisions = 0
+        if query_failed:
+            errors = workload.candidate_count
+        else:
+            try:
+                collisions = count_collisions(values)
+            except Exception:
+                errors = workload.candidate_count
+        total_ns = query_ns + (build_ns if cache_state == "cold" else 0)
+        results.append(
+            RunResult(
+                "planning",
+                None,
+                backend,
+                _planning_workload_name(workload),
+                repetition,
+                workload.candidate_count,
+                workload.static_count + workload.dynamic_count,
+                None,
+                collisions,
+                errors,
+                errors == workload.candidate_count and bool(workload.candidate_count),
+                total_ns,
+                [total_ns],
+                shape=workload.shape_family,
+                scene_kind="planning_frame",
+                operation="planning_frame",
+                api_mode=api_mode,
+                batch_size=workload.candidate_count,
+                sample_semantics="per_frame",
+                static_scene_objects=workload.static_count,
+                dynamic_scene_objects=workload.dynamic_count,
+                trajectory_steps=workload.trajectory_steps,
+                motion_kind="predicted_translation",
+                hit_class="candidate_batch",
+                shape_family=workload.shape_family,
+                scene_mode="planning_frame",
+                ccd_mode="moving_moving",
+                build_ns=build_ns,
+                construction_ns=build_ns,
+                query_ns=query_ns,
+                deadline_ns=PLANNING_DEADLINE_NS,
+                deadline_misses=int(total_ns > PLANNING_DEADLINE_NS),
+                cache_state=cache_state,
+                candidate_count=workload.candidate_count,
+            )
+        )
+
+        if api_mode == "scalar" and not query_failed:
+            scalar = values
+        elif api_mode == "batch_parallel" and not query_failed:
+            batch = values
+
+    mismatches = 0
+    errors = 0
+    if scalar is not None and batch is not None:
+        mismatches = sum(
+            (left.collides, left.time_step) != (right.collides, right.time_step)
+            for left, right in zip(scalar, batch, strict=True)
+        )
+    else:
+        errors = workload.candidate_count
+    return results, CorrectnessResult(
+        "planning",
+        None,
+        backend,
+        _planning_workload_name(workload),
+        workload.candidate_count,
+        "",
+        "",
+        "",
+        "",
+        mismatches,
+        "scalar_batch_time_equivalence",
+        errors=errors,
+    )
+
+
+def _try_build_planning_checker(engine, workload):
+    from crcc import CollisionCheckerBuilder
+
+    try:
+        builder = CollisionCheckerBuilder(backend=engine)
+        for static_object in workload.static_objects:
+            builder.add_static_obstacle(static_object)
+        for predicted_obstacle in workload.predicted_obstacles:
+            builder.add_dynamic_obstacle(predicted_obstacle)
+        return builder.build()
+    except Exception:
+        return None
+
+
+def _planning_workload_name(workload):
+    return (
+        f"static_{workload.static_count}_dynamic_{workload.dynamic_count}_"
+        f"candidates_{workload.candidate_count}_steps_{workload.trajectory_steps}"
+    )
 
 
 def _run_time_variant_suite(config, engine_items):
