@@ -4,8 +4,8 @@ use crate::collision_object::CollisionObject;
 use crate::error::CrccResult;
 use glamx::DPose2;
 
+mod finite_colliders;
 mod inner;
-mod manager;
 mod simple;
 
 #[derive(Debug, Clone)]
@@ -57,7 +57,7 @@ mod tests {
         let sources = [
             include_str!("mod.rs"),
             include_str!("inner.rs"),
-            include_str!("manager.rs"),
+            include_str!("finite_colliders.rs"),
             include_str!("simple.rs"),
         ];
 

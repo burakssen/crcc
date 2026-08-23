@@ -10,30 +10,29 @@ use std::ops::Mul;
 
 type ManagedFiniteShape = BoundedCollider<CollideSphere<CollideVec2>, CollideConvex<CollideVec2>>;
 
-pub(super) struct FiniteManager {
-    manager: CollisionManager<ManagedFiniteShape, usize>,
+pub(super) struct FiniteColliderSet {
+    colliders: CollisionManager<ManagedFiniteShape, usize>,
 }
 
-impl FiniteManager {
+impl FiniteColliderSet {
     pub(super) fn from_components(components: &[CollideCollisionComponent]) -> Self {
         let finite_count = finite_component_count(components);
-        let mut manager = CollisionManager::with_capacity(finite_count);
+        let mut colliders = CollisionManager::with_capacity(finite_count);
 
         for (component_index, component) in components.iter().enumerate() {
             if let CollideCollisionComponent::Finite(finite) = component {
-                manager.insert_collider(
+                colliders.insert_collider(
                     managed_finite_shape(finite, DPose2::IDENTITY),
                     component_index,
                 );
             }
         }
 
-        Self { manager }
+        Self { colliders }
     }
 
     fn check_collision(&self, finite: &FiniteShape, pose: DPose2) -> bool {
-        // ponytail: cache the exact short-circuit manager before introducing a frozen BVH.
-        self.manager
+        self.colliders
             .check_collision(&managed_finite_shape(finite, pose))
     }
 }
@@ -41,10 +40,10 @@ impl FiniteManager {
 pub(super) fn finite_components_collide(
     left_components: &[CollideCollisionComponent],
     left_pose: DPose2,
-    left_manager: &FiniteManager,
+    left_colliders: &FiniteColliderSet,
     right_components: &[CollideCollisionComponent],
     right_pose: DPose2,
-    right_manager: &FiniteManager,
+    right_colliders: &FiniteColliderSet,
 ) -> bool {
     let left_count = finite_component_count(left_components);
     let right_count = finite_component_count(right_components);
@@ -63,14 +62,14 @@ pub(super) fn finite_components_collide(
         return finite_shapes_collide(left, left_pose, right, right_pose);
     }
 
-    // Probe the larger cached set with the smaller set to minimize conversions.
+    // Probe the larger prebuilt set with the smaller set to minimize conversions.
     if left_count >= right_count {
         let relative_pose = left_pose.inv_mul(&right_pose);
         right_components.iter().any(|component| {
             let CollideCollisionComponent::Finite(finite) = component else {
                 return false;
             };
-            left_manager.check_collision(finite, relative_pose)
+            left_colliders.check_collision(finite, relative_pose)
         })
     } else {
         let relative_pose = right_pose.inv_mul(&left_pose);
@@ -78,7 +77,7 @@ pub(super) fn finite_components_collide(
             let CollideCollisionComponent::Finite(finite) = component else {
                 return false;
             };
-            right_manager.check_collision(finite, relative_pose)
+            right_colliders.check_collision(finite, relative_pose)
         })
     }
 }
@@ -205,7 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn manager_requires_exact_collision_after_bounding_sphere_overlap() {
+    fn finite_collider_set_requires_exact_collision_after_bounding_sphere_overlap() {
         let left = vec![
             finite(rectangle_shape(20.0, 0.2, 0.0)),
             finite(rectangle_shape(1.0, 1.0, 20.0)),
@@ -215,21 +214,21 @@ mod tests {
             finite(rectangle_shape(1.0, 1.0, 30.0)),
         ];
 
-        let left_manager = FiniteManager::from_components(&left);
-        let right_manager = FiniteManager::from_components(&right);
+        let left_colliders = FiniteColliderSet::from_components(&left);
+        let right_colliders = FiniteColliderSet::from_components(&right);
 
         assert!(!finite_components_collide(
             &left,
             DPose2::IDENTITY,
-            &left_manager,
+            &left_colliders,
             &right,
             DPose2::IDENTITY,
-            &right_manager,
+            &right_colliders,
         ));
     }
 
     #[test]
-    fn cached_manager_matches_direct_collision_result() {
+    fn prebuilt_collider_set_matches_direct_collision_result() {
         let left = vec![
             finite(rectangle_shape(1.0, 1.0, 0.0)),
             finite(rectangle_shape(1.0, 1.0, 10.0)),
@@ -238,24 +237,24 @@ mod tests {
             finite(rectangle_shape(1.0, 1.0, 0.0)),
             finite(rectangle_shape(1.0, 1.0, 20.0)),
         ];
-        let left_manager = FiniteManager::from_components(&left);
-        let right_manager = FiniteManager::from_components(&right);
+        let left_colliders = FiniteColliderSet::from_components(&left);
+        let right_colliders = FiniteColliderSet::from_components(&right);
         let direct =
             finite_components_collide_legacy(&left, DPose2::IDENTITY, &right, DPose2::IDENTITY);
-        let cached = finite_components_collide(
+        let prebuilt = finite_components_collide(
             &left,
             DPose2::IDENTITY,
-            &left_manager,
+            &left_colliders,
             &right,
             DPose2::IDENTITY,
-            &right_manager,
+            &right_colliders,
         );
 
-        assert_eq!(direct, cached);
+        assert_eq!(direct, prebuilt);
     }
 
     #[test]
-    fn cached_manager_route_matches_direct_collision() {
+    fn prebuilt_collider_set_route_matches_direct_collision() {
         let count = 256;
         let left = (0..count)
             .map(|index| {
@@ -269,24 +268,24 @@ mod tests {
                 finite(rectangle_shape(1.0, 1.0, index.mul_add(3.0, 1.5)))
             })
             .collect::<Vec<_>>();
-        let left_manager = FiniteManager::from_components(&left);
-        let right_manager = FiniteManager::from_components(&right);
+        let left_colliders = FiniteColliderSet::from_components(&left);
+        let right_colliders = FiniteColliderSet::from_components(&right);
         let direct =
             finite_components_collide_legacy(&left, DPose2::IDENTITY, &right, DPose2::IDENTITY);
         let routed = finite_components_collide(
             &left,
             DPose2::IDENTITY,
-            &left_manager,
+            &left_colliders,
             &right,
             DPose2::IDENTITY,
-            &right_manager,
+            &right_colliders,
         );
 
         assert_eq!(direct, routed);
     }
 
     #[test]
-    fn manager_matches_direct_collision_for_multiple_components() {
+    fn finite_collider_set_matches_direct_collision_for_multiple_components() {
         let left = vec![
             finite(rectangle_shape(1.0, 1.0, 0.0)),
             finite(rectangle_shape(1.0, 1.0, 10.0)),
@@ -298,23 +297,23 @@ mod tests {
 
         let legacy =
             finite_components_collide_legacy(&left, DPose2::IDENTITY, &right, DPose2::IDENTITY);
-        let left_manager = FiniteManager::from_components(&left);
-        let right_manager = FiniteManager::from_components(&right);
-        let manager = finite_components_collide(
+        let left_colliders = FiniteColliderSet::from_components(&left);
+        let right_colliders = FiniteColliderSet::from_components(&right);
+        let prebuilt = finite_components_collide(
             &left,
             DPose2::IDENTITY,
-            &left_manager,
+            &left_colliders,
             &right,
             DPose2::IDENTITY,
-            &right_manager,
+            &right_colliders,
         );
 
         assert!(legacy);
-        assert_eq!(legacy, manager);
+        assert_eq!(legacy, prebuilt);
     }
 
     #[test]
-    fn cached_manager_applies_relative_pose_to_probe_components() {
+    fn prebuilt_collider_set_applies_relative_pose_to_probe_components() {
         let left = vec![
             finite(rectangle_shape(1.0, 1.0, 0.0)),
             finite(rectangle_shape(1.0, 1.0, 20.0)),
@@ -325,28 +324,92 @@ mod tests {
         ];
         let left_pose = DPose2::translation(10.0, 5.0);
         let right_pose = DPose2::translation(10.5, 5.0);
-        let left_manager = FiniteManager::from_components(&left);
-        let right_manager = FiniteManager::from_components(&right);
+        let left_colliders = FiniteColliderSet::from_components(&left);
+        let right_colliders = FiniteColliderSet::from_components(&right);
 
         assert!(finite_components_collide(
             &left,
             left_pose,
-            &left_manager,
+            &left_colliders,
             &right,
             right_pose,
-            &right_manager,
+            &right_colliders,
         ));
         assert_eq!(
             finite_components_collide_legacy(&left, left_pose, &right, right_pose),
             finite_components_collide(
                 &right,
                 right_pose,
-                &right_manager,
+                &right_colliders,
                 &left,
                 left_pose,
-                &left_manager,
+                &left_colliders,
             )
         );
+    }
+
+    #[test]
+    fn prebuilt_collider_set_matches_direct_for_changing_transformed_compounds() {
+        let left = vec![
+            finite(rectangle_shape(2.0, 0.5, -2.0)),
+            finite(rectangle_shape(2.0, 0.5, 0.0)),
+            finite(rectangle_shape(2.0, 0.5, 2.0)),
+        ];
+        let right = vec![
+            finite(rectangle_shape(1.0, 1.0, -1.0)),
+            finite(rectangle_shape(1.0, 1.0, 1.0)),
+        ];
+        let left_colliders = FiniteColliderSet::from_components(&left);
+        let right_colliders = FiniteColliderSet::from_components(&right);
+        let poses = [
+            (
+                DPose2::new(DVec2::new(0.0, 0.0), 0.0),
+                DPose2::new(DVec2::new(0.0, 0.0), 0.0),
+            ),
+            (
+                DPose2::new(DVec2::new(4.0, 4.0), 0.0),
+                DPose2::new(DVec2::new(4.5, 4.0), 0.0),
+            ),
+            (
+                DPose2::new(DVec2::new(1.25, -0.75), std::f64::consts::FRAC_PI_4),
+                DPose2::new(DVec2::new(1.5, -0.5), -std::f64::consts::FRAC_PI_6),
+            ),
+            (
+                DPose2::new(DVec2::new(1.0e9, -1.0e9), 1.0e-8),
+                DPose2::new(DVec2::new(1.0e9 + 0.25, -1.0e9 + 0.25), -1.0e-8),
+            ),
+        ];
+        let mut observed = [false; 2];
+
+        for (left_pose, right_pose) in poses {
+            let direct = finite_components_collide_legacy(&left, left_pose, &right, right_pose);
+            let prebuilt = finite_components_collide(
+                &left,
+                left_pose,
+                &left_colliders,
+                &right,
+                right_pose,
+                &right_colliders,
+            );
+            assert_eq!(direct, prebuilt, "left={left_pose:?}, right={right_pose:?}");
+
+            let reverse_direct =
+                finite_components_collide_legacy(&right, right_pose, &left, left_pose);
+            let reverse_prebuilt = finite_components_collide(
+                &right,
+                right_pose,
+                &right_colliders,
+                &left,
+                left_pose,
+                &left_colliders,
+            );
+            assert_eq!(reverse_direct, reverse_prebuilt);
+            assert_eq!(direct, reverse_direct);
+
+            observed[usize::from(direct)] = true;
+        }
+
+        assert_eq!(observed, [true, true]);
     }
 
     #[test]
@@ -376,8 +439,8 @@ mod tests {
                         finite(rectangle_shape(1.0, 1.0, offset))
                     })
                     .collect::<Vec<_>>();
-                let left_manager = FiniteManager::from_components(&left);
-                let right_manager = FiniteManager::from_components(&right);
+                let left_colliders = FiniteColliderSet::from_components(&left);
+                let right_colliders = FiniteColliderSet::from_components(&right);
                 let iterations = if count >= 1024 { 100 } else { ITERATIONS };
 
                 let legacy = benchmark_strategy(iterations, || {
@@ -388,23 +451,23 @@ mod tests {
                         DPose2::IDENTITY,
                     )
                 });
-                let cached = benchmark_strategy(iterations, || {
+                let prebuilt = benchmark_strategy(iterations, || {
                     finite_components_collide(
                         black_box(&left),
                         DPose2::IDENTITY,
-                        &left_manager,
+                        &left_colliders,
                         black_box(&right),
                         DPose2::IDENTITY,
-                        &right_manager,
+                        &right_colliders,
                     )
                 });
 
                 println!("{workload},{count},legacy,{},{}", legacy.0, legacy.1);
                 println!(
-                    "{workload},{count},manager_cached,{},{}",
-                    cached.0, cached.1
+                    "{workload},{count},prebuilt_set,{},{}",
+                    prebuilt.0, prebuilt.1
                 );
-                assert_eq!(legacy.1, cached.1);
+                assert_eq!(legacy.1, prebuilt.1);
             }
         }
     }

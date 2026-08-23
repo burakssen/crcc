@@ -50,15 +50,15 @@ The engine modules translate domain geometry and implement backend behavior:
 
 - `engine/parry/`: Parry shapes, native distance, and nonlinear casts.
 - `engine/rhusics/`: GJK finite geometry, analytic half-spaces, and native translational TOI.
-- `engine/collide/`: finite convex conversion, finite-component collision management, bounding spheres, analytic half-spaces, analytic circle cases, and conservative recursive CCD.
+- `engine/collide/`: finite convex conversion, local finite-collider sets, bounding spheres, analytic half-spaces, analytic circle cases, and conservative recursive CCD.
 
 The Collide backend's finite-component boundary is split deliberately:
 
 - `simple.rs` converts CRCC geometry into Collide convexes, spheres, and CRCC half-space values.
-- `manager.rs` adapts finite shapes to `collision-detection::CollisionManager` through `collide::BoundedCollider`. The cached manager uses bounding spheres for its broad phase and exact convex collision checks for confirmation. A direct finite-shape path remains for one-component queries.
-- `inner.rs` owns compound dispatch, CRCC half-space semantics, and continuous collision detection. Half-spaces never enter the finite manager because they are unbounded, and continuous queries retain their existing component-pair algorithm.
+- `finite_colliders.rs` adapts finite shapes to `collision-detection::CollisionManager` through `collide::BoundedCollider`. The prebuilt local collider set uses bounding spheres for its broad phase and exact convex collision checks for confirmation. It stores no world poses or collision results. A direct finite-shape path remains for one-component queries.
+- `inner.rs` owns compound dispatch, CRCC half-space semantics, and continuous collision detection. Half-spaces never enter the finite collider set because they are unbounded, and continuous queries retain their existing component-pair algorithm.
 
-The manager integration builds each finite component set once in the object's local coordinates. Discrete multi-component queries transform only the smaller set into the larger manager's coordinate frame and call the manager's exact short-circuiting `check_collision` operation. This avoids rebuilding managers and avoids collecting all collision results. The upstream BVH API is intentionally not used: it rebuilds trees for every operation, and the current repeated-query benchmark does not justify an additional frozen-tree API.
+The finite-collider integration builds each finite component set once in the object's local coordinates. Discrete multi-component queries transform only the smaller set into the larger set's coordinate frame and call the exact short-circuiting `check_collision` operation. This is geometry preprocessing, not occupancy or result caching. The upstream BVH API is intentionally not used: it rebuilds trees for every operation, and the current repeated-query benchmark does not justify an additional frozen-tree API.
 
 Runtime pair functions convert both operands for every call. Generic Rust users can convert once and use `CollisionChecker<E>` directly.
 

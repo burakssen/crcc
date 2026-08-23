@@ -1,5 +1,5 @@
-use crate::collision_checker::engine::collide::manager::{
-    FiniteManager, finite_components_collide, finite_shapes_collide,
+use crate::collision_checker::engine::collide::finite_colliders::{
+    FiniteColliderSet, finite_components_collide, finite_shapes_collide,
 };
 use crate::collision_checker::engine::collide::simple::{
     CollideCollisionComponent, CollideSimpleCollisionObject, FiniteShape, FiniteShapeSupport,
@@ -40,7 +40,7 @@ impl fmt::Debug for CollideCollisionObjectInner {
 #[derive(Clone)]
 pub struct NonTrivial {
     components: Vec<CollideCollisionComponent>,
-    finite_manager: Arc<FiniteManager>,
+    finite_colliders: Arc<FiniteColliderSet>,
 }
 
 impl CollideCollisionObjectInner {
@@ -84,10 +84,10 @@ impl NonTrivial {
         if finite_components_collide(
             &self.components,
             pos_self,
-            &self.finite_manager,
+            &self.finite_colliders,
             &other.components,
             pos_other,
-            &other.finite_manager,
+            &other.finite_colliders,
         ) {
             return true;
         }
@@ -553,7 +553,7 @@ impl From<CollisionObject> for CollideCollisionObjectInner {
             Self::Empty
         } else {
             Self::NonTrivial(Box::new(NonTrivial {
-                finite_manager: Arc::new(FiniteManager::from_components(&components)),
+                finite_colliders: Arc::new(FiniteColliderSet::from_components(&components)),
                 components,
             }))
         }
