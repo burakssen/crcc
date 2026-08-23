@@ -10,8 +10,6 @@ use std::ops::RangeBounds;
 mod builder;
 mod ccd_collider;
 pub mod engine;
-#[cfg(feature = "rayon")]
-pub mod parallel;
 
 pub use builder::CollisionCheckerBuilder;
 #[cfg(feature = "python_bindings")]
@@ -668,18 +666,6 @@ mod tests {
 
 use crate::collision_checker::engine::CollisionEngine;
 
-#[cfg(all(
-    feature = "rayon",
-    any(feature = "parry", feature = "rhusics", feature = "collide")
-))]
-const MIN_QUERIES_PER_THREAD: usize = 16;
-
-#[cfg(all(
-    feature = "rayon",
-    any(feature = "parry", feature = "rhusics", feature = "collide")
-))]
-const MIN_PARALLEL_WORK_PER_THREAD: usize = 128;
-
 pub(crate) enum SelectedCollisionCheckerInner {
     #[cfg(feature = "parry")]
     Parry(Box<CollisionChecker<crate::collision_checker::engine::parry::ParryCollisionObject>>),
@@ -707,11 +693,8 @@ enum PreparedStaticQueryInner {
 
 /// Geometry converted once for repeated queries against a selected checker.
 ///
-/// The second tuple element carries the parallel-policy work estimate and is
-/// only consulted when Rayon batching is compiled in.
-#[cfg_attr(not(feature = "rayon"), allow(dead_code))]
 #[derive(Clone)]
-pub struct PreparedStaticQuery(PreparedStaticQueryInner, usize);
+pub struct PreparedStaticQuery(PreparedStaticQueryInner);
 
 impl PreparedStaticQuery {
     /// Returns the backend representation stored by this query.
@@ -734,12 +717,6 @@ impl PreparedStaticQuery {
     pub fn engine(&self) -> CollisionEngine {
         let _ = &self.0;
         CollisionEngine::default()
-    }
-
-    /// Returns the estimated per-query work used by the parallel policy.
-    #[cfg(feature = "rayon")]
-    pub(crate) const fn work_estimate(&self) -> usize {
-        self.1
     }
 }
 
@@ -815,28 +792,21 @@ impl SelectedCollisionChecker {
     ) -> Result<PreparedStaticQuery, CrccError> {
         #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
         let _ = query;
-        let work_estimate = static_work_estimate(query);
         match &self.0 {
             #[cfg(feature = "parry")]
             SelectedCollisionCheckerInner::Parry(_) => Ok(PreparedStaticQuery(
                 PreparedStaticQueryInner::Parry(Box::new(query.clone().into())),
-                work_estimate,
             )),
             #[cfg(feature = "rhusics")]
             SelectedCollisionCheckerInner::Rhusics(_) => Ok(PreparedStaticQuery(
                 PreparedStaticQueryInner::Rhusics(Box::new(query.clone().into())),
-                work_estimate,
             )),
             #[cfg(feature = "collide")]
             SelectedCollisionCheckerInner::Collide(_) => Ok(PreparedStaticQuery(
                 PreparedStaticQueryInner::Collide(Box::new(query.clone().into())),
-                work_estimate,
             )),
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
-            _ => {
-                let _ = work_estimate;
-                Err(CrccError::Unsupported)
-            }
+            _ => Err(CrccError::Unsupported),
         }
     }
 
@@ -1017,29 +987,31 @@ impl SelectedCollisionChecker {
 
     #[cfg(feature = "rayon")]
     /// Checks one prepared fixed query at multiple poses, preserving pose order.
+    /// The caller selects sequential or Rayon execution with `parallel`.
     #[must_use]
     pub fn collides_static_prepared_batch(
         &self,
         query: &PreparedStaticQuery,
         positions: &[DPose2],
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+        parallel: bool,
     ) -> Vec<CollisionResult> {
         match (&self.0, &query.0) {
             #[cfg(feature = "parry")]
             (
                 SelectedCollisionCheckerInner::Parry(checker),
                 PreparedStaticQueryInner::Parry(query),
-            ) => collides_prepared_static_batch(checker, query, positions, time_range),
+            ) => collides_prepared_static_batch(checker, query, positions, time_range, parallel),
             #[cfg(feature = "rhusics")]
             (
                 SelectedCollisionCheckerInner::Rhusics(checker),
                 PreparedStaticQueryInner::Rhusics(query),
-            ) => collides_prepared_static_batch(checker, query, positions, time_range),
+            ) => collides_prepared_static_batch(checker, query, positions, time_range, parallel),
             #[cfg(feature = "collide")]
             (
                 SelectedCollisionCheckerInner::Collide(checker),
                 PreparedStaticQueryInner::Collide(query),
-            ) => collides_prepared_static_batch(checker, query, positions, time_range),
+            ) => collides_prepared_static_batch(checker, query, positions, time_range, parallel),
             _ => positions
                 .iter()
                 .map(|_| Err(CrccError::Unsupported))
@@ -1115,26 +1087,16 @@ impl SelectedCollisionChecker {
 
     #[cfg(feature = "rayon")]
     /// Checks prepared dynamic queries in input order.
+    /// The caller selects sequential or Rayon execution with `parallel`.
     #[must_use]
     pub fn collides_dynamic_prepared_batch(
         &self,
         queries: &[PreparedDynamicQuery],
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+        parallel: bool,
     ) -> Vec<CollisionResult> {
         use rayon::prelude::*;
 
-        let work = queries
-            .iter()
-            .map(|query| match &query.0 {
-                #[cfg(feature = "parry")]
-                PreparedDynamicQueryInner::Parry(query) => query.work_estimate(),
-                #[cfg(feature = "rhusics")]
-                PreparedDynamicQueryInner::Rhusics(query) => query.work_estimate(),
-                #[cfg(feature = "collide")]
-                PreparedDynamicQueryInner::Collide(query) => query.work_estimate(),
-            })
-            .fold(0_usize, usize::saturating_add);
-        let average_work = average_work(queries.len(), work);
         let run = |query: &PreparedDynamicQuery| match (&self.0, &query.0) {
             #[cfg(feature = "parry")]
             (
@@ -1154,12 +1116,8 @@ impl SelectedCollisionChecker {
             _ => Err(CrccError::Unsupported),
         };
 
-        if should_parallelize(queries.len(), average_work) {
-            queries
-                .par_iter()
-                .with_min_len(parallel_grain_size(queries.len()))
-                .map(run)
-                .collect()
+        if parallel {
+            queries.par_iter().map(run).collect()
         } else {
             queries.iter().map(run).collect()
         }
@@ -1188,26 +1146,26 @@ impl SelectedCollisionChecker {
 
     #[cfg(feature = "rayon")]
     /// Checks fixed-shape queries in a batch, preserving input order.
-    ///
-    /// Small batches run sequentially; larger batches use Rayon's active pool.
+    /// The caller selects sequential or Rayon execution with `parallel`.
     #[must_use]
     pub fn collides_static_batch(
         &self,
         positioned_static_obstacles: &[(CollisionObject, DPose2)],
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+        parallel: bool,
     ) -> Vec<CollisionResult> {
         match &self.0 {
             #[cfg(feature = "parry")]
             SelectedCollisionCheckerInner::Parry(checker) => {
-                collides_static_batch(checker, positioned_static_obstacles, time_range)
+                collides_static_batch(checker, positioned_static_obstacles, time_range, parallel)
             }
             #[cfg(feature = "rhusics")]
             SelectedCollisionCheckerInner::Rhusics(checker) => {
-                collides_static_batch(checker, positioned_static_obstacles, time_range)
+                collides_static_batch(checker, positioned_static_obstacles, time_range, parallel)
             }
             #[cfg(feature = "collide")]
             SelectedCollisionCheckerInner::Collide(checker) => {
-                collides_static_batch(checker, positioned_static_obstacles, time_range)
+                collides_static_batch(checker, positioned_static_obstacles, time_range, parallel)
             }
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => positioned_static_obstacles
@@ -1219,26 +1177,26 @@ impl SelectedCollisionChecker {
 
     #[cfg(feature = "rayon")]
     /// Checks dynamic queries in a batch, preserving input order.
-    ///
-    /// Small batches run sequentially; larger batches use Rayon's active pool.
+    /// The caller selects sequential or Rayon execution with `parallel`.
     #[must_use]
     pub fn collides_dynamic_batch(
         &self,
         dynamic_obstacles: &[DynamicObstacle],
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+        parallel: bool,
     ) -> Vec<CollisionResult> {
         match &self.0 {
             #[cfg(feature = "parry")]
             SelectedCollisionCheckerInner::Parry(checker) => {
-                collides_dynamic_batch(checker, dynamic_obstacles, time_range)
+                collides_dynamic_batch(checker, dynamic_obstacles, time_range, parallel)
             }
             #[cfg(feature = "rhusics")]
             SelectedCollisionCheckerInner::Rhusics(checker) => {
-                collides_dynamic_batch(checker, dynamic_obstacles, time_range)
+                collides_dynamic_batch(checker, dynamic_obstacles, time_range, parallel)
             }
             #[cfg(feature = "collide")]
             SelectedCollisionCheckerInner::Collide(checker) => {
-                collides_dynamic_batch(checker, dynamic_obstacles, time_range)
+                collides_dynamic_batch(checker, dynamic_obstacles, time_range, parallel)
             }
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => dynamic_obstacles
@@ -1250,6 +1208,7 @@ impl SelectedCollisionChecker {
 
     #[cfg(feature = "rayon")]
     /// Checks static queries that mix raw objects with prepared geometry.
+    /// The caller selects sequential or Rayon execution with `parallel`.
     ///
     /// Prepared queries built for a different backend make every slot return
     /// [`CrccError::Unsupported`]; otherwise results preserve input order.
@@ -1258,6 +1217,7 @@ impl SelectedCollisionChecker {
         &self,
         sources: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+        parallel: bool,
     ) -> Vec<CollisionResult>
     where
         I: IntoIterator<Item = (StaticBatchQuery<'a>, DPose2)>,
@@ -1267,34 +1227,46 @@ impl SelectedCollisionChecker {
             SelectedCollisionCheckerInner::Parry(checker) =>
             {
                 #[allow(unreachable_patterns)]
-                collides_heterogeneous_static_batch(checker, sources, time_range, |query| {
-                    match &query.0 {
+                collides_heterogeneous_static_batch(
+                    checker,
+                    sources,
+                    time_range,
+                    parallel,
+                    |query| match &query.0 {
                         PreparedStaticQueryInner::Parry(inner) => Some(inner.as_ref()),
                         _ => None,
-                    }
-                })
+                    },
+                )
             }
             #[cfg(feature = "rhusics")]
             SelectedCollisionCheckerInner::Rhusics(checker) =>
             {
                 #[allow(unreachable_patterns)]
-                collides_heterogeneous_static_batch(checker, sources, time_range, |query| {
-                    match &query.0 {
+                collides_heterogeneous_static_batch(
+                    checker,
+                    sources,
+                    time_range,
+                    parallel,
+                    |query| match &query.0 {
                         PreparedStaticQueryInner::Rhusics(inner) => Some(inner.as_ref()),
                         _ => None,
-                    }
-                })
+                    },
+                )
             }
             #[cfg(feature = "collide")]
             SelectedCollisionCheckerInner::Collide(checker) =>
             {
                 #[allow(unreachable_patterns)]
-                collides_heterogeneous_static_batch(checker, sources, time_range, |query| {
-                    match &query.0 {
+                collides_heterogeneous_static_batch(
+                    checker,
+                    sources,
+                    time_range,
+                    parallel,
+                    |query| match &query.0 {
                         PreparedStaticQueryInner::Collide(inner) => Some(inner.as_ref()),
                         _ => None,
-                    }
-                })
+                    },
+                )
             }
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => {
@@ -1306,6 +1278,7 @@ impl SelectedCollisionChecker {
 
     #[cfg(feature = "rayon")]
     /// Checks dynamic queries that mix raw obstacles with prepared trajectories.
+    /// The caller selects sequential or Rayon execution with `parallel`.
     ///
     /// Prepared queries built for a different backend make every slot return
     /// [`CrccError::Unsupported`]; otherwise results preserve input order.
@@ -1314,6 +1287,7 @@ impl SelectedCollisionChecker {
         &self,
         sources: I,
         time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+        parallel: bool,
     ) -> Vec<CollisionResult>
     where
         I: IntoIterator<Item = DynamicBatchQuery<'a>>,
@@ -1323,34 +1297,46 @@ impl SelectedCollisionChecker {
             SelectedCollisionCheckerInner::Parry(checker) =>
             {
                 #[allow(unreachable_patterns)]
-                collides_heterogeneous_dynamic_batch(checker, sources, time_range, |query| {
-                    match &query.0 {
+                collides_heterogeneous_dynamic_batch(
+                    checker,
+                    sources,
+                    time_range,
+                    parallel,
+                    |query| match &query.0 {
                         PreparedDynamicQueryInner::Parry(inner) => Some(inner.as_ref()),
                         _ => None,
-                    }
-                })
+                    },
+                )
             }
             #[cfg(feature = "rhusics")]
             SelectedCollisionCheckerInner::Rhusics(checker) =>
             {
                 #[allow(unreachable_patterns)]
-                collides_heterogeneous_dynamic_batch(checker, sources, time_range, |query| {
-                    match &query.0 {
+                collides_heterogeneous_dynamic_batch(
+                    checker,
+                    sources,
+                    time_range,
+                    parallel,
+                    |query| match &query.0 {
                         PreparedDynamicQueryInner::Rhusics(inner) => Some(inner.as_ref()),
                         _ => None,
-                    }
-                })
+                    },
+                )
             }
             #[cfg(feature = "collide")]
             SelectedCollisionCheckerInner::Collide(checker) =>
             {
                 #[allow(unreachable_patterns)]
-                collides_heterogeneous_dynamic_batch(checker, sources, time_range, |query| {
-                    match &query.0 {
+                collides_heterogeneous_dynamic_batch(
+                    checker,
+                    sources,
+                    time_range,
+                    parallel,
+                    |query| match &query.0 {
                         PreparedDynamicQueryInner::Collide(inner) => Some(inner.as_ref()),
                         _ => None,
-                    }
-                })
+                    },
+                )
             }
             #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
             _ => {
@@ -1387,6 +1373,7 @@ fn collides_static_batch<E: EngineCollisionObject + Send + Sync>(
     checker: &CollisionChecker<E>,
     positioned_static_obstacles: &[(CollisionObject, DPose2)],
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    parallel: bool,
 ) -> Vec<CollisionResult> {
     use rayon::prelude::*;
 
@@ -1394,16 +1381,9 @@ fn collides_static_batch<E: EngineCollisionObject + Send + Sync>(
         return Vec::new();
     }
     let active_times = checker.active_times_in(time_range);
-    let total_work = positioned_static_obstacles
-        .iter()
-        .map(|(obstacle, _)| obstacle.work_estimate())
-        .fold(0_usize, usize::saturating_add);
-    let average_work = average_work(positioned_static_obstacles.len(), total_work);
-
-    if should_parallelize(positioned_static_obstacles.len(), average_work) {
+    if parallel {
         positioned_static_obstacles
             .par_iter()
-            .with_min_len(parallel_grain_size(positioned_static_obstacles.len()))
             .map(|(obstacle, position)| {
                 let converted = E::from(obstacle.clone());
                 checker.collides_static_active_times(&converted, *position, &active_times)
@@ -1428,19 +1408,13 @@ fn collides_dynamic_batch<E: EngineCollisionObject + Send + Sync>(
     checker: &CollisionChecker<E>,
     dynamic_obstacles: &[DynamicObstacle],
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    parallel: bool,
 ) -> Vec<CollisionResult> {
     use rayon::prelude::*;
 
-    let total_work = dynamic_obstacles
-        .iter()
-        .map(DynamicObstacle::work_estimate)
-        .fold(0_usize, usize::saturating_add);
-    let average_work = average_work(dynamic_obstacles.len(), total_work);
-
-    if should_parallelize(dynamic_obstacles.len(), average_work) {
+    if parallel {
         dynamic_obstacles
             .par_iter()
-            .with_min_len(parallel_grain_size(dynamic_obstacles.len()))
             .map(|obstacle| {
                 let converted = obstacle.clone().convert_repr::<E>();
                 checker.collides_dynamic_range(&converted, time_range.clone())
@@ -1466,20 +1440,19 @@ fn collides_prepared_static_batch<E: EngineCollisionObject + Send + Sync>(
     query: &E,
     positions: &[DPose2],
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    parallel: bool,
 ) -> Vec<CollisionResult> {
-    use crate::collision_checker::parallel::ParallelCollisionChecker;
     use rayon::prelude::*;
 
     if positions.is_empty() {
         return Vec::new();
     }
     let active_times = checker.active_times_in(time_range);
-    if should_parallelize(positions.len(), 1) {
-        checker.collides_static_batch(
-            positions.par_iter().map(|position| (query, *position)),
-            &active_times,
-            parallel_grain_size(positions.len()),
-        )
+    if parallel {
+        positions
+            .par_iter()
+            .map(|position| checker.collides_static_active_times(query, *position, &active_times))
+            .collect()
     } else {
         positions
             .iter()
@@ -1488,26 +1461,13 @@ fn collides_prepared_static_batch<E: EngineCollisionObject + Send + Sync>(
     }
 }
 
-/// Returns the parallel-policy work estimate for a raw static query.
-#[cfg(feature = "rayon")]
-fn static_work_estimate(query: &CollisionObject) -> usize {
-    query.work_estimate()
-}
-
-/// Placeholder estimate used when the Rayon policy is not compiled in.
-#[cfg(not(feature = "rayon"))]
-const fn static_work_estimate(query: &CollisionObject) -> usize {
-    let _ = query;
-    0
-}
-
 #[cfg(all(
     feature = "rayon",
     any(feature = "parry", feature = "rhusics", feature = "collide")
 ))]
 enum HeterogeneousStaticEntry<'a, E> {
     Raw(&'a CollisionObject),
-    Prepared { repr: &'a E, work_estimate: usize },
+    Prepared { repr: &'a E },
 }
 
 #[cfg(all(
@@ -1527,6 +1487,7 @@ fn collides_heterogeneous_static_batch<'a, E, F, I>(
     checker: &CollisionChecker<E>,
     sources: I,
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    parallel: bool,
     prepared_repr: F,
 ) -> Vec<CollisionResult>
 where
@@ -1548,10 +1509,7 @@ where
                     mismatched = true;
                     break;
                 };
-                HeterogeneousStaticEntry::Prepared {
-                    repr,
-                    work_estimate: query.work_estimate(),
-                }
+                HeterogeneousStaticEntry::Prepared { repr }
             }
         };
         entries.push((entry, position));
@@ -1561,30 +1519,18 @@ where
     }
 
     let active_times = checker.active_times_in(time_range);
-    let total_work = entries
-        .iter()
-        .map(|(entry, _)| match entry {
-            HeterogeneousStaticEntry::Raw(object) => object.work_estimate(),
-            HeterogeneousStaticEntry::Prepared { work_estimate, .. } => *work_estimate,
-        })
-        .fold(0_usize, usize::saturating_add);
-    let average = average_work(entries.len(), total_work);
     let run = |(entry, position): &(HeterogeneousStaticEntry<'_, E>, DPose2)| match entry {
         HeterogeneousStaticEntry::Raw(object) => {
             let converted = E::from((*object).clone());
             checker.collides_static_active_times(&converted, *position, &active_times)
         }
-        HeterogeneousStaticEntry::Prepared { repr, .. } => {
+        HeterogeneousStaticEntry::Prepared { repr } => {
             checker.collides_static_active_times(repr, *position, &active_times)
         }
     };
 
-    if should_parallelize(entries.len(), average) {
-        entries
-            .par_iter()
-            .with_min_len(parallel_grain_size(entries.len()))
-            .map(run)
-            .collect()
+    if parallel {
+        entries.par_iter().map(run).collect()
     } else {
         entries.iter().map(run).collect()
     }
@@ -1598,6 +1544,7 @@ fn collides_heterogeneous_dynamic_batch<'a, E, F, I>(
     checker: &CollisionChecker<E>,
     sources: I,
     time_range: impl RangeBounds<TimeStep> + Clone + Sync,
+    parallel: bool,
     prepared_repr: F,
 ) -> Vec<CollisionResult>
 where
@@ -1628,14 +1575,6 @@ where
         return (0..total).map(|_| Err(CrccError::Unsupported)).collect();
     }
 
-    let total_work = entries
-        .iter()
-        .map(|entry| match entry {
-            HeterogeneousDynamicEntry::Raw(obstacle) => obstacle.work_estimate(),
-            HeterogeneousDynamicEntry::Prepared(query) => query.work_estimate(),
-        })
-        .fold(0_usize, usize::saturating_add);
-    let average = average_work(entries.len(), total_work);
     let run = |entry: &HeterogeneousDynamicEntry<'_, E>| match entry {
         HeterogeneousDynamicEntry::Raw(obstacle) => {
             let converted = (**obstacle).clone().convert_repr::<E>();
@@ -1646,53 +1585,11 @@ where
         }
     };
 
-    if should_parallelize(entries.len(), average) {
-        entries
-            .par_iter()
-            .with_min_len(parallel_grain_size(entries.len()))
-            .map(run)
-            .collect()
+    if parallel {
+        entries.par_iter().map(run).collect()
     } else {
         entries.iter().map(run).collect()
     }
-}
-
-#[cfg(all(
-    feature = "rayon",
-    any(feature = "parry", feature = "rhusics", feature = "collide")
-))]
-fn average_work(query_count: usize, total_work: usize) -> usize {
-    if query_count == 0 {
-        return 0;
-    }
-    total_work
-        .saturating_add(query_count.saturating_sub(1))
-        .checked_div(query_count)
-        .unwrap_or(0)
-}
-
-#[cfg(all(
-    feature = "rayon",
-    any(feature = "parry", feature = "rhusics", feature = "collide")
-))]
-fn should_parallelize(query_count: usize, estimated_work_per_query: usize) -> bool {
-    let threads = rayon::current_num_threads();
-    threads > 1
-        && query_count >= threads.saturating_mul(MIN_QUERIES_PER_THREAD)
-        && query_count.saturating_mul(estimated_work_per_query)
-            >= threads.saturating_mul(MIN_PARALLEL_WORK_PER_THREAD)
-}
-
-#[cfg(all(
-    feature = "rayon",
-    any(feature = "parry", feature = "rhusics", feature = "collide")
-))]
-fn parallel_grain_size(query_count: usize) -> usize {
-    let threads = rayon::current_num_threads().max(1);
-    query_count
-        .checked_div(threads.saturating_mul(4))
-        .unwrap_or(1)
-        .max(16)
 }
 
 #[cfg(all(
@@ -1799,7 +1696,7 @@ mod selected_tests {
                 .collect::<Vec<_>>();
 
             assert_eq!(
-                checker.collides_static_prepared_batch(&prepared, &positions, ..),
+                checker.collides_static_prepared_batch(&prepared, &positions, .., true),
                 expected,
                 "{engine:?}",
             );
@@ -1831,26 +1728,15 @@ mod selected_tests {
                 .collect::<Vec<_>>();
 
             assert_eq!(
-                checker
-                    .collides_dynamic_prepared_batch(&prepared_queries, TimeStep(5)..=TimeStep(6),),
+                checker.collides_dynamic_prepared_batch(
+                    &prepared_queries,
+                    TimeStep(5)..=TimeStep(6),
+                    true,
+                ),
                 expected,
                 "{engine:?}",
             );
         }
-    }
-
-    #[test]
-    fn parallel_policy_requires_enough_work_per_worker() {
-        let pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(8)
-            .build()
-            .unwrap();
-
-        pool.install(|| {
-            assert!(!should_parallelize(128, 1));
-            assert!(should_parallelize(1_024, 1));
-            assert!(should_parallelize(128, 16));
-        });
     }
 
     #[cfg(all(feature = "parry", feature = "rhusics"))]
@@ -1883,7 +1769,7 @@ mod selected_tests {
     }
 
     #[test]
-    fn parallel_static_matches_sequential_around_threshold() {
+    fn explicit_static_modes_match() {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(2)
             .build()
@@ -1894,11 +1780,7 @@ mod selected_tests {
                 .build_with_engine(engine)
                 .unwrap();
 
-            for count in [
-                MIN_QUERIES_PER_THREAD - 1,
-                MIN_QUERIES_PER_THREAD,
-                MIN_QUERIES_PER_THREAD + 1,
-            ] {
+            for count in [1, 512] {
                 let queries = (0..count)
                     .map(|index| {
                         let x = if index % 2 == 0 { 0.5 } else { 10.0 };
@@ -1924,7 +1806,7 @@ mod selected_tests {
 
                 assert_eq!(sequential, expected, "{engine:?}, {count}");
                 assert_eq!(
-                    pool.install(|| checker.collides_static_batch(&queries, ..)),
+                    pool.install(|| checker.collides_static_batch(&queries, .., true)),
                     expected,
                     "{engine:?}, {count}"
                 );
@@ -1933,7 +1815,7 @@ mod selected_tests {
     }
 
     #[test]
-    fn parallel_dynamic_matches_sequential_around_threshold() {
+    fn explicit_dynamic_modes_match() {
         let pool = rayon::ThreadPoolBuilder::new()
             .num_threads(2)
             .build()
@@ -1944,11 +1826,7 @@ mod selected_tests {
                 .build_with_engine(engine)
                 .unwrap();
 
-            for count in [
-                MIN_QUERIES_PER_THREAD - 1,
-                MIN_QUERIES_PER_THREAD,
-                MIN_QUERIES_PER_THREAD + 1,
-            ] {
+            for count in [1, 256] {
                 let queries = (0..count)
                     .map(|index| {
                         let x = if index % 2 == 0 { 4.0 } else { 10.0 };
@@ -1968,9 +1846,11 @@ mod selected_tests {
 
                 assert_eq!(sequential, expected, "{engine:?}, {count}");
                 assert_eq!(
-                    pool.install(
-                        || checker.collides_dynamic_batch(&queries, TimeStep(5)..=TimeStep(6))
-                    ),
+                    pool.install(|| checker.collides_dynamic_batch(
+                        &queries,
+                        TimeStep(5)..=TimeStep(6),
+                        true
+                    )),
                     expected,
                     "{engine:?}, {count}"
                 );
@@ -2060,7 +1940,7 @@ mod selected_tests {
                 ),
             ];
             assert_eq!(
-                checker.collides_static_heterogeneous_batch(static_sources, ..),
+                checker.collides_static_heterogeneous_batch(static_sources, .., true),
                 static_expected,
                 "{engine:?}"
             );
@@ -2077,7 +1957,8 @@ mod selected_tests {
             assert_eq!(
                 checker.collides_dynamic_heterogeneous_batch(
                     dynamic_sources,
-                    TimeStep(0)..=TimeStep(0)
+                    TimeStep(0)..=TimeStep(0),
+                    true,
                 ),
                 expected,
                 "{engine:?}"
@@ -2105,7 +1986,7 @@ mod selected_tests {
             ];
 
             assert_eq!(
-                other.collides_static_heterogeneous_batch(sources, ..),
+                other.collides_static_heterogeneous_batch(sources, .., true),
                 vec![Err(CrccError::Unsupported), Err(CrccError::Unsupported)],
                 "{engine:?}"
             );

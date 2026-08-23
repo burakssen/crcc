@@ -129,11 +129,6 @@ impl DynamicObstacle {
     pub(crate) fn active_time_bounds(&self) -> Option<(TimeStep, TimeStep)> {
         self.0.active_time_bounds()
     }
-
-    #[cfg(feature = "rayon")]
-    pub(crate) fn work_estimate(&self) -> usize {
-        self.0.len().max(1)
-    }
 }
 
 fn validate_trajectory(positions: &[DPose2], time_offset: TimeStep) -> CrccResult<()> {
@@ -229,11 +224,6 @@ impl<E> GenericDynamicObstacle<E> {
         let last_index = self.len().checked_sub(1)?;
         let end = self.time_offset.checked_add_steps(last_index)?;
         Some((self.time_offset, end))
-    }
-
-    #[cfg(feature = "rayon")]
-    pub(crate) fn work_estimate(&self) -> usize {
-        self.len().max(1)
     }
 
     fn len(&self) -> usize {

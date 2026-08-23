@@ -196,11 +196,6 @@ impl CollisionObject {
         )
     }
 
-    #[cfg(feature = "rayon")]
-    pub(crate) fn work_estimate(&self) -> usize {
-        self.collision_objects.len().max(1)
-    }
-
     /// Returns the union of this object and `other`.
     #[must_use]
     pub fn merge(self, other: Self) -> Self {

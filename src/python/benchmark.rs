@@ -34,7 +34,7 @@ pub fn collides_static_batch_fresh_pool(
         pool.install(|| {
             checker
                 .as_ref()
-                .collides_static_batch(&positioned_query_shapes, time_range)
+                .collides_static_batch(&positioned_query_shapes, time_range, true)
                 .into_iter()
                 .map(|result| result.map(CollisionStatus::from))
                 .collect::<Result<Vec<_>, _>>()

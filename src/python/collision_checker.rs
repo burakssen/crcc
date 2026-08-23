@@ -231,11 +231,11 @@ impl CollisionChecker {
         ))
     }
 
-    #[pyo3(signature = (queries, min_time = None, max_time = None))]
+    #[pyo3(signature = (queries, min_time = None, max_time = None, parallel = false))]
     /// Checks positioned fixed shapes and returns statuses in input order.
     ///
-    /// Entries may mix raw objects with prepared geometry. Small batches run
-    /// sequentially; larger batches are dispatched to Rayon automatically.
+    /// Entries may mix raw objects with prepared geometry. Set `parallel=True`
+    /// to execute the batch on Rayon's active pool.
     ///
     /// # Errors
     ///
@@ -248,6 +248,7 @@ impl CollisionChecker {
         queries: Vec<(Bound<'_, PyAny>, Pose)>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
+        parallel: bool,
     ) -> PyResult<Vec<CollisionStatus>> {
         let time_range = min_max_to_range(min_time, max_time)?;
         let sources = queries
@@ -265,15 +266,15 @@ impl CollisionChecker {
             })
             .collect::<PyResult<Vec<_>>>()?;
 
-        run_static_batch(&self.0, py, sources, time_range)
+        run_static_batch(&self.0, py, sources, time_range, parallel)
     }
 
-    #[pyo3(signature = (queries, min_time=None, max_time=None))]
+    #[pyo3(signature = (queries, min_time=None, max_time=None, parallel = false))]
     /// Checks moving obstacles or prepared trajectories over an inclusive time
     /// window and returns statuses in input order.
     ///
-    /// Entries may mix raw obstacles with prepared trajectories. Small batches
-    /// run sequentially; larger batches are dispatched to Rayon automatically.
+    /// Entries may mix raw obstacles with prepared trajectories. Set
+    /// `parallel=True` to execute the batch on Rayon's active pool.
     ///
     /// # Errors
     ///
@@ -286,6 +287,7 @@ impl CollisionChecker {
         queries: Vec<Bound<'_, PyAny>>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
+        parallel: bool,
     ) -> PyResult<Vec<CollisionStatus>> {
         let time_range = min_max_to_range(min_time, max_time)?;
         let sources = queries
@@ -303,7 +305,7 @@ impl CollisionChecker {
             })
             .collect::<PyResult<Vec<_>>>()?;
 
-        run_dynamic_batch(&self.0, py, sources, time_range)
+        run_dynamic_batch(&self.0, py, sources, time_range, parallel)
     }
 
     #[pyo3(signature = (query, position = None, min_time = None, max_time = None))]
@@ -331,7 +333,7 @@ impl CollisionChecker {
             .into())
     }
 
-    #[pyo3(signature = (query, positions, min_time = None, max_time = None))]
+    #[pyo3(signature = (query, positions, min_time = None, max_time = None, parallel = false))]
     /// Deprecated: use `collides_static_batch([(query, pose), ...])`.
     #[allow(clippy::needless_pass_by_value)]
     pub fn collides_static_prepared_batch(
@@ -341,6 +343,7 @@ impl CollisionChecker {
         positions: Vec<Pose>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
+        parallel: bool,
     ) -> PyResult<Vec<CollisionStatus>> {
         warn_deprecated(
             py,
@@ -351,7 +354,7 @@ impl CollisionChecker {
             .into_iter()
             .map(|position| (StaticSource::Prepared(Arc::clone(&query.0)), position.0))
             .collect::<Vec<_>>();
-        run_static_batch(&self.0, py, sources, time_range)
+        run_static_batch(&self.0, py, sources, time_range, parallel)
     }
 
     #[pyo3(signature = (query, min_time=None, max_time=None))]
@@ -373,7 +376,7 @@ impl CollisionChecker {
             .into())
     }
 
-    #[pyo3(signature = (queries, min_time = None, max_time = None))]
+    #[pyo3(signature = (queries, min_time = None, max_time = None, parallel = false))]
     /// Deprecated: use `collides_dynamic_batch([...])`.
     #[allow(clippy::needless_pass_by_value)]
     pub fn collides_dynamic_prepared_batch(
@@ -382,6 +385,7 @@ impl CollisionChecker {
         queries: Vec<Py<PreparedDynamicQuery>>,
         min_time: Option<TimeStepInner>,
         max_time: Option<TimeStepInner>,
+        parallel: bool,
     ) -> PyResult<Vec<CollisionStatus>> {
         warn_deprecated(
             py,
@@ -392,7 +396,7 @@ impl CollisionChecker {
             .iter()
             .map(|query| DynamicSource::Prepared(Arc::clone(&query.bind(py).borrow().0)))
             .collect::<Vec<_>>();
-        run_dynamic_batch(&self.0, py, sources, time_range)
+        run_dynamic_batch(&self.0, py, sources, time_range, parallel)
     }
 
     #[pyo3(signature = (query, min_time=None, max_time=None))]
@@ -424,8 +428,7 @@ impl CollisionChecker {
     }
 
     #[pyo3(signature = (positioned_query_shapes, min_time = None, max_time = None))]
-    /// Deprecated: parallel execution is selected automatically by
-    /// [`Self::collides_static_batch`].
+    /// Deprecated: use [`Self::collides_static_batch`] with `parallel=True`.
     pub fn par_static(
         &self,
         py: Python<'_>,
@@ -435,19 +438,18 @@ impl CollisionChecker {
     ) -> PyResult<Vec<CollisionStatus>> {
         warn_deprecated(
             py,
-            c"par_static() is deprecated; use collides_static_batch(), which selects parallel execution automatically",
+            c"par_static() is deprecated; use collides_static_batch(..., parallel=True)",
         )?;
         let time_range = min_max_to_range(min_time, max_time)?;
         let sources = positioned_query_shapes
             .into_iter()
             .map(|(obstacle, position)| (StaticSource::Raw(obstacle.as_ref().clone()), position.0))
             .collect::<Vec<_>>();
-        run_static_batch(&self.0, py, sources, time_range)
+        run_static_batch(&self.0, py, sources, time_range, true)
     }
 
     #[pyo3(signature = (dynamic_obstacles, min_time=None, max_time=None))]
-    /// Deprecated: parallel execution is selected automatically by
-    /// [`Self::collides_dynamic_batch`].
+    /// Deprecated: use [`Self::collides_dynamic_batch`] with `parallel=True`.
     pub fn par_dynamic(
         &self,
         py: Python<'_>,
@@ -457,14 +459,14 @@ impl CollisionChecker {
     ) -> PyResult<Vec<CollisionStatus>> {
         warn_deprecated(
             py,
-            c"par_dynamic() is deprecated; use collides_dynamic_batch(), which selects parallel execution automatically",
+            c"par_dynamic() is deprecated; use collides_dynamic_batch(..., parallel=True)",
         )?;
         let time_range = min_max_to_range(min_time, max_time)?;
         let sources = dynamic_obstacles
             .into_iter()
             .map(|obstacle| DynamicSource::Raw(obstacle.as_ref().clone()))
             .collect::<Vec<_>>();
-        run_dynamic_batch(&self.0, py, sources, time_range)
+        run_dynamic_batch(&self.0, py, sources, time_range, true)
     }
 }
 
@@ -474,6 +476,7 @@ fn run_static_batch(
     py: Python<'_>,
     sources: Vec<(StaticSource, DPose2)>,
     time_range: RangeInclusive<TimeStep>,
+    parallel: bool,
 ) -> PyResult<Vec<CollisionStatus>> {
     if sources.is_empty() {
         return Ok(Vec::new());
@@ -519,10 +522,10 @@ fn run_static_batch(
 
     let results: Vec<crate::collision_checker::CollisionResult> = py.detach(move || match plan {
         StaticBatchPlan::Raw(positioned) => {
-            checker.collides_static_batch(&positioned, time_range.clone())
+            checker.collides_static_batch(&positioned, time_range.clone(), parallel)
         }
         StaticBatchPlan::Prepared(query, positions) => {
-            checker.collides_static_prepared_batch(&query, &positions, time_range.clone())
+            checker.collides_static_prepared_batch(&query, &positions, time_range.clone(), parallel)
         }
         StaticBatchPlan::Heterogeneous(entries) => {
             let references: Vec<(RustStaticBatchQuery<'_>, DPose2)> = entries
@@ -537,7 +540,7 @@ fn run_static_batch(
                     (query, *position)
                 })
                 .collect();
-            checker.collides_static_heterogeneous_batch(references, time_range)
+            checker.collides_static_heterogeneous_batch(references, time_range, parallel)
         }
     });
 
@@ -554,6 +557,7 @@ fn run_dynamic_batch(
     py: Python<'_>,
     sources: Vec<DynamicSource>,
     time_range: RangeInclusive<TimeStep>,
+    parallel: bool,
 ) -> PyResult<Vec<CollisionStatus>> {
     if sources.is_empty() {
         return Ok(Vec::new());
@@ -594,10 +598,10 @@ fn run_dynamic_batch(
 
     let results: Vec<crate::collision_checker::CollisionResult> = py.detach(move || match plan {
         DynamicBatchPlan::Raw(obstacles) => {
-            checker.collides_dynamic_batch(&obstacles, time_range.clone())
+            checker.collides_dynamic_batch(&obstacles, time_range.clone(), parallel)
         }
         DynamicBatchPlan::Prepared(queries) => {
-            checker.collides_dynamic_prepared_batch(&queries, time_range.clone())
+            checker.collides_dynamic_prepared_batch(&queries, time_range.clone(), parallel)
         }
         DynamicBatchPlan::Heterogeneous(entries) => {
             let references: Vec<RustDynamicBatchQuery<'_>> = entries
@@ -607,7 +611,7 @@ fn run_dynamic_batch(
                     DynamicSource::Prepared(prepared) => RustDynamicBatchQuery::Prepared(prepared),
                 })
                 .collect();
-            checker.collides_dynamic_heterogeneous_batch(references, time_range)
+            checker.collides_dynamic_heterogeneous_batch(references, time_range, parallel)
         }
     });
 

@@ -477,7 +477,7 @@ def _run_api_overhead_suite(config, engine_items):
             try:
                 if positioned:
                     checker.collides_static(*positioned[0])
-                checker.collides_static_batch(positioned)
+                checker.collides_static_batch(positioned, parallel=True)
                 _benchmark.collides_static_batch_fresh_pool(checker, positioned, 1)
             except Exception:
                 pass
@@ -487,7 +487,7 @@ def _run_api_overhead_suite(config, engine_items):
                     return [checker.collides_static(shape, pose) for shape, pose in positioned]
 
                 def batch_call():
-                    return checker.collides_static_batch(positioned)
+                    return checker.collides_static_batch(positioned, parallel=True)
 
                 def fresh_pool_call():
                     return _benchmark.collides_static_batch_fresh_pool(checker, positioned, 1)
@@ -519,8 +519,8 @@ def _run_api_overhead_suite(config, engine_items):
                     )
                 for workload_name, api_mode, total_ns, values in (
                     ("python_scalar", "scalar", scalar_ns, scalar),
-                    ("python_batch", "batch_global", batch_ns, batch),
-                    ("python_batch_fresh_pool_1t", "batch_fresh_pool", fresh_pool_ns, fresh_pool),
+                    ("python_batch", "batch_parallel", batch_ns, batch),
+                    ("python_batch_fresh_pool_1t", "batch_parallel_fresh_pool", fresh_pool_ns, fresh_pool),
                 ):
                     runs.append(
                         RunResult(
@@ -542,7 +542,7 @@ def _run_api_overhead_suite(config, engine_items):
                             operation="static_discrete",
                             api_mode=api_mode,
                             batch_size=batch_size,
-                            threads=1 if api_mode == "batch_fresh_pool" else 0,
+                            threads=1 if api_mode == "batch_parallel_fresh_pool" else 0,
                             sample_semantics="batch_average" if api_mode != "scalar" else "call_average",
                             static_scene_objects=1,
                             hit_class="mixed_50pct",
@@ -573,7 +573,7 @@ def _run_api_overhead_suite(config, engine_items):
                             shape="circle",
                             scene_kind="python_end_to_end",
                             operation="static_discrete",
-                            api_mode="batch_threaded_fresh_pool",
+                            api_mode="batch_parallel_fresh_pool",
                             batch_size=batch_size,
                             threads=threads,
                             sample_semantics="batch_average",
@@ -707,14 +707,16 @@ def _run_dynamic_batch_suite(config, engine_items):
                 checker = built_checker
                 try:
                     checker.collides_dynamic(obstacles[0])
-                    checker.collides_dynamic_batch(obstacles)
+                    checker.collides_dynamic_batch(obstacles, parallel=True)
                 except Exception:
                     pass
                 for repetition in range(config.repetitions):
                     scalar_ns, scalar = _stable_call_time(
                         lambda: [checker.collides_dynamic(obstacle) for obstacle in obstacles]
                     )
-                    batch_ns, batch = _stable_call_time(lambda: checker.collides_dynamic_batch(obstacles))
+                    batch_ns, batch = _stable_call_time(
+                        lambda: checker.collides_dynamic_batch(obstacles, parallel=True)
+                    )
                     if repetition == 0:
                         mismatches = sum(
                             (left.collides, left.time_step) != (right.collides, right.time_step)
@@ -737,7 +739,7 @@ def _run_dynamic_batch_suite(config, engine_items):
                         )
                     for workload, api_mode, total_ns, values in (
                         ("dynamic_scalar", "scalar", scalar_ns, scalar),
-                        ("dynamic_batch", "batch_global", batch_ns, batch),
+                        ("dynamic_batch", "batch_parallel", batch_ns, batch),
                     ):
                         runs.append(
                             RunResult(
@@ -783,11 +785,13 @@ def _run_dynamic_batch_suite(config, engine_items):
                     ]
                 )
                 batch_ns, batch = _stable_call_time(
-                    lambda: checker.collides_dynamic_batch(window_obstacles, min_time=0, max_time=window_steps - 1)
+                    lambda: checker.collides_dynamic_batch(
+                        window_obstacles, min_time=0, max_time=window_steps - 1, parallel=True
+                    )
                 )
                 for workload, api_mode, total_ns, values in (
                     ("dynamic_window_scalar", "scalar", scalar_ns, scalar),
-                    ("dynamic_window_batch", "batch_global", batch_ns, batch),
+                    ("dynamic_window_batch", "batch_parallel", batch_ns, batch),
                 ):
                     runs.append(
                         RunResult(
@@ -863,14 +867,16 @@ def _run_time_variant_suite(config, engine_items):
                 checker = built_checker
                 try:
                     checker.collides_dynamic(obstacles[0])
-                    checker.collides_dynamic_batch(obstacles)
+                    checker.collides_dynamic_batch(obstacles, parallel=True)
                 except Exception:
                     pass
                 for repetition in range(config.repetitions):
                     scalar_ns, scalar = _stable_call_time(
                         lambda: [checker.collides_dynamic(obstacle) for obstacle in obstacles]
                     )
-                    batch_ns, batch = _stable_call_time(lambda: checker.collides_dynamic_batch(obstacles))
+                    batch_ns, batch = _stable_call_time(
+                        lambda: checker.collides_dynamic_batch(obstacles, parallel=True)
+                    )
                     if repetition == 0:
                         mismatches = sum(
                             (left.collides, left.time_step) != (right.collides, right.time_step)
@@ -893,7 +899,7 @@ def _run_time_variant_suite(config, engine_items):
                         )
                     for workload, api_mode, total_ns, values in (
                         ("time_variant_scalar", "scalar", scalar_ns, scalar),
-                        ("time_variant_batch", "batch_global", batch_ns, batch),
+                        ("time_variant_batch", "batch_parallel", batch_ns, batch),
                     ):
                         runs.append(
                             RunResult(
@@ -1620,13 +1626,13 @@ def _measure_checker_parallel(backend, checker, workload, repetition):
     try:
         if workload.positioned_queries:
             checker.collides_static_batch(
-                workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))]
+                workload.positioned_queries[: min(WARMUP_QUERY_COUNT, len(workload.positioned_queries))], parallel=True
             )
     except Exception:
         pass
     start = time.perf_counter_ns()
     try:
-        results = checker.collides_static_batch(workload.positioned_queries)
+        results = checker.collides_static_batch(workload.positioned_queries, parallel=True)
         errors = 0
     except Exception:
         results = []
@@ -1705,7 +1711,7 @@ def _parallel_correctness(backend, checker, workload):
     errors = 0
     mismatches = 0
     try:
-        parallel = checker.collides_static_batch(positioned)
+        parallel = checker.collides_static_batch(positioned, parallel=True)
         sequential = [checker.collides_static(workload.car, pose) for pose in poses]
     except Exception:
         # A backend error must not kill the whole scenario suite; failed

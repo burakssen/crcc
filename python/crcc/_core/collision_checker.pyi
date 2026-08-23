@@ -73,6 +73,7 @@ class CollisionChecker:
         queries: Sequence[tuple[CollisionObject | PreparedStaticQuery, Pose]],
         min_time: int | None = None,
         max_time: int | None = None,
+        parallel: bool = False,
     ) -> list[CollisionStatus]: ...
     @overload
     def collides_dynamic(
@@ -93,10 +94,10 @@ class CollisionChecker:
         queries: Sequence[DynamicObstacle | PreparedDynamicQuery],
         min_time: int | None = None,
         max_time: int | None = None,
+        parallel: bool = False,
     ) -> list[CollisionStatus]: ...
 
-    # Deprecated aliases retained for one release; parallel execution is
-    # selected automatically by the batch methods.
+    # Deprecated aliases retained for one release.
     def collides_static_prepared(
         self,
         query: PreparedStaticQuery,
@@ -110,6 +111,7 @@ class CollisionChecker:
         positions: Sequence[Pose],
         min_time: int | None = None,
         max_time: int | None = None,
+        parallel: bool = False,
     ) -> list[CollisionStatus]: ...
     def par_static(
         self,
@@ -128,6 +130,7 @@ class CollisionChecker:
         queries: Sequence[PreparedDynamicQuery],
         min_time: int | None = None,
         max_time: int | None = None,
+        parallel: bool = False,
     ) -> list[CollisionStatus]: ...
     def par_dynamic(
         self,

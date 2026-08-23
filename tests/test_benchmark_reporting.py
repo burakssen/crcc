@@ -164,13 +164,13 @@ def test_plot_names_exclude_mixed_sequential_rayon_views():
     }.isdisjoint(PLOT_NAMES)
 
 
-def test_execution_mode_classifies_rayon_threshold():
+def test_execution_mode_uses_explicit_batch_mode():
     assert _execution_mode({"api_mode": "scalar", "batch_size": "32"}) == "sequential"
-    assert _execution_mode({"api_mode": "batch_global", "batch_size": "31"}) == "sequential"
-    assert _execution_mode({"api_mode": "batch_global", "batch_size": "128"}) == "rayon"
-    assert _execution_mode({"api_mode": "batch_global", "batch_size": "127"}) == "sequential"
+    assert _execution_mode({"api_mode": "batch_sequential", "batch_size": "128"}) == "sequential"
+    assert _execution_mode({"api_mode": "batch_parallel", "batch_size": "1"}) == "rayon"
+    assert _execution_mode({"api_mode": "batch_parallel_fresh_pool", "batch_size": "1"}) == "rayon"
     assert _execution_mode({"api_mode": "batch_reusable", "batch_size": "512", "threads": "2"}) == "rayon"
-    assert _execution_mode({"api_mode": "batch_reusable", "batch_size": "128", "threads": "2"}) == "sequential"
+    assert _execution_mode({"api_mode": "batch_reusable", "batch_size": "128", "threads": "2"}) == "rayon"
     assert _execution_mode({"workload": "static_sequential"}) == "sequential"
     assert _execution_mode({"workload": "static_parallel"}) == "rayon"
 
@@ -253,7 +253,7 @@ def test_faceted_api_and_incremental_memory_plots_are_written(tmp_path):
             "workload": workload,
             "queries": str(queries),
             "batch_size": str(queries),
-            "api_mode": "scalar" if workload == "python_scalar" else "batch_global",
+            "api_mode": "scalar" if workload == "python_scalar" else "batch_parallel",
             "ns_per_query_median": str(value),
         }
         for backend in ("parry", "rhusics", "collide")
@@ -308,7 +308,7 @@ def test_execution_layer_plot_compares_python_with_native_rust(tmp_path):
 def test_mode_comparisons_pair_repetitions_and_preserve_dimensions():
     runs = []
     for repetition, scalar_ns, batch_ns in ((0, 1_000, 500), (1, 1_200, 600)):
-        for mode, total_ns in (("scalar", scalar_ns), ("batch_global", batch_ns)):
+        for mode, total_ns in (("scalar", scalar_ns), ("batch_parallel", batch_ns)):
             runs.append(
                 RunResult(
                     "dynamic_batch",
@@ -338,7 +338,7 @@ def test_mode_comparisons_pair_repetitions_and_preserve_dimensions():
             "backend": "parry",
             "execution_layer": "python_end_to_end",
             "baseline_mode": "scalar",
-            "candidate_mode": "batch_global",
+            "candidate_mode": "batch_parallel",
             "batch_size": 10,
             "threads": 0,
             "trajectory_steps": 16,

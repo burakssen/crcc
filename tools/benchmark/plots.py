@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
-from .config import ENGINE_ITEMS, RAYON_MIN_QUERIES_PER_THREAD, RAYON_MIN_WORK_PER_THREAD
+from .config import ENGINE_ITEMS
 from .io import ArtifactBundle, load_artifacts
 
 # Apply a clean, modern design styling globally
@@ -770,7 +770,7 @@ def _plot_dynamic_time_window_scaling(path_base: Path, rows, execution_mode: str
     backends = _present_backends(window_rows)
     fig, ax = plt.subplots(figsize=(8.8, 5.2), layout="constrained")
     for backend in backends:
-        modes = (("scalar", "--"),) if execution_mode == "sequential" else (("batch_global", "-"),)
+        modes = (("scalar", "--"),) if execution_mode == "sequential" else (("batch_parallel", "-"),)
         for mode, linestyle in modes:
             selected = sorted(
                 [row for row in window_rows if row["backend"] == backend and row["api_mode"] == mode],
@@ -1114,14 +1114,10 @@ def _execution_mode(row):
         return "sequential"
     if workload == "static_parallel":
         return "rayon"
-    batch_size = _int(row.get("batch_size") or row.get("queries"))
-    estimated_work = 2 if str(row.get("operation", "")).startswith("dynamic") else 1
-    if row.get("api_mode") == "batch_reusable":
-        threads = max(1, _int(row.get("threads")))
-        enough_items = batch_size >= threads * RAYON_MIN_QUERIES_PER_THREAD
-        enough_work = batch_size * estimated_work >= threads * RAYON_MIN_WORK_PER_THREAD
-        return "rayon" if threads > 1 and enough_items and enough_work else "sequential"
-    return "rayon" if batch_size >= RAYON_MIN_WORK_PER_THREAD else "sequential"
+    api_mode = str(row.get("api_mode", ""))
+    if api_mode == "batch_reusable" or api_mode.startswith("batch_parallel"):
+        return "rayon"
+    return "sequential"
 
 
 def _is_true(value):

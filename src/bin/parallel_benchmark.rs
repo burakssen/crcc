@@ -164,7 +164,7 @@ fn benchmark_static(
             .collect::<BenchmarkResult<Vec<_>>>()
     };
 
-    let parallel = || pool.install(|| checker.collides_static_batch(&queries, ..));
+    let parallel = || pool.install(|| checker.collides_static_batch(&queries, .., true));
 
     measure(sequential, parallel, iterations)
 }
@@ -200,7 +200,7 @@ fn benchmark_dynamic(
             .collect::<BenchmarkResult<Vec<_>>>()
     };
 
-    let parallel = || pool.install(|| checker.collides_dynamic_batch(&queries, ..));
+    let parallel = || pool.install(|| checker.collides_dynamic_batch(&queries, .., true));
 
     measure(sequential, parallel, iterations)
 }

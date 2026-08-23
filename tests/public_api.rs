@@ -78,7 +78,7 @@ fn root_api_covers_pair_and_checker_queries() {
 
         #[cfg(feature = "rayon")]
         assert_eq!(
-            checker.collides_static_batch(&[(query.clone(), Pose::IDENTITY)], ..,),
+            checker.collides_static_batch(&[(query.clone(), Pose::IDENTITY)], .., false),
             vec![Ok(CollisionStatus::CollidesStatic)],
             "{engine:?}",
         );
