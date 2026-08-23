@@ -10,6 +10,7 @@ from tools.benchmark.config import SCHEMA_VERSION
 from tools.benchmark.io import (
     ARTIFACT_FIELDS,
     ArtifactError,
+    _best_parallel_rows,
     _plot_interpretation,
     load_artifacts,
     write_report_from_artifacts,
@@ -18,11 +19,13 @@ from tools.benchmark.plots import (
     PLOT_NAMES,
     _backend_handles,
     _execution_mode,
+    _parallel_scaling_rows,
     _plot_api_batch_amortization,
     _plot_execution_layer_cost,
     _plot_memory_growth,
 )
 from tools.benchmark.results import RunResult, compare_layers, compare_modes, compare_runs, summarize_runs
+from tools.benchmark.runner import _parallel_speedup, _reusable_thread_counts
 from tools.benchmark.workloads import (
     coverage_matrix_workloads,
     dynamic_query_batch,
@@ -173,6 +176,91 @@ def test_execution_mode_uses_explicit_batch_mode():
     assert _execution_mode({"api_mode": "batch_reusable", "batch_size": "128", "threads": "2"}) == "rayon"
     assert _execution_mode({"workload": "static_sequential"}) == "sequential"
     assert _execution_mode({"workload": "static_parallel"}) == "rayon"
+
+
+def test_rayon_speedup_uses_one_thread_batch_baseline():
+    assert _parallel_speedup(100, 100, 1) == (1.0, 1.0)
+    assert _parallel_speedup(50, 100, 2) == (2.0, 1.0)
+    assert _parallel_speedup(25, 100, 4) == (4.0, 1.0)
+
+
+def test_reusable_parallel_suite_preserves_requested_thread_counts():
+    assert _reusable_thread_counts((2, 4, 16)) == (1, 2, 4, 16)
+
+
+def test_rayon_scaling_rows_keep_operation_and_largest_batch_dimensions():
+    rows = [
+        {
+            "api_mode": "batch_reusable",
+            "backend": backend,
+            "operation": operation,
+            "batch_size": str(batch_size),
+            "threads": str(threads),
+            "speedup": "1.0",
+            "efficiency": "1.0",
+        }
+        for backend in ("parry", "collide")
+        for operation in ("static", "dynamic")
+        for batch_size in (128, 10_000)
+        for threads in (1, 2, 4)
+    ]
+    rows.append(
+        {
+            "api_mode": "batch_reusable",
+            "backend": "parry",
+            "operation": "static",
+            "batch_size": "10_000",
+            "threads": "8",
+            "speedup": "1.0",
+            "efficiency": "1.0",
+        }
+    )
+
+    selected = _parallel_scaling_rows(rows)
+
+    assert {row["operation"] for row in selected} == {"static", "dynamic"}
+    assert {int(row["batch_size"]) for row in selected} == {10_000}
+    assert {int(row["threads"]) for row in selected if row["backend"] == "parry"} == {1, 2, 4, 8}
+
+
+def test_parallel_report_uses_largest_batch_median_not_best_repetition():
+    rows = [
+        {
+            "api_mode": "batch_reusable",
+            "scenario": "reusable_static_128",
+            "backend": "parry",
+            "batch_size": "128",
+            "threads": "2",
+            "speedup": "9.0",
+            "efficiency": "4.5",
+        },
+        {
+            "api_mode": "batch_reusable",
+            "scenario": "reusable_static_10000",
+            "backend": "parry",
+            "batch_size": "10000",
+            "threads": "2",
+            "speedup": "1.5",
+            "efficiency": "0.75",
+        },
+        {
+            "api_mode": "batch_reusable",
+            "scenario": "reusable_static_10000",
+            "backend": "parry",
+            "batch_size": "10000",
+            "threads": "2",
+            "speedup": "2.5",
+            "efficiency": "1.25",
+        },
+    ]
+
+    assert _best_parallel_rows(rows) == [
+        {
+            **rows[1],
+            "speedup": "2.000",
+            "efficiency": "1.000",
+        }
+    ]
 
 
 def test_report_default_output_is_repository_relative():

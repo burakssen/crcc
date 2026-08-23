@@ -366,13 +366,22 @@ def write_report_rows(path: Path, artifacts: ArtifactBundle):
 
 
 def _best_parallel_rows(rows):
+    reusable = [row for row in rows if row.get("api_mode") == "batch_reusable"]
+    if not reusable:
+        return []
+    largest_batch_size = max(_int(row.get("batch_size")) for row in reusable)
     grouped = {}
-    for row in rows:
+    for row in reusable:
+        if _int(row.get("batch_size")) != largest_batch_size:
+            continue
         key = (row["scenario"], row["backend"], row["threads"])
         grouped.setdefault(key, []).append(row)
     result = []
     for group in grouped.values():
-        result.append(max(group, key=lambda row: _float(row["speedup"])))
+        representative = dict(group[0])
+        representative["speedup"] = f"{median(_float(row['speedup']) for row in group):.3f}"
+        representative["efficiency"] = f"{median(_float(row['efficiency']) for row in group):.3f}"
+        result.append(representative)
     return sorted(result, key=lambda row: (row["scenario"], row["backend"], _int(row["threads"])))
 
 
@@ -399,13 +408,13 @@ PLOT_GUIDANCE = {
     ),
     "rayon_scaling_summary": (
         "Summarize throughput speedup as the Rayon worker count increases.",
-        "Lines show median speedup relative to one Rayon worker with IQR bands; the dashed diagonal is ideal linear scaling.",
-        "Superlinear points can arise from cache, scheduling, and measurement effects and should not be interpreted as guaranteed scaling.",
+        "Lines show median speedup relative to one Rayon worker for the largest reusable batch, with separate static and dynamic panels; the dashed diagonal is ideal linear scaling.",
+        "Small batches are intentionally excluded from this scaling view because scheduling overhead can dominate them; they remain available in the raw CSV.",
     ),
     "rayon_efficiency_summary": (
         "Show how effectively each backend converts additional Rayon workers into speedup.",
-        "Efficiency is speedup divided by thread count. The dashed line at 1 is ideal; declining curves indicate diminishing returns.",
-        "Efficiency aggregates heterogeneous scenarios and can hide scenario-specific contention or workload-size effects.",
+        "Efficiency is speedup divided by thread count for the largest reusable batch, with separate static and dynamic panels. The dashed line at 1 is ideal; declining curves indicate diminishing returns.",
+        "Efficiency is derived from the same reusable-pool timing rows as the scaling plot; it is not a CPU-utilization measurement.",
     ),
     "commonroad_scenario_sequential": (
         "Show sequential throughput on each CommonRoad scenario.",
@@ -545,13 +554,21 @@ def _plot_observations(name, summary, comparisons, correctness, parallel, memory
         ]
     if name in {"rayon_scaling_summary", "rayon_efficiency_summary"}:
         metric = "speedup" if name == "rayon_scaling_summary" else "efficiency"
+        reusable = [row for row in parallel if row.get("api_mode") == "batch_reusable"]
+        largest_batch_size = max((_int(row.get("batch_size")) for row in reusable), default=0)
+        reusable = [row for row in reusable if _int(row.get("batch_size")) == largest_batch_size]
         observations = []
         for backend in sorted({row["backend"] for row in parallel}):
-            backend_rows = [row for row in parallel if row["backend"] == backend]
-            best = max(backend_rows, key=lambda row: _float(row[metric]))
-            observations.append(
-                f"{backend.title()} reaches a maximum recorded {metric} of {_float(best[metric]):.2f} at {_int(best['threads'])} threads."
-            )
+            backend_rows = [row for row in reusable if row["backend"] == backend]
+            for operation in sorted({row.get("operation") or "all" for row in backend_rows}):
+                operation_rows = [row for row in backend_rows if (row.get("operation") or "all") == operation]
+                if not operation_rows:
+                    continue
+                best = max(operation_rows, key=lambda row: _float(row[metric]))
+                observations.append(
+                    f"{backend.title()} {operation} reaches a maximum recorded {metric} of "
+                    f"{_float(best[metric]):.2f} at {_int(best['threads'])} threads for batch {largest_batch_size:,}."
+                )
         return observations or ["No parallel-scaling rows are available."]
     if name in {"commonroad_scenario_sequential", "commonroad_scenario_rayon"}:
         workload = "static_sequential" if name.endswith("sequential") else "static_parallel"

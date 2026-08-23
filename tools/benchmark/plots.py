@@ -349,61 +349,86 @@ def _plot_scenario_throughput(path_base: Path, rows, execution_mode: str):
 
 
 def _plot_parallel_summary(path_base: Path, rows, metric: str, ylabel: str):
-    rows = [row for row in rows if row.get("api_mode") == "batch_reusable"]
+    rows = _parallel_scaling_rows(rows)
     if not rows:
         _plot_status(path_base, ylabel.title(), "No parallel scaling rows")
         return
 
-    backends = _present_backends(rows)
-    fig, ax = plt.subplots(figsize=(8.8, 5.4), layout="constrained")
-    for backend in backends:
-        grouped = _group_metric_by_thread([row for row in rows if row["backend"] == backend], metric)
-        if not grouped:
-            continue
-        threads = sorted(grouped)
-        medians = []
-        lows = []
-        highs = []
-        for thread in threads:
-            low, median, high = _median_iqr(grouped[thread])
-            lows.append(low)
-            medians.append(median)
-            highs.append(high)
-        color = BACKEND_COLORS.get(backend)
-        ax.plot(
-            threads,
-            medians,
-            marker=BACKEND_MARKERS.get(backend, "o"),
-            color=color,
-            linewidth=2.0,
-            label=backend,
-            markersize=6,
-        )
-        ax.fill_between(threads, lows, highs, color=color, alpha=0.12, linewidth=0)
-
-    thread_values = sorted({_int(row["threads"]) for row in rows})
-    if thread_values:
-        ax.set_xticks(thread_values)
-        ax.set_xticklabels([str(t) for t in thread_values])
-    if metric == "speedup" and thread_values:
-        ax.plot(thread_values, thread_values, color="#6b7280", linestyle="--", linewidth=1.2, alpha=0.6, label="ideal")
-    if metric == "efficiency":
-        ax.axhline(1.0, color="#6b7280", linestyle="--", linewidth=1.2, alpha=0.6, label="ideal")
-        ax.set_ylim(bottom=0)
-    ax.set_title("Rayon Scaling Summary" if metric == "speedup" else "Rayon Efficiency Summary", loc="left", pad=12)
-    ax.set_xlabel("threads")
-    ax.set_ylabel(ylabel)
-    _style_axis(ax)
-    legend = ax.legend(
-        loc="upper left" if metric == "speedup" else "lower left",
-        fontsize=8.5,
-        title_fontsize=9,
-        frameon=True,
-        facecolor="#f9fafb",
-        edgecolor="#e5e7eb",
-        fancybox=True,
+    operations = sorted({row.get("operation") or "all" for row in rows})
+    batch_size = max(_int(row["batch_size"]) for row in rows)
+    fig, axes = plt.subplots(
+        len(operations),
+        1,
+        figsize=(8.8, 5.4 * len(operations)),
+        squeeze=False,
+        layout="constrained",
     )
-    legend.get_frame().set_linewidth(0.8)
+    for axis, operation in zip(axes.flat, operations, strict=True):
+        operation_rows = [row for row in rows if (row.get("operation") or "all") == operation]
+        backends = _present_backends(operation_rows)
+        for backend in backends:
+            grouped = _group_metric_by_thread([row for row in operation_rows if row["backend"] == backend], metric)
+            if not grouped:
+                continue
+            threads = sorted(grouped)
+            medians = []
+            lows = []
+            highs = []
+            for thread in threads:
+                low, median, high = _median_iqr(grouped[thread])
+                lows.append(low)
+                medians.append(median)
+                highs.append(high)
+            color = BACKEND_COLORS.get(backend)
+            axis.plot(
+                threads,
+                medians,
+                marker=BACKEND_MARKERS.get(backend, "o"),
+                color=color,
+                linewidth=2.0,
+                label=backend,
+                markersize=6,
+            )
+            axis.fill_between(threads, lows, highs, color=color, alpha=0.12, linewidth=0)
+
+        thread_values = sorted({_int(row["threads"]) for row in operation_rows})
+        if thread_values:
+            axis.set_xticks(thread_values)
+            axis.set_xticklabels([str(t) for t in thread_values])
+        if metric == "speedup" and thread_values:
+            axis.plot(
+                thread_values,
+                thread_values,
+                color="#6b7280",
+                linestyle="--",
+                linewidth=1.2,
+                alpha=0.6,
+                label="ideal",
+            )
+        if metric == "efficiency":
+            axis.axhline(1.0, color="#6b7280", linestyle="--", linewidth=1.2, alpha=0.6, label="ideal")
+            axis.set_ylim(bottom=0)
+        axis.set_title(f"{operation.title()} | batch size {batch_size:,}", loc="left", pad=12)
+        axis.set_xlabel("threads")
+        axis.set_ylabel(ylabel)
+        _style_axis(axis)
+        legend = axis.legend(
+            loc="upper left" if metric == "speedup" else "lower left",
+            fontsize=8.5,
+            title_fontsize=9,
+            frameon=True,
+            facecolor="#f9fafb",
+            edgecolor="#e5e7eb",
+            fancybox=True,
+        )
+        legend.get_frame().set_linewidth(0.8)
+    fig.suptitle(
+        "Rayon Scaling Summary" if metric == "speedup" else "Rayon Efficiency Summary",
+        x=0.02,
+        ha="left",
+        fontsize=12,
+        fontweight="bold",
+    )
     _save_plot(fig, path_base)
 
 
@@ -943,6 +968,14 @@ def _plot_backend_speedup_forest(path_base: Path, rows):
 
 def _synthetic_summary_rows(rows):
     return [row for row in rows if row["feature"] not in {"api_overhead", "scenario", "scene_scaling"}]
+
+
+def _parallel_scaling_rows(rows):
+    reusable = [row for row in rows if row.get("api_mode") == "batch_reusable"]
+    if not reusable:
+        return []
+    largest_batch_size = max(_int(row.get("batch_size")) for row in reusable)
+    return [row for row in reusable if _int(row.get("batch_size")) == largest_batch_size]
 
 
 def _group_metric_by_thread(rows, metric):

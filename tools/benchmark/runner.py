@@ -1029,18 +1029,23 @@ def _run_reusable_parallel_suite(config, engine_items):
     if binary is None:
         return runs, correctness, parallel_rows, memory_rows
     batch_sizes = (31, 32, 33, 128, 1_024, 10_000)
-    thread_counts = tuple(threads for threads in config.thread_counts if threads <= 8)
-    if 1 not in thread_counts:
-        thread_counts = (1, *thread_counts)
+    thread_counts = _reusable_thread_counts(config.thread_counts)
     iterations = 3 if config.profile == "smoke" else 10
     for backend, _engine in engine_items:
         for operation in ("static", "dynamic"):
             for batch_size in batch_sizes:
                 for repetition in range(config.repetitions):
+                    measurements = {}
                     for threads in thread_counts:
                         rows = _benchmark_subprocess([binary, backend, operation, batch_size, threads, iterations])
                         scalar = next((row for row in rows if row.get("api_mode") == "scalar"), None)
                         batch = next((row for row in rows if row.get("api_mode") == "batch_reusable"), None)
+                        measurements[threads] = (scalar, batch)
+
+                    baseline = measurements.get(1, (None, None))[1]
+                    baseline_ns = int(baseline["total_ns"]) if baseline else 0
+                    for threads in thread_counts:
+                        scalar, batch = measurements[threads]
                         if not scalar or not batch:
                             parallel_rows.append(
                                 {
@@ -1080,8 +1085,8 @@ def _run_reusable_parallel_suite(config, engine_items):
                                 )
                             )
                         runs.append(_parallel_worker_result(backend, batch, repetition))
-                        scalar_ns, batch_ns = int(scalar["total_ns"]), int(batch["total_ns"])
-                        speedup = scalar_ns / batch_ns if batch_ns else 0.0
+                        batch_ns = int(batch["total_ns"])
+                        speedup, efficiency = _parallel_speedup(batch_ns, baseline_ns, threads)
                         parallel_rows.append(
                             {
                                 "schema_version": SCHEMA_VERSION,
@@ -1095,13 +1100,25 @@ def _run_reusable_parallel_suite(config, engine_items):
                                 "total_ns": batch_ns,
                                 "queries_per_s": f"{batch_size * iterations * 1_000_000_000 / batch_ns:.3f}",
                                 "speedup": f"{speedup:.3f}",
-                                "efficiency": f"{speedup / threads:.3f}",
+                                "efficiency": f"{efficiency:.3f}",
                                 "operation": operation,
                                 "batch_size": batch_size,
                                 "api_mode": "batch_reusable",
                             }
                         )
     return runs, correctness, parallel_rows, memory_rows
+
+
+def _reusable_thread_counts(thread_counts):
+    counts = tuple(sorted({max(1, int(threads)) for threads in thread_counts}))
+    return counts if 1 in counts else (1, *counts)
+
+
+def _parallel_speedup(total_ns, baseline_ns, threads):
+    if total_ns <= 0 or baseline_ns <= 0 or threads <= 0:
+        return 0.0, 0.0
+    speedup = baseline_ns / total_ns
+    return speedup, speedup / threads
 
 
 def _parallel_worker_result(backend, row, repetition):

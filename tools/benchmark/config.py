@@ -4,7 +4,7 @@ from pathlib import Path
 
 from crcc import CollisionEngine
 
-SCHEMA_VERSION = "10"
+SCHEMA_VERSION = "11"
 BENCHMARK_SAMPLE_COUNT = 20_000
 BENCHMARK_REPETITIONS = 5
 WARMUP_QUERY_COUNT = 100
