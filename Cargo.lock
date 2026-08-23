@@ -143,6 +143,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "collision-detection"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a21f969d1a0a23e3b680439421383ee4cd3ca00ba517012205a9e4f1bca1cf2"
+dependencies = [
+ "collide",
+ "slab",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -160,6 +170,7 @@ dependencies = [
  "collide-convex",
  "collide-sphere",
  "collision",
+ "collision-detection",
  "derive_more",
  "enum_dispatch",
  "geo",

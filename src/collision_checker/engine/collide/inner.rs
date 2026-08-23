@@ -1,16 +1,17 @@
+use crate::collision_checker::engine::collide::manager::{
+    FiniteManager, finite_components_collide, finite_shapes_collide,
+};
 use crate::collision_checker::engine::collide::simple::{
-    CollideCollisionComponent, CollideSimpleCollisionObject, CollideVec2, FiniteShape,
-    FiniteShapeSupport, HalfSpaceComponent, vec2,
+    CollideCollisionComponent, CollideSimpleCollisionObject, FiniteShape, FiniteShapeSupport,
+    HalfSpaceComponent,
 };
 use crate::collision_object::CollisionObject;
 use crate::collision_object::simple::rotation_changed;
-use collide::{Collider, CollisionInfo, Transform, Transformable};
-use collide_convex::Convex as CollideConvex;
-use collide_sphere::Sphere as CollideSphere;
 use glamx::{DPose2, DVec2};
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, Div, Mul, Neg, Sub};
+use std::sync::Arc;
 
 const HALF_SPACE_EPSILON: f64 = 1e-9;
 const ROTATION_EPSILON: f64 = 1e-12;
@@ -39,6 +40,7 @@ impl fmt::Debug for CollideCollisionObjectInner {
 #[derive(Clone)]
 pub struct NonTrivial {
     components: Vec<CollideCollisionComponent>,
+    finite_manager: Arc<FiniteManager>,
 }
 
 impl CollideCollisionObjectInner {
@@ -79,7 +81,14 @@ impl CollideCollisionObjectInner {
 impl NonTrivial {
     #[must_use]
     pub fn collides(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> bool {
-        if finite_components_collide(&self.components, pos_self, &other.components, pos_other) {
+        if finite_components_collide(
+            &self.components,
+            pos_self,
+            &self.finite_manager,
+            &other.components,
+            pos_other,
+            &other.finite_manager,
+        ) {
             return true;
         }
 
@@ -227,56 +236,6 @@ fn moving_circle_pair_collides(
     Some(closest.length_squared() <= combined_radius_squared)
 }
 
-fn finite_components_collide(
-    left_components: &[CollideCollisionComponent],
-    left_pose: DPose2,
-    right_components: &[CollideCollisionComponent],
-    right_pose: DPose2,
-) -> bool {
-    left_components.iter().any(|left| {
-        let CollideCollisionComponent::Finite(left) = left else {
-            return false;
-        };
-
-        right_components.iter().any(|right| {
-            let CollideCollisionComponent::Finite(right) = right else {
-                return false;
-            };
-
-            finite_shapes_collide(left, left_pose, right, right_pose)
-        })
-    })
-}
-
-#[derive(Clone)]
-struct ManagedFiniteShape {
-    collider: CollideConvex<CollideVec2>,
-    bounding_sphere: CollideSphere<CollideVec2>,
-}
-
-impl ManagedFiniteShape {
-    fn new(finite: &FiniteShape, pose: DPose2) -> Self {
-        let global_pose = pose.mul(finite.position);
-
-        Self {
-            collider: transformed_convex_at_pose(finite, global_pose),
-            bounding_sphere: transformed_bounding_sphere_at_pose(finite, global_pose),
-        }
-    }
-}
-
-impl Collider for ManagedFiniteShape {
-    type Vector = CollideVec2;
-
-    fn check_collision(&self, other: &Self) -> bool {
-        self.bounding_sphere.check_collision(&other.bounding_sphere)
-    }
-
-    fn collision_info(&self, other: &Self) -> Option<CollisionInfo<Self::Vector>> {
-        self.collider.collision_info(&other.collider)
-    }
-}
-
 fn components_collide(
     left: &CollideCollisionComponent,
     left_pose: DPose2,
@@ -410,46 +369,6 @@ impl ContinuousPair<'_> {
             _ => true,
         }
     }
-}
-
-fn finite_shapes_collide(
-    left: &FiniteShape,
-    left_pose: DPose2,
-    right: &FiniteShape,
-    right_pose: DPose2,
-) -> bool {
-    let left = ManagedFiniteShape::new(left, left_pose);
-    let right = ManagedFiniteShape::new(right, right_pose);
-
-    left.check_collision(&right) && left.collision_info(&right).is_some()
-}
-
-fn transformed_convex_at_pose(finite: &FiniteShape, pose: DPose2) -> CollideConvex<CollideVec2> {
-    finite.collider.transformed(&CollideTransform(pose))
-}
-
-fn transformed_bounding_sphere_at_pose(
-    finite: &FiniteShape,
-    pose: DPose2,
-) -> CollideSphere<CollideVec2> {
-    CollideSphere::new(
-        transform_collide_point(finite.bounding_sphere.center, pose),
-        finite.bounding_sphere.radius,
-    )
-}
-
-#[derive(Clone, Copy, Debug)]
-struct CollideTransform(DPose2);
-
-impl Transform<CollideVec2> for CollideTransform {
-    fn apply_point(&self, point: CollideVec2) -> CollideVec2 {
-        transform_collide_point(point, self.0)
-    }
-}
-
-fn transform_collide_point(point: CollideVec2, pose: DPose2) -> CollideVec2 {
-    let [x, y]: [f64; 2] = point.into();
-    vec2(pose.mul(DVec2::new(x, y)))
 }
 
 fn half_space_hits_finite(
@@ -633,7 +552,10 @@ impl From<CollisionObject> for CollideCollisionObjectInner {
         if components.is_empty() {
             Self::Empty
         } else {
-            Self::NonTrivial(Box::new(NonTrivial { components }))
+            Self::NonTrivial(Box::new(NonTrivial {
+                finite_manager: Arc::new(FiniteManager::from_components(&components)),
+                components,
+            }))
         }
     }
 }

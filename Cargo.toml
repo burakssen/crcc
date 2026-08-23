@@ -25,6 +25,7 @@ collide = [
     "dep:collide",
     "dep:collide-convex",
     "dep:collide-sphere",
+    "dep:collision-detection",
     "dep:simple-vectors",
 ]
 python_bindings = ["dep:pyo3", "rayon"]
@@ -54,6 +55,7 @@ collision = { version = "0.18.0", optional = true }
 collide = { version = "0.7.0", optional = true }
 collide-convex = { version = "0.5.3", features = ["sphere"], optional = true }
 collide-sphere = { version = "0.3.1", optional = true }
+collision-detection = { version = "0.8.1", optional = true }
 simple-vectors = { version = "0.5.0", optional = true }
 
 [dev-dependencies]
