@@ -7,6 +7,7 @@ from matplotlib.patches import Patch
 
 import main
 from tools.benchmark.config import SCHEMA_VERSION
+from tools.benchmark.contract import synthetic_workloads as canonical_synthetic_workloads
 from tools.benchmark.io import (
     ARTIFACT_FIELDS,
     ArtifactError,
@@ -24,12 +25,13 @@ from tools.benchmark.plots import (
     _plot_execution_layer_cost,
     _plot_memory_growth,
 )
-from tools.benchmark.results import RunResult, compare_layers, compare_modes, compare_runs, summarize_runs
-from tools.benchmark.runner import _parallel_speedup, _reusable_thread_counts
+from tools.benchmark.results import RunResult, compare_layers, compare_modes, compare_runs, run_row, summarize_runs
+from tools.benchmark.runner import _correctness_mismatches, _parallel_speedup, _reusable_thread_counts
 from tools.benchmark.workloads import (
     coverage_matrix_workloads,
     dynamic_query_batch,
     planning_frame_workload,
+    primitive_queries,
     robustness_queries,
     scene_workload,
     time_variant_query_batch,
@@ -40,6 +42,17 @@ def _row(fields, **values):
     row = dict.fromkeys(fields, "")
     row.update({"schema_version": SCHEMA_VERSION, **values})
     return row
+
+
+def test_primitive_queries_follow_the_canonical_synthetic_contract():
+    records = canonical_synthetic_workloads(4, 2026)["convex_polygon"]
+    queries = primitive_queries(4, "convex_polygon", 2026)
+
+    assert [query.expected for query in queries] == [record["expected"] for record in records]
+    assert [query.right_pose.translation for query in queries] == [
+        tuple(record["right"]["pose"][:2]) for record in records
+    ]
+    assert [query.right_pose.rotation for query in queries] == [record["right"]["pose"][2] for record in records]
 
 
 def _write_csv(path, fields, rows=()):
@@ -334,6 +347,38 @@ def test_rhusics_tangency_policy_is_explicit():
     assert tangent.expected_by_backend == {"rhusics": False}
 
 
+def test_correctness_rejects_false_positives_unless_ccd_is_explicitly_conservative():
+    counts = {"fp": 2, "fn": 1}
+
+    assert _correctness_mismatches(counts, "moving_static") == 3
+    assert _correctness_mismatches(counts, "conservative_ccd") == 1
+
+
+def test_run_rows_leave_percentiles_blank_without_genuine_latency_samples():
+    result = RunResult(
+        "api_overhead",
+        None,
+        "parry",
+        "batch",
+        0,
+        8,
+        None,
+        None,
+        4,
+        0,
+        False,
+        800,
+        [],
+        sample_semantics="batch_average",
+    )
+
+    row = run_row(result)
+    summary = summarize_runs([result])[0]
+
+    assert all(row[field] == "" for field in ("min_ns", "p50_ns", "p90_ns", "p95_ns", "p99_ns", "max_ns"))
+    assert all(summary[field] == "" for field in ("p50_ns_median", "p90_ns_median", "p95_ns_median", "p99_ns_median"))
+
+
 def test_faceted_api_and_incremental_memory_plots_are_written(tmp_path):
     api_rows = [
         {
@@ -507,6 +552,40 @@ def test_planning_summary_preserves_cache_and_deadline_dimensions():
     assert all(row["candidate_count"] == 16 for row in summary)
     assert all(row["deadline_misses"] == 1 for row in summary)
     assert all(row["deadline_miss_rate"] == "0.500000" for row in summary)
+
+
+def test_planning_totals_are_normalized_by_complete_frames():
+    result = RunResult(
+        "planning",
+        None,
+        "parry",
+        "static_100_dynamic_4_candidates_16_steps_8",
+        0,
+        2,
+        104,
+        None,
+        16,
+        0,
+        False,
+        30_000_000,
+        [10_000_000, 20_000_000],
+        operation="planning_frame",
+        api_mode="batch_parallel",
+        batch_size=16,
+        sample_semantics="per_frame",
+        static_scene_objects=100,
+        dynamic_scene_objects=4,
+        trajectory_steps=8,
+        deadline_ns=20_000_000,
+        deadline_misses=0,
+        candidate_count=16,
+    )
+
+    row = run_row(result)
+
+    assert row["queries"] == 2
+    assert row["ns_per_query"] == "15000000.000"
+    assert row["p50_ns"] == 10000000
 
 
 def test_coverage_matrix_contains_every_shape_and_detection_mode():

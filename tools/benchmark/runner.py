@@ -899,23 +899,22 @@ def _run_planning_suite(config, engine_items):
 def _measure_planning_frame(backend, engine, workload, repetition, *, cache_state):
     results = []
     scalar = batch = None
+
+    if cache_state not in {"warm", "cold"}:
+        raise ValueError(f"unknown planning cache state: {cache_state}")
+
     build_ns = 0
     warm_checker = None
-
     if cache_state == "warm":
         build_start = time.perf_counter_ns()
         warm_checker = _try_build_planning_checker(engine, workload)
         build_ns = time.perf_counter_ns() - build_start
 
-    if cache_state not in {"warm", "cold"}:
-        raise ValueError(f"unknown planning cache state: {cache_state}")
-
     for api_mode in ("scalar", "batch_parallel"):
         checker = warm_checker
         if cache_state == "cold":
-            build_start = time.perf_counter_ns()
+            # Probe support outside timing; each measured cold frame builds independently.
             checker = _try_build_planning_checker(engine, workload)
-            build_ns = time.perf_counter_ns() - build_start
         if checker is None:
             results.append(
                 _unsupported_scene_run(
@@ -946,39 +945,54 @@ def _measure_planning_frame(backend, engine, workload, repetition, *, cache_stat
                 )
             )
             continue
-        active_checker = checker
 
-        try:
-            active_checker.collides_dynamic(workload.candidate_trajectories[0])
-            active_checker.collides_dynamic_batch(workload.candidate_trajectories[:1], parallel=True)
-        except Exception:
-            pass
-
-        if api_mode == "scalar":
-
-            def query_call():
+        def query_call(active_checker):
+            if api_mode == "scalar":
                 return [active_checker.collides_dynamic(candidate) for candidate in workload.candidate_trajectories]
+            return active_checker.collides_dynamic_batch(workload.candidate_trajectories, parallel=True)
+
+        if cache_state == "warm":
+            try:
+                query_call(checker)
+            except Exception:
+                pass
+
+            def frame_call():
+                query_start = time.perf_counter_ns()
+                values = query_call(checker)
+                return values, 0, time.perf_counter_ns() - query_start
         else:
 
-            def query_call():
-                return active_checker.collides_dynamic_batch(workload.candidate_trajectories, parallel=True)
+            def frame_call():
+                construction_start = time.perf_counter_ns()
+                frame_checker = _try_build_planning_checker(engine, workload)
+                construction_ns = time.perf_counter_ns() - construction_start
+                if frame_checker is None:
+                    raise RuntimeError("planning checker construction failed")
+                query_start = time.perf_counter_ns()
+                values = query_call(frame_checker)
+                return values, construction_ns, time.perf_counter_ns() - query_start
 
         query_failed = False
         try:
-            query_ns, values = _stable_call_time(query_call)
+            total_ns, frame_samples_ns, frames = _sample_call_times(frame_call)
         except Exception:
-            query_ns, values = 0, None
+            total_ns, frame_samples_ns, frames = 0, [], []
             query_failed = True
-        errors = 0
+        frame_count = max(1, len(frame_samples_ns))
+        construction_ns = sum(frame[1] for frame in frames)
+        query_ns = sum(frame[2] for frame in frames)
+        errors = 0 if not query_failed else workload.candidate_count * frame_count
         collisions = 0
         if query_failed:
-            errors = workload.candidate_count
+            values = None
         else:
             try:
-                collisions = count_collisions(values)
+                collisions = sum(count_collisions(frame[0]) for frame in frames)
+                values = frames[-1][0]
             except Exception:
-                errors = workload.candidate_count
-        total_ns = query_ns + (build_ns if cache_state == "cold" else 0)
+                errors = workload.candidate_count * frame_count
+                values = None
         results.append(
             RunResult(
                 "planning",
@@ -986,14 +1000,14 @@ def _measure_planning_frame(backend, engine, workload, repetition, *, cache_stat
                 backend,
                 _planning_workload_name(workload),
                 repetition,
-                workload.candidate_count,
+                frame_count,
                 workload.static_count + workload.dynamic_count,
                 None,
                 collisions,
                 errors,
-                errors == workload.candidate_count and bool(workload.candidate_count),
+                errors == workload.candidate_count * frame_count and bool(workload.candidate_count),
                 total_ns,
-                [total_ns],
+                frame_samples_ns,
                 shape=workload.shape_family,
                 scene_kind="planning_frame",
                 operation="planning_frame",
@@ -1008,19 +1022,19 @@ def _measure_planning_frame(backend, engine, workload, repetition, *, cache_stat
                 shape_family=workload.shape_family,
                 scene_mode="planning_frame",
                 ccd_mode="moving_moving",
-                build_ns=build_ns,
-                construction_ns=build_ns,
+                build_ns=construction_ns if cache_state == "cold" else build_ns,
+                construction_ns=construction_ns if cache_state == "cold" else build_ns,
                 query_ns=query_ns,
                 deadline_ns=PLANNING_DEADLINE_NS,
-                deadline_misses=int(total_ns > PLANNING_DEADLINE_NS),
+                deadline_misses=sum(sample > PLANNING_DEADLINE_NS for sample in frame_samples_ns),
                 cache_state=cache_state,
                 candidate_count=workload.candidate_count,
             )
         )
 
-        if api_mode == "scalar" and not query_failed:
+        if api_mode == "scalar" and values is not None:
             scalar = values
-        elif api_mode == "batch_parallel" and not query_failed:
+        elif api_mode == "batch_parallel" and values is not None:
             batch = values
 
     mismatches = 0
@@ -1623,9 +1637,7 @@ def _synthetic_correctness(backend, engine, workload):
             errors += int(expected is not None)
             continue
         update_counts(counter, expected, actual)
-    # Conservative CCD may intentionally over-approximate, so only false
-    # negatives violate the public correctness contract.
-    mismatches += counter["fn"]
+    mismatches += _correctness_mismatches(counter, workload.ccd_mode)
     return CorrectnessResult(
         workload.feature,
         None,
@@ -1640,6 +1652,12 @@ def _synthetic_correctness(backend, engine, workload):
         oracle,
         errors=errors,
     )
+
+
+def _correctness_mismatches(counter, ccd_mode: str) -> int:
+    """Return failures under the workload's explicit collision contract."""
+    false_positives = 0 if ccd_mode.startswith("conservative") else counter["fp"]
+    return counter["fn"] + false_positives
 
 
 def _measure_scene_with_checker(
@@ -1879,7 +1897,6 @@ def _measure_checker_parallel(backend, checker, workload, repetition):
         results = []
         errors = len(workload.positioned_queries)
     total_ns = time.perf_counter_ns() - start
-    synthetic_sample = [round(total_ns / max(1, len(workload.positioned_queries)))]
     return RunResult(
         "scenario",
         workload.name,
@@ -1893,8 +1910,9 @@ def _measure_checker_parallel(backend, checker, workload, repetition):
         errors,
         errors == len(workload.positioned_queries) and bool(workload.positioned_queries),
         total_ns,
-        synthetic_sample,
+        [],
         oracle="sequential",
+        sample_semantics="batch_average",
     )
 
 
@@ -2019,6 +2037,18 @@ def _warmup_checker_static(checker, positioned_queries):
             checker.collides_static(query, pose)
         except Exception:
             pass
+
+
+def _sample_call_times(call, sample_count: int = 20):
+    """Return complete-call samples without deriving fake per-operation latency."""
+    samples = []
+    frames = []
+    for _ in range(sample_count):
+        start = time.perf_counter_ns()
+        frame = call()
+        samples.append(time.perf_counter_ns() - start)
+        frames.append(frame)
+    return sum(samples), samples, frames
 
 
 def _warn_if_low_sample_count(sample_count: int):

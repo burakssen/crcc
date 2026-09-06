@@ -337,6 +337,7 @@ MEMORY_FIELDS = [
 
 
 def run_row(result: RunResult):
+    sample_percentiles = _sample_percentiles(result.samples_ns)
     return {
         "schema_version": SCHEMA_VERSION,
         "feature": result.feature,
@@ -353,12 +354,7 @@ def run_row(result: RunResult):
         "total_ns": result.total_ns,
         "queries_per_s": f"{result.queries_per_s:.3f}",
         "ns_per_query": f"{result.ns_per_query:.3f}",
-        "min_ns": percentile(result.samples_ns, 0),
-        "p50_ns": percentile(result.samples_ns, 50),
-        "p90_ns": percentile(result.samples_ns, 90),
-        "p95_ns": percentile(result.samples_ns, 95),
-        "p99_ns": percentile(result.samples_ns, 99),
-        "max_ns": percentile(result.samples_ns, 100),
+        **sample_percentiles,
         "oracle": result.oracle,
         "shape": result.shape,
         "transform_kind": result.transform_kind,
@@ -517,10 +513,10 @@ def summarize_runs(results: list[RunResult]):
                 "throughput_median": f"{median(throughputs):.3f}",
                 "throughput_mean": f"{(sum(throughputs) / len(throughputs)):.3f}",
                 "ns_per_query_median": f"{median([result.ns_per_query for result in group]):.3f}",
-                "p50_ns_median": median([percentile(result.samples_ns, 50) for result in group]),
-                "p90_ns_median": median([percentile(result.samples_ns, 90) for result in group]),
-                "p95_ns_median": median([percentile(result.samples_ns, 95) for result in group]),
-                "p99_ns_median": median([percentile(result.samples_ns, 99) for result in group]),
+                "p50_ns_median": _sample_median(group, 50),
+                "p90_ns_median": _sample_median(group, 90),
+                "p95_ns_median": _sample_median(group, 95),
+                "p99_ns_median": _sample_median(group, 99),
                 "oracle": oracle,
                 "shape": shape,
                 "transform_kind": transform_kind,
@@ -822,6 +818,31 @@ def percentile(values: list[int], percentile_value: int):
     sorted_values = sorted(values)
     index = round((len(sorted_values) - 1) * percentile_value / 100)
     return sorted_values[index]
+
+
+def _sample_percentiles(samples_ns: list[int]) -> dict[str, int | str]:
+    if not samples_ns:
+        return {
+            "min_ns": "",
+            "p50_ns": "",
+            "p90_ns": "",
+            "p95_ns": "",
+            "p99_ns": "",
+            "max_ns": "",
+        }
+    return {
+        "min_ns": percentile(samples_ns, 0),
+        "p50_ns": percentile(samples_ns, 50),
+        "p90_ns": percentile(samples_ns, 90),
+        "p95_ns": percentile(samples_ns, 95),
+        "p99_ns": percentile(samples_ns, 99),
+        "max_ns": percentile(samples_ns, 100),
+    }
+
+
+def _sample_median(results: list[RunResult], percentile_value: int) -> int | float | str:
+    values = [percentile(result.samples_ns, percentile_value) for result in results if result.samples_ns]
+    return median(values) if values else ""
 
 
 def percentile_float(values: list[float], percentile_value: int):

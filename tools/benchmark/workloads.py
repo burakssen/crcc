@@ -19,6 +19,7 @@ from crcc import (
 from crcc.commonroad import scenario_builder
 
 from examples.utils import CAR_SIZE, sample_poses, scenario_pose_bounds
+from tools.benchmark.contract import synthetic_workloads as canonical_synthetic_workloads
 
 
 @dataclass(frozen=True)
@@ -405,34 +406,41 @@ def scenario_workload(path: Path, engines: tuple[tuple[str, CollisionEngine], ..
 
 
 def primitive_queries(sample_count: int, kind: str, seed: int):
-    generator = rng(seed + stable_hash(kind))
-    queries = []
-    for index in range(sample_count):
-        colliding = index % 2 == 0
-        offset = float(generator.uniform(0.0, 0.75) if colliding else generator.uniform(4.0, 10.0))
-        angle = float(generator.uniform(-math.pi, math.pi))
-        if kind == "circle_circle":
-            left, right = Circle(1.0), Circle(1.0)
-        elif kind == "circle_rectangle":
-            left, right = Circle(1.0), Rectangle(2.0, 1.0, angle)
-        elif kind == "rectangle_rectangle":
-            left, right = Rectangle(2.0, 1.0, angle), Rectangle(2.0, 1.0, -angle)
-        elif kind == "convex_polygon":
-            left, right = regular_polygon(6, 1.0), regular_polygon(8, 1.0)
-        elif kind == "compound_polygon":
-            left = Compound(
-                [
-                    Triangle((-1.0, -0.5), (0.5, -0.5), (-0.2, 0.7)),
-                    Triangle((0.5, -0.5), (1.0, 0.7), (-0.2, 0.7)),
-                ]
-            )
-            right = regular_polygon(7, 0.9)
-        else:
-            raise ValueError(f"unknown primitive workload: {kind}")
-        queries.append(
-            PairQuery(left, right, Pose.identity(), Pose.from_translation((offset, 0.0)), expected=colliding)
+    try:
+        records = canonical_synthetic_workloads(sample_count, seed)[kind]
+    except KeyError as error:
+        raise ValueError(f"unknown primitive workload: {kind}") from error
+    return [
+        PairQuery(
+            _canonical_shape(record["left"]["shape"]),
+            _canonical_shape(record["right"]["shape"]),
+            _canonical_pose(record["left"]["pose"]),
+            _canonical_pose(record["right"]["pose"]),
+            expected=record["expected"],
         )
-    return queries
+        for record in records
+    ]
+
+
+def _canonical_pose(values: list[float]) -> Pose:
+    return Pose((values[0], values[1]), values[2])
+
+
+def _canonical_shape(shape: str):
+    if shape == "circle":
+        return Circle(1.0)
+    if shape == "rectangle":
+        return Rectangle(2.0, 1.0)
+    if shape.startswith("polygon"):
+        return regular_polygon(int(shape.removeprefix("polygon")), 1.0)
+    if shape == "compound2":
+        return Compound(
+            [
+                Triangle((-1.0, -0.5), (0.5, -0.5), (-0.2, 0.7)),
+                Triangle((0.5, -0.5), (1.0, 0.7), (-0.2, 0.7)),
+            ]
+        )
+    raise ValueError(f"unknown canonical shape: {shape}")
 
 
 def polygon_complexity_queries(sample_count: int):

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import SCHEMA_VERSION, BenchmarkConfig
+from .contract import SUITES as CONTRACT_SUITES, canonical_bundle
 from .results import (
     COMPARISON_FIELDS,
     CORRECTNESS_FIELDS,
@@ -238,7 +239,7 @@ def write_report_rows(path: Path, artifacts: ArtifactBundle):
         f"- Extended stress sizes: {bool(command.get('include_stress', False))}",
         "",
         "The study uses paired backend comparisons, deterministic workload seeds, analytic correctness oracles where possible, and bootstrap confidence intervals for speedup medians.",
-        "Correctness mismatches count false negatives only; backend query failures are reported separately as `errors`. Conservative false positives are reported in the `fp` column.",
+        "Correctness mismatches count false negatives and false positives unless a workload explicitly declares conservative CCD; backend query failures are reported separately as `errors`.",
         "",
         "## Spec Coverage Notes",
         "",
@@ -765,6 +766,10 @@ def _md(value):
 
 
 def write_metadata(path: Path, config: BenchmarkConfig, suite: str | None = None):
+    selected_contract_suites = tuple(
+        candidate for candidate in ((suite,) if suite else config.suites) if candidate in CONTRACT_SUITES
+    )
+    contract = canonical_bundle(config.profile, config.sample_count, config.seed, selected_contract_suites)
     metadata_payload = {
         "schema_version": SCHEMA_VERSION,
         "command": {
@@ -790,6 +795,10 @@ def write_metadata(path: Path, config: BenchmarkConfig, suite: str | None = None
             "turbo_boost": "not detected by benchmark harness",
         },
         "git": {"revision": _git_revision()},
+        "workload_contract": {
+            "sha256": contract["sha256"],
+            "version": contract["metadata"]["contract_version"],
+        },
         "unsupported_spec_items": unsupported_spec_items(),
     }
     path.write_text(json.dumps(metadata_payload, indent=2, sort_keys=True) + "\n")
