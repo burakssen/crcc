@@ -98,19 +98,17 @@ def synthetic_workloads(sample_count: int, seed: int) -> dict[str, list[dict[str
 def scene_workload(objects: int, queries: int, density: float, shape_family: str = "circle") -> dict[str, Any]:
     if objects < 1 or queries < 0 or not 0.0 <= density <= 1.0:
         raise ValueError("invalid scene workload dimensions")
+    static_positions = [_grid_position(index, 6.0, objects) for index in range(objects)]
     static_objects = [
-        {"index": index, "shape": shape_family, "pose": [*_grid_position(index, 6.0, objects), 0.0]}
-        for index in range(objects)
+        {"index": index, "shape": shape_family, "pose": [x, y, 0.0]} for index, (x, y) in enumerate(static_positions)
     ]
     query_items = []
     for index in range(queries):
-        target = static_objects[index % objects]
+        base_x, base_y = static_positions[index % objects]
         expected = index / max(1, queries) < density
-        x, y, angle = target["pose"]
-        if not expected:
-            x += 2.8 + 0.4 * (index % 5)
-            y += 2.8 + 0.3 * (index % 7)
-        query_items.append({"index": index, "shape": shape_family, "pose": [x, y, angle], "expected": expected})
+        x = base_x if expected else base_x + 2.8 + 0.4 * (index % 5)
+        y = base_y if expected else base_y + 2.8 + 0.3 * (index % 7)
+        query_items.append({"index": index, "shape": shape_family, "pose": [x, y, 0.0], "expected": expected})
     return {
         "objects": objects,
         "query_count": queries,

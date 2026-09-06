@@ -951,27 +951,29 @@ def _measure_planning_frame(backend, engine, workload, repetition, *, cache_stat
                 return [active_checker.collides_dynamic(candidate) for candidate in workload.candidate_trajectories]
             return active_checker.collides_dynamic_batch(workload.candidate_trajectories, parallel=True)
 
+        def warm_frame_call():
+            query_start = time.perf_counter_ns()
+            values = query_call(checker)
+            return values, 0, time.perf_counter_ns() - query_start
+
+        def cold_frame_call():
+            construction_start = time.perf_counter_ns()
+            frame_checker = _try_build_planning_checker(engine, workload)
+            construction_ns = time.perf_counter_ns() - construction_start
+            if frame_checker is None:
+                raise RuntimeError("planning checker construction failed")
+            query_start = time.perf_counter_ns()
+            values = query_call(frame_checker)
+            return values, construction_ns, time.perf_counter_ns() - query_start
+
         if cache_state == "warm":
             try:
                 query_call(checker)
             except Exception:
                 pass
-
-            def frame_call():
-                query_start = time.perf_counter_ns()
-                values = query_call(checker)
-                return values, 0, time.perf_counter_ns() - query_start
+            frame_call = warm_frame_call
         else:
-
-            def frame_call():
-                construction_start = time.perf_counter_ns()
-                frame_checker = _try_build_planning_checker(engine, workload)
-                construction_ns = time.perf_counter_ns() - construction_start
-                if frame_checker is None:
-                    raise RuntimeError("planning checker construction failed")
-                query_start = time.perf_counter_ns()
-                values = query_call(frame_checker)
-                return values, construction_ns, time.perf_counter_ns() - query_start
+            frame_call = cold_frame_call
 
         query_failed = False
         try:
