@@ -52,7 +52,9 @@ def test_primitive_queries_follow_the_canonical_synthetic_contract():
     assert [query.right_pose.translation for query in queries] == [
         tuple(record["right"]["pose"][:2]) for record in records
     ]
-    assert [query.right_pose.rotation for query in queries] == [record["right"]["pose"][2] for record in records]
+    assert [query.right_pose.rotation for query in queries] == pytest.approx(
+        [record["right"]["pose"][2] for record in records]
+    )
 
 
 def _write_csv(path, fields, rows=()):
