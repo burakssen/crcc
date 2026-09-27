@@ -378,6 +378,7 @@ def test_native_layer_extra_python_workloads(engine):
         execute, operation, _, _ = _python_layer_workload(engine, name)
         value = execute()
         if operation == "distance":
+            assert isinstance(value, float)
             assert math.isfinite(value) and value >= 0
         elif name == "circle_hit":
             assert value is True

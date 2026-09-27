@@ -1436,7 +1436,7 @@ def _measure_python_layer(backend, engine_items, workload, repetition, iteration
         for _ in range(iterations):
             value = execute()
             if operation == "distance":
-                errors += int(not math.isfinite(value))
+                errors += int(not isinstance(value, float) or not math.isfinite(value))
             else:
                 checksum += int(value if isinstance(value, bool) else value.collides)
     except Exception:
