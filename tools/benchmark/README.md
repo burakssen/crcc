@@ -2,7 +2,7 @@
 
 The benchmark pipeline is a repository research tool, not part of the installed CRCC package API. It measures throughput, latency, correctness, memory, scene scaling, reconstruction cost, execution layers, and Rayon batch behavior.
 
-Return to [Development and benchmarks](../../docs/development.md) for project setup and standard checks.
+See the [benchmark guide](../../docs/development/benchmarking.md) for project setup, standard checks, and interpretation limits.
 
 ## Start With a Bounded Smoke Run
 

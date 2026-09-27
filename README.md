@@ -1,89 +1,18 @@
 # CRCC
 
-CRCC is a high-performance two-dimensional collision-checking library for Rust and Python, designed for motion planning and CommonRoad scenario evaluation. It provides direct conversion of CommonRoad scenarios (road boundaries, static obstacles, and dynamic trajectories), validated primitive and polygon geometry, discrete and continuous pair queries, immutable static/dynamic scenes, prepared queries, and ordered native batches.
+CRCC is a 2D collision-query library for Rust and Python. It provides validated geometry, pair and scene queries, conservative continuous collision checks, and optional Parry, Rhusics, and Collide backends. Python users can convert CommonRoad scenarios with `crcc.commonroad`.
 
-Continuous collision detection is conservative: `False` certifies separation for the complete interval, while `True` may represent either a collision or a conservative positive.
+CRCC reports overlap; it does not resolve contacts or advance simulation state. Continuous-query positives can be conservative, and backend edge semantics differ. See the [backend guide](https://burakssen.com/crcc/concepts/backends/).
 
-## Documentation
+## Install
 
-- [Documentation home](docs/index.md)
-- [CommonRoad & Python usage guide](docs/python-guide.md) and [Python API](docs/python-api.md)
-- [Core concepts and engine behavior](docs/concepts.md)
-- [Rust guide](docs/rust-guide.md) and [Rust API](docs/rust-api.md)
-- [Architecture](docs/architecture.md)
-- [Development and benchmarks](docs/development.md)
-
-The MkDocs site is configured for `https://burakssen.com/crcc/`. Until GitHub Pages is enabled for the repository, use the checked-in pages linked above.
-
-## Quick Start
-
-CRCC is not currently published to PyPI or crates.io. Use a source checkout, a wheel attached to a GitHub release, or a Git dependency.
-
-### Python As a Git Dependency
-
-Install directly from GitHub into an environment (requires a Rust toolchain for the Maturin build step):
+CRCC is not published to PyPI or crates.io. Install the Python package from GitHub with `uv` (a Rust toolchain is required to build the native extension):
 
 ```bash
-uv pip install git+https://github.com/burakssen/crcc
-# or with pip
-pip install git+https://github.com/burakssen/crcc
-# or add to a uv project
 uv add git+https://github.com/burakssen/crcc
 ```
 
-Or add it to `pyproject.toml`:
-
-```toml
-[project]
-dependencies = [
-    "crcc @ git+https://github.com/burakssen/crcc",
-]
-```
-
-### CommonRoad Scenario Conversion
-
-Convert CommonRoad XML scenarios into high-speed collision checkers:
-
-```python
-from commonroad.common.file_reader import CommonRoadFileReader
-from crcc import CollisionBackend, CollisionCheckerBuilder
-from crcc.commonroad import scenario_builder
-
-scenario, _ = CommonRoadFileReader("scenarios/DEU_MerzenichRather-2_870_T-149.xml").open()
-
-# Converts lanelet road boundary, static obstacles, and dynamic predictions
-checker = scenario_builder(
-    scenario,
-    builder=CollisionCheckerBuilder(CollisionBackend.Parry),
-).build()
-```
-
-### Python From Source
-
-Prerequisites are Git, Git LFS, a recent stable Rust toolchain, Python 3.10 or newer, and [`uv`](https://docs.astral.sh/uv/).
-
-```bash
-git clone https://github.com/burakssen/crcc.git
-cd crcc
-git lfs install
-git lfs pull
-uv sync --frozen
-```
-
-```python
-from crcc import Circle, CollisionBackend, Pose
-
-robot = Circle(0.5)
-obstacle = Circle(1.0)
-obstacle_pose = Pose.from_translation((3.0, 0.0))
-
-assert not robot.collides(obstacle, pos_other=obstacle_pose, backend=CollisionBackend.Parry)
-assert robot.distance(obstacle, pos_other=obstacle_pose) == 1.5
-```
-
-### Rust As a Git Dependency
-
-Choose only the backend features the application needs:
+For Rust, select the required backend features:
 
 ```toml
 [dependencies]
@@ -91,46 +20,24 @@ crcc = { git = "https://github.com/burakssen/crcc", default-features = false, fe
 geo = "0.32"
 ```
 
-```rust
-use crcc::{CollisionEngine, CollisionObject, Pose};
+## Example
 
-fn main() -> Result<(), crcc::CrccError> {
-    let robot = CollisionObject::circle((0.0, 0.0), 0.5)?;
-    let obstacle = CollisionObject::circle((0.0, 0.0), 1.0)?;
-    let obstacle_pose = Pose::translation(3.0, 0.0);
+```python
+from crcc import Circle, CollisionBackend, CollisionCheckerBuilder, Pose, Rectangle
 
-    assert!(!robot.collides(
-        &obstacle,
-        Pose::IDENTITY,
-        obstacle_pose,
-        CollisionEngine::Parry,
-    )?);
-    Ok(())
-}
+checker = (
+    CollisionCheckerBuilder(backend=CollisionBackend.Parry)
+    .add_static_obstacle(Rectangle(0.25, 3.0))
+    .build()
+)
+status = checker.collides_static(Circle(0.5), position=Pose.from_translation((0.5, 0.0)))
+assert status.collides
 ```
 
-## Repository Tutorials
+## Documentation and development
 
-`main.py` is a repository launcher; installing a wheel does not install a `crcc` command.
+- [Documentation](https://burakssen.com/crcc/): [installation](https://burakssen.com/crcc/getting-started/installation/), [quick start](https://burakssen.com/crcc/getting-started/quick-start/), [Python API](https://burakssen.com/crcc/reference/python/), and [Rust API](https://burakssen.com/crcc/reference/rust/).
+- [CommonRoad integration](https://burakssen.com/crcc/guides/commonroad/) and [architecture](https://burakssen.com/crcc/architecture/overview/).
+- [Build and test](https://burakssen.com/crcc/development/building-and-testing/), [benchmarking](https://burakssen.com/crcc/development/benchmarking/), and [contributing](https://burakssen.com/crcc/development/contributing/).
 
-```bash
-uv run main.py basic --engine parry
-uv run main.py continuous --engine rhusics
-uv run main.py commonroad --engine collide
-uv run main.py playground
-```
-
-The launcher defaults to Rhusics. The compiled library API defaults to Parry when Parry is enabled.
-
-## Development Checks
-
-```bash
-uv run --frozen pre-commit run --all-files --show-diff-on-failure
-uv run --frozen pyright
-uv run --frozen pytest -q
-cargo test --locked --no-default-features
-cargo test --locked --all-features
-uvx --from mkdocs==1.6.1 mkdocs build --strict
-```
-
-See [Development and benchmarks](docs/development.md) for the complete feature matrix, package smoke test, CLI, playground, benchmark profiles, and release behavior.
+The repository's `main.py` tutorials, playground, benchmarks, and scenarios are development assets; they are not installed as a `crcc` command. See the [development guide](https://burakssen.com/crcc/development/building-and-testing/) for source setup.

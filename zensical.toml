@@ -1,0 +1,65 @@
+[project]
+site_name = "CRCC"
+site_description = "2D collision checking for Rust, Python, and CommonRoad"
+site_url = "https://burakssen.com/crcc/"
+repo_url = "https://github.com/burakssen/crcc"
+strict = true
+nav = [
+  "index.md",
+  { "Get started" = [
+    "getting-started/installation.md",
+    "getting-started/quick-start.md",
+  ] },
+  { "Concepts" = [
+    "concepts/geometry-and-poses.md",
+    "concepts/scenes-and-time.md",
+    "concepts/continuous-collision.md",
+    "concepts/backends.md",
+  ] },
+  { "Guides" = [
+    "guides/pair-queries.md",
+    "guides/scenes-and-trajectories.md",
+    "guides/prepared-and-batch-queries.md",
+    "guides/commonroad.md",
+  ] },
+  { "Reference" = [
+    "reference/python.md",
+    "reference/rust.md",
+    "reference/errors-and-limits.md",
+  ] },
+  { "Architecture" = [
+    "architecture/overview.md",
+    "architecture/query-pipeline.md",
+    "architecture/backends-and-bindings.md",
+  ] },
+  { "Development" = [
+    "development/building-and-testing.md",
+    "development/benchmarking.md",
+    "development/extending-backends.md",
+    "development/contributing.md",
+  ] },
+]
+
+[project.theme]
+features = [
+  "navigation.sections",
+  "navigation.top",
+  "search.suggest",
+  "content.code.copy",
+  "content.tabs.link",
+]
+
+[project.markdown_extensions]
+admonition = {}
+tables = {}
+pymdownx.details = {}
+pymdownx.tabbed = { alternate_style = true }
+pymdownx.highlight.anchor_linenums = true
+pymdownx.highlight.line_spans = "__span"
+pymdownx.highlight.pygments_lang_class = true
+pymdownx.inlinehilite = {}
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+]
