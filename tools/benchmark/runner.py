@@ -1201,12 +1201,16 @@ def _run_native_layer_suite(config, engine_items):
     iterations = 10_000 if config.profile == "smoke" else 100_000
     workloads = (
         "circle_clear",
+        "circle_hit",
+        "rectangle_clear",
         "rectangle_hit",
         "compound_clear",
+        "ccd",
         "tunneling",
         "moving_vs_moving",
         "rotation_wrap",
         "endpoint_touch",
+        "distance",
         "dynamic_fixed",
         "dynamic_time_variant",
     )
@@ -1241,7 +1245,7 @@ def _run_native_layer_suite(config, engine_items):
                             iterations,
                             None,
                             None,
-                            int(row["checksum"] != "0"),
+                            0 if operation == "distance" else int(row["checksum"] != "0"),
                             0,
                             False,
                             int(row["total_ns"]),
@@ -1431,7 +1435,10 @@ def _measure_python_layer(backend, engine_items, workload, repetition, iteration
     try:
         for _ in range(iterations):
             value = execute()
-            checksum += int(value if isinstance(value, bool) else value.collides)
+            if operation == "distance":
+                errors += int(not math.isfinite(value))
+            else:
+                checksum += int(value if isinstance(value, bool) else value.collides)
     except Exception:
         errors = 1
     total_ns = time.perf_counter_ns() - start
@@ -1473,6 +1480,20 @@ def _python_layer_workload(engine, name):
             0,
             "fixed",
         )
+    if name == "circle_hit":
+        return (
+            lambda: circle.collides(circle, identity, Pose.from_translation((1.0, 0.0)), engine),
+            "discrete",
+            0,
+            "fixed",
+        )
+    if name == "rectangle_clear":
+        return (
+            lambda: rectangle.collides(rectangle, identity, Pose.from_translation((4.0, 0.0)), engine),
+            "discrete",
+            0,
+            "fixed",
+        )
     if name == "rectangle_hit":
         return (
             lambda: rectangle.collides(rectangle, identity, Pose.from_translation((1.0, 0.0)), engine),
@@ -1487,8 +1508,15 @@ def _python_layer_workload(engine, name):
             0,
             "fixed",
         )
-    if name in {"tunneling", "moving_vs_moving", "rotation_wrap", "endpoint_touch"}:
-        if name == "tunneling":
+    if name == "distance":
+        return (
+            lambda: compound.distance(compound, identity, Pose.from_translation((20.0, 0.0)), engine),
+            "distance",
+            0,
+            "fixed",
+        )
+    if name in {"ccd", "tunneling", "moving_vs_moving", "rotation_wrap", "endpoint_touch"}:
+        if name in {"ccd", "tunneling"}:
             args = (
                 circle,
                 Pose.from_translation((-4.0, 0.0)),

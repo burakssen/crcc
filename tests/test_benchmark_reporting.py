@@ -1,12 +1,13 @@
 import csv
 import json
+import math
 
 import pytest
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 import main
-from tools.benchmark.config import SCHEMA_VERSION
+from tools.benchmark.config import ENGINE_ITEMS, SCHEMA_VERSION
 from tools.benchmark.contract import synthetic_workloads as canonical_synthetic_workloads
 from tools.benchmark.io import (
     ARTIFACT_FIELDS,
@@ -26,7 +27,14 @@ from tools.benchmark.plots import (
     _plot_memory_growth,
 )
 from tools.benchmark.results import RunResult, compare_layers, compare_modes, compare_runs, run_row, summarize_runs
-from tools.benchmark.runner import _correctness_mismatches, _parallel_speedup, _reusable_thread_counts
+from tools.benchmark.runner import (
+    _correctness_mismatches,
+    _execute_pair_query,
+    _parallel_speedup,
+    _python_layer_workload,
+    _reusable_thread_counts,
+    _synthetic_correctness,
+)
 from tools.benchmark.workloads import (
     coverage_matrix_workloads,
     dynamic_query_batch,
@@ -34,6 +42,8 @@ from tools.benchmark.workloads import (
     primitive_queries,
     robustness_queries,
     scene_workload,
+    spec_shape_workloads,
+    synthetic_workloads,
     time_variant_query_batch,
 )
 
@@ -347,6 +357,34 @@ def test_rhusics_tangency_policy_is_explicit():
 
     assert tangent.expected is True
     assert tangent.expected_by_backend == {"rhusics": False}
+
+
+@pytest.mark.parametrize(("backend", "engine"), ENGINE_ITEMS)
+def test_compound_clear_oracle_and_boundary_backend_semantics(backend, engine):
+    for workload in spec_shape_workloads(2, (), (64, 256)):
+        assert not _execute_pair_query(engine, workload.operation, workload.queries[1])
+
+    boundary = next(
+        workload
+        for workload in synthetic_workloads(2, 2026)
+        if workload.feature == "pair" and workload.workload == "boundary_robustness"
+    )
+    assert _synthetic_correctness(backend, engine, boundary).mismatches == 0
+
+
+@pytest.mark.parametrize("engine", [engine for _, engine in ENGINE_ITEMS])
+def test_native_layer_extra_python_workloads(engine):
+    for name in ("circle_hit", "rectangle_clear", "ccd", "distance"):
+        execute, operation, _, _ = _python_layer_workload(engine, name)
+        value = execute()
+        if operation == "distance":
+            assert math.isfinite(value) and value >= 0
+        elif name == "circle_hit":
+            assert value is True
+        elif name == "rectangle_clear":
+            assert value is False
+        else:
+            assert isinstance(value, bool)
 
 
 def test_correctness_rejects_false_positives_unless_ccd_is_explicitly_conservative():

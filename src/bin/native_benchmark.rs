@@ -176,7 +176,7 @@ fn run<E: EngineCollisionObject>(
     iterations: usize,
 ) -> BenchmarkResult<()> {
     let (total_ns, checksum) = match layer {
-        Layer::Native => run_native::<E>(workload, iterations)?,
+        Layer::Native => run_native::<E>(engine, workload, iterations)?,
         Layer::Public => run_public(engine, workload, iterations)?,
     };
     let ns_per_query = format_ns_per_query(total_ns, iterations)?;
@@ -222,6 +222,7 @@ fn format_ns_per_query(total_ns: u128, iterations: usize) -> BenchmarkResult<Str
 }
 
 fn run_native<E: EngineCollisionObject>(
+    engine: CollisionEngine,
     workload: &Workload,
     iterations: usize,
 ) -> BenchmarkResult<(u128, u64)> {
@@ -231,7 +232,7 @@ fn run_native<E: EngineCollisionObject>(
 
     let left: E = workload.left.clone().into();
     let right: E = workload.right.clone().into();
-    let mut execute = || execute_native(&left, &right, workload);
+    let mut execute = || execute_native(engine, &left, &right, workload);
 
     warm_up(&mut execute)?;
     let start = Instant::now();
@@ -256,6 +257,7 @@ fn run_public(
 }
 
 fn execute_native<E: EngineCollisionObject>(
+    engine: CollisionEngine,
     left: &E,
     right: &E,
     workload: &Workload,
@@ -278,7 +280,18 @@ fn execute_native<E: EngineCollisionObject>(
             motion.right_end,
         )?)),
         Operation::Distance => {
-            Ok(E::distance_at(left, motion.left_start, right, motion.right_start)?.to_bits())
+            let value = if matches!(engine, CollisionEngine::Parry) {
+                E::distance_at(left, motion.left_start, right, motion.right_start)?
+            } else {
+                distance(
+                    &workload.left,
+                    motion.left_start,
+                    &workload.right,
+                    motion.right_start,
+                    engine,
+                )?
+            };
+            Ok(value.to_bits())
         }
         Operation::Dynamic => Err(invalid_input(
             "dynamic workloads must use the checker benchmark path",
@@ -660,4 +673,33 @@ fn usage() -> BenchmarkError {
         "usage: native_benchmark <parry|rhusics|collide> <native|public> \
          <circle_clear|circle_hit|rectangle_clear|rectangle_hit|compound_clear|ccd|tunneling|moving_vs_moving|rotation_wrap|endpoint_touch|distance|dynamic_fixed|dynamic_time_variant> [iterations]",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_distance_runs_for_all_engines() {
+        let workload = distance_workload().expect("valid distance workload");
+
+        #[cfg(feature = "parry")]
+        {
+            let left: ParryCollisionObject = workload.left.clone().into();
+            let right: ParryCollisionObject = workload.right.clone().into();
+            assert!(execute_native(CollisionEngine::Parry, &left, &right, &workload).is_ok());
+        }
+        #[cfg(feature = "rhusics")]
+        {
+            let left: RhusicsCoreCollisionObject = workload.left.clone().into();
+            let right: RhusicsCoreCollisionObject = workload.right.clone().into();
+            assert!(execute_native(CollisionEngine::Rhusics, &left, &right, &workload).is_ok());
+        }
+        #[cfg(feature = "collide")]
+        {
+            let left: CollideCollisionObject = workload.left.clone().into();
+            let right: CollideCollisionObject = workload.right.clone().into();
+            assert!(execute_native(CollisionEngine::Collide, &left, &right, &workload).is_ok());
+        }
+    }
 }

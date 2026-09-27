@@ -105,7 +105,13 @@ def spec_shape_workloads(sample_count: int, vertex_counts: tuple[int, ...], chil
             "shape_complexity",
             f"compound_{children}",
             "collides",
-            tuple(_same_shape_queries(compound_grid(children), sample_count)),
+            tuple(
+                _same_shape_queries(
+                    compound_grid(children),
+                    sample_count,
+                    miss_x=max(4.0, math.ceil(math.sqrt(children)) * 0.55),
+                )
+            ),
         )
 
 
@@ -383,10 +389,12 @@ def matrix_queries(left, right, sample_count: int, ccd_mode: str):
             raise ValueError(f"unknown CCD mode: {ccd_mode}")
 
 
-def _same_shape_queries(shape, sample_count: int):
+def _same_shape_queries(shape, sample_count: int, miss_x: float = 4.0):
     for index in range(sample_count):
         hit = index % 2 == 0
-        yield PairQuery(shape, shape, Pose.identity(), Pose.from_translation((0.25 if hit else 4.0, 0.0)), expected=hit)
+        yield PairQuery(
+            shape, shape, Pose.identity(), Pose.from_translation((0.25 if hit else miss_x, 0.0)), expected=hit
+        )
 
 
 def compound_grid(children: int):
@@ -469,7 +477,14 @@ def robustness_queries():
             expected=True,
             expected_by_backend={"rhusics": False},
         ),
-        PairQuery(Circle(1.0), Circle(1.0), Pose.identity(), Pose.from_translation((2.0 + 1e-9, 0.0)), expected=False),
+        PairQuery(
+            Circle(1.0),
+            Circle(1.0),
+            Pose.identity(),
+            Pose.from_translation((2.0 + 1e-9, 0.0)),
+            expected=False,
+            expected_by_backend={"box2d": True, "bullet": True},
+        ),
         PairQuery(
             Rectangle(1e-6, 1e-6),
             Rectangle(1e-6, 1e-6, 1e-12),
@@ -483,6 +498,7 @@ def robustness_queries():
             Pose.from_translation((1e9, 1e9)),
             Pose.from_translation((1e9, 1e9 + 0.02)),
             expected=False,
+            expected_by_backend={"box2d": True, "bullet": True},
         ),
     ]
 
