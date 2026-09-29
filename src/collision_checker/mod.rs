@@ -1,3 +1,13 @@
+//! Immutable scene queries with typed or runtime backend selection.
+//!
+//! Static queries always check static scene geometry, then selected dynamic
+//! times; their intervals require both endpoints selected. Dynamic queries select
+//! active interval starts and can check an outgoing interval beyond the upper
+//! range bound. Intervals precede sampled occupancy at each start. Results carry
+//! a sample/interval start, not exact impact time or an obstacle identifier.
+//! Prepared queries are backend-specific, not scene-specific. Rayon batches
+//! preserve input order and one recoverable result/error per entry.
+
 use crate::collision_checker::ccd_collider::{CCDCollider, CCDColliderAt};
 use crate::collision_checker::engine::EngineCollisionObject;
 use crate::collision_object::dynamic::GenericDynamicObstacle;
@@ -20,9 +30,10 @@ pub(crate) use builder::road_boundary;
 pub enum CollisionStatus {
     /// No static or dynamic obstacle collides in the requested window.
     NoCollision,
-    /// The query collides with merged static geometry.
+    /// A static query collides with merged static scene geometry.
     CollidesStatic,
-    /// The query collides with dynamic geometry at the contained time step.
+    /// A dynamic query or scene obstacle collides at a sample or outgoing interval.
+    /// The contained step is attribution, not an exact continuous contact time.
     CollidesDynamic(TimeStep),
 }
 
@@ -37,6 +48,11 @@ impl CollisionStatus {
 /// The result of a checker query.
 pub type CollisionResult = Result<CollisionStatus, CrccError>;
 
+/// Immutable scene with statically selected backend representation `E`.
+///
+/// Build with [`CollisionCheckerBuilder::build`]. Queries take converted objects;
+/// convert trajectories with [`DynamicObstacle::convert_repr`]. For domain inputs
+/// and preparation/batches, use [`SelectedCollisionChecker`].
 pub struct CollisionChecker<E: EngineCollisionObject> {
     static_obstacle: E,
     dynamic_obstacles: Vec<GenericDynamicObstacle<E>>,
@@ -74,7 +90,9 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, time_step..=time_step)
     }
 
-    /// Checks a dynamic obstacle against the scene geometry at a specific time step.
+    /// Checks a dynamic obstacle at this sample/interval start.
+    /// Includes its outgoing interval if a next query sample exists, even though
+    /// the singleton window does not contain that endpoint.
     ///
     /// # Errors
     ///
@@ -111,6 +129,8 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     }
 
     /// Checks a positioned static obstacle against the scene geometry within a specific time range.
+    /// Static geometry is always checked first, even for an empty range. Dynamic
+    /// times are ascending; interval checks require both endpoints selected.
     ///
     /// # Errors
     ///
@@ -174,6 +194,8 @@ impl<E: EngineCollisionObject> CollisionChecker<E> {
     }
 
     /// Checks a dynamic obstacle against the scene geometry within a specific time range.
+    /// The range selects active starts, not interval endpoints: an outgoing
+    /// interval can extend beyond the upper bound. Empty/disjoint ranges do no work.
     ///
     /// # Errors
     ///
@@ -693,6 +715,8 @@ enum PreparedStaticQueryInner {
 
 /// Geometry converted once for repeated queries against a selected checker.
 ///
+/// Reusable across same-backend scenes; different-backend use returns
+/// [`CrccError::Unsupported`]. Preparation does not certify all query support.
 #[derive(Clone)]
 pub struct PreparedStaticQuery(PreparedStaticQueryInner);
 
@@ -745,6 +769,7 @@ enum PreparedDynamicQueryInner {
 }
 
 /// A dynamic trajectory converted once for repeated selected-checker queries.
+/// Reusable across same-backend scenes, including its converted swept bounds.
 #[derive(Clone)]
 pub struct PreparedDynamicQuery(PreparedDynamicQueryInner);
 
@@ -773,6 +798,11 @@ impl PreparedDynamicQuery {
 }
 
 /// An immutable collision scene using one runtime-selected backend.
+///
+/// Raw queries clone/convert inputs per call. Preparation caches conversion.
+/// Batch methods require `rayon` even with `parallel = false`; they query entries
+/// independently against the scene, not each other. Empty batches return empty
+/// vectors. All query ordering/time semantics match [`CollisionChecker`].
 pub struct SelectedCollisionChecker(SelectedCollisionCheckerInner);
 
 impl SelectedCollisionChecker {
@@ -782,6 +812,22 @@ impl SelectedCollisionChecker {
     }
 
     /// Converts fixed geometry to this checker's backend representation.
+    /// Reuse with any same-backend scene; conversion failures can surface on use.
+    ///
+    /// ```
+    /// # #[cfg(any(feature = "parry", feature = "rhusics", feature = "collide"))]
+    /// # fn main() -> Result<(), crcc::CrccError> {
+    /// use crcc::{CollisionCheckerBuilder, CollisionEngine, CollisionObject};
+    /// let checker = CollisionCheckerBuilder::new()
+    ///     .with_static_obstacle(CollisionObject::circle((0.0, 0.0), 1.0)?)
+    ///     .build_with_engine(CollisionEngine::default())?;
+    /// let prepared = checker.prepare_static(&CollisionObject::circle((0.0, 0.0), 0.25)?)?;
+    /// assert!(checker.collides_static_prepared(&prepared)?.collides());
+    /// # Ok(())
+    /// # }
+    /// # #[cfg(not(any(feature = "parry", feature = "rhusics", feature = "collide")))]
+    /// # fn main() {}
+    /// ```
     ///
     /// # Errors
     ///
@@ -811,6 +857,7 @@ impl SelectedCollisionChecker {
     }
 
     /// Converts a dynamic trajectory to this checker's backend representation.
+    /// Reuse with any same-backend scene; conversion failures can surface on use.
     ///
     /// # Errors
     ///
@@ -873,7 +920,8 @@ impl SelectedCollisionChecker {
         self.collides_static_range(static_obstacle, DPose2::IDENTITY, time_step..=time_step)
     }
 
-    /// Checks a dynamic obstacle against the scene geometry at a specific time step.
+    /// Checks a dynamic obstacle at this sample/interval start.
+    /// Includes the outgoing interval when the query has a next sample.
     ///
     /// # Errors
     ///
@@ -920,6 +968,7 @@ impl SelectedCollisionChecker {
     ///
     /// `time_range` limits dynamic-obstacle checks. Static geometry is always
     /// checked. The first dynamic collision time is returned.
+    /// Intervals require both endpoints selected and precede sampled occupancy.
     ///
     /// # Errors
     ///
@@ -946,6 +995,7 @@ impl SelectedCollisionChecker {
     }
 
     /// Checks prepared fixed geometry at a pose within a time range.
+    /// Uses [`Self::collides_static_range`] semantics, including static precedence.
     ///
     /// # Errors
     ///
@@ -988,6 +1038,7 @@ impl SelectedCollisionChecker {
     #[cfg(feature = "rayon")]
     /// Checks one prepared fixed query at multiple poses, preserving pose order.
     /// The caller selects sequential or Rayon execution with `parallel`.
+    /// Query failures are retained per position; backend mismatch fails every slot.
     #[must_use]
     pub fn collides_static_prepared_batch(
         &self,
@@ -1021,7 +1072,8 @@ impl SelectedCollisionChecker {
 
     /// Checks a moving obstacle against static and dynamic scene geometry.
     ///
-    /// Continuous motion between adjacent active trajectory steps is included.
+    /// The range selects active interval starts. Continuous motion to a next
+    /// query sample is included even when that endpoint is outside the range.
     ///
     /// # Errors
     ///
@@ -1047,6 +1099,7 @@ impl SelectedCollisionChecker {
     }
 
     /// Checks a prepared dynamic trajectory within a time range.
+    /// Uses [`Self::collides_dynamic_range`] interval-start selection semantics.
     ///
     /// # Errors
     ///
@@ -1088,6 +1141,7 @@ impl SelectedCollisionChecker {
     #[cfg(feature = "rayon")]
     /// Checks prepared dynamic queries in input order.
     /// The caller selects sequential or Rayon execution with `parallel`.
+    /// Backend mismatch and query errors are per-slot, unlike heterogeneous preflight.
     #[must_use]
     pub fn collides_dynamic_prepared_batch(
         &self,
@@ -1147,6 +1201,8 @@ impl SelectedCollisionChecker {
     #[cfg(feature = "rayon")]
     /// Checks fixed-shape queries in a batch, preserving input order.
     /// The caller selects sequential or Rayon execution with `parallel`.
+    /// Returns one result/error per input; selected scene active times are cached
+    /// once for the batch. Uses [`Self::collides_static_range`] time semantics.
     #[must_use]
     pub fn collides_static_batch(
         &self,
@@ -1178,6 +1234,7 @@ impl SelectedCollisionChecker {
     #[cfg(feature = "rayon")]
     /// Checks dynamic queries in a batch, preserving input order.
     /// The caller selects sequential or Rayon execution with `parallel`.
+    /// Returns one result/error per trajectory with interval-start range semantics.
     #[must_use]
     pub fn collides_dynamic_batch(
         &self,

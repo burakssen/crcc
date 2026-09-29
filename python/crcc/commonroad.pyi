@@ -37,17 +37,3 @@ def from_shape(shape: ObstacleShape) -> CollisionObject: ...
 def from_occupancy(occupancy: Occupancy) -> CollisionObject: ...
 def from_shapely(geometry: BaseGeometry) -> CollisionObject: ...
 def from_pose(state: TraceState) -> Pose: ...
-
-__all__ = [
-    "add_dynamic_obstacle",
-    "add_road_boundary",
-    "add_static_obstacle",
-    "from_dynamic_obstacle",
-    "from_occupancy",
-    "from_polygon",
-    "from_pose",
-    "from_shape",
-    "from_shapely",
-    "road_boundary",
-    "scenario_builder",
-]

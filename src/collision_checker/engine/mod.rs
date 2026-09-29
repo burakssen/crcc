@@ -1,3 +1,6 @@
+//! Feature-gated backend adapters and runtime pair-query dispatch.
+//! Contact/motion semantics differ by adapter; no universal epsilon is imposed.
+
 use crate::collision_object::CollisionObject;
 use crate::error::{CrccError, CrccResult};
 use glamx::DPose2;
@@ -10,6 +13,10 @@ pub mod parry;
 pub mod rhusics;
 
 /// A collision object converted for use by a specific backend.
+///
+/// `From<CollisionObject>` cannot return a conversion error; implementations may
+/// defer failures to query use. Poses must be valid rigid transforms. Boundary
+/// contact and continuous interpolation follow the backend implementation.
 pub trait EngineCollisionObject: From<CollisionObject> {
     /// Tests for a collision at the identity pose for both objects.
     ///
@@ -30,6 +37,7 @@ pub trait EngineCollisionObject: From<CollisionObject> {
     fn collides_at(&self, pos_self: DPose2, other: &Self, pos_other: DPose2) -> CrccResult<bool>;
 
     /// Tests continuously for a collision over two object motions.
+    /// Positive results may be conservative; no time of impact is returned.
     ///
     /// # Errors
     ///
@@ -45,6 +53,9 @@ pub trait EngineCollisionObject: From<CollisionObject> {
     ) -> CrccResult<bool>;
 
     /// Returns the non-negative separation distance at the supplied poses.
+    ///
+    /// Only Parry currently overrides this method. Runtime Rhusics/Collide domain
+    /// distance uses a shared fallback instead of invoking this trait method.
     ///
     /// # Errors
     ///

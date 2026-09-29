@@ -1,3 +1,8 @@
+//! Domain components and per-interval swept bounds.
+//!
+//! Prefer [`crate::CollisionObject`] factories for full polygon validation.
+//! Direct polygon wrapper construction has deliberately narrower checks.
+
 use crate::error::{CrccError, CrccResult};
 use enum_dispatch::enum_dispatch;
 use geo::{
@@ -33,7 +38,7 @@ impl FullSpace {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-/// Non-degenerate triangle geometry accepted by [`crate::CollisionObject::from`].
+/// Non-degenerate triangle geometry, convertible through [`SimpleCollisionObject`].
 pub struct Triangle(pub(super) GeoTriangle);
 
 impl Triangle {
@@ -75,13 +80,15 @@ pub struct Rectangle {
 }
 
 impl Rectangle {
-    /// Creates a finite, non-empty oriented rectangle.
+    /// Creates a finite oriented rectangle, rotating about its local center.
+    ///
+    /// Zero dimensions are accepted: `geo::Rect` is never empty according to its
+    /// dimension trait. Backend behavior for degenerate rectangles is not assured.
     ///
     /// # Errors
     ///
     /// Returns [`CrccError::InvalidGeometry`] when a coordinate or the
-    /// orientation is not finite, or [`CrccError::EmptyShape`] when the
-    /// rectangle is empty.
+    /// orientation is not finite, or derived dimensions/center overflow.
     pub fn new(rect: Rect, orientation: f64) -> CrccResult<Self> {
         if !rect.min().x.is_finite()
             || !rect.min().y.is_finite()
@@ -141,10 +148,14 @@ impl Rectangle {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A convex polygon wrapper; direct construction does not validate all topology.
 pub struct ConvexPolygon(pub(super) Polygon);
 
 impl ConvexPolygon {
     /// Creates a convex polygon without interior rings.
+    ///
+    /// Only holes and convexity are checked. Use [`SimpleCollisionObject::polygon`]
+    /// for sanitization, finite-coordinate, emptiness and topology checks.
     ///
     /// # Errors
     ///
@@ -176,10 +187,13 @@ impl Deref for ConvexPolygon {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A hole-free polygon wrapper; its constructor does not require non-convexity.
 pub struct NonConvexPolygon(pub(super) Polygon);
 
 impl NonConvexPolygon {
     /// Creates a polygon without interior rings.
+    ///
+    /// No finite-coordinate, area, topology, or non-convexity check is performed.
     ///
     /// # Errors
     ///
@@ -207,10 +221,12 @@ impl Deref for NonConvexPolygon {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+/// A polygon wrapper permitting holes; direct construction is unchecked.
 pub struct PolygonWithHoles(pub(super) Polygon);
 
 impl PolygonWithHoles {
-    /// Creates a polygon that may contain interior rings.
+    /// Wraps a polygon without validation, whether or not it has interior rings.
+    /// Prefer [`SimpleCollisionObject::polygon`] for regular application input.
     #[must_use]
     pub const fn new(polygon: Polygon) -> Self {
         Self(polygon)
@@ -226,7 +242,7 @@ impl Deref for PolygonWithHoles {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-/// Circle geometry accepted by [`crate::CollisionObject::from`].
+/// Circle geometry, convertible through [`SimpleCollisionObject`].
 pub struct Circle {
     pub(super) center: (f64, f64),
     pub(super) radius: f64,
@@ -261,6 +277,9 @@ impl Circle {
 
 #[derive(Debug, Clone, PartialEq)]
 /// The half-space `outward_normal · point <= offset`.
+///
+/// Constructors normalize both fields. Public fields permit bypassing this
+/// invariant; callers constructing/mutating them must keep a finite unit normal.
 pub struct HalfSpace {
     /// The normalized outward normal.
     pub outward_normal: DVec2,
@@ -296,6 +315,7 @@ impl HalfSpace {
     }
 
     /// Creates a half-space from a directed boundary line.
+    /// The occupied side is to the right of `p1 -> p2`, including the boundary.
     ///
     /// # Errors
     ///
@@ -324,13 +344,14 @@ impl HalfSpace {
         Self::normalized(DVec2::new(a, b), c)
     }
 
-    /// Compares two normalized half-spaces with the default tolerance.
+    /// Compares normal/offset differences using strict `< 1e-9` tests.
     #[must_use]
     pub fn almost_equal(&self, other: &Self) -> bool {
         self.almost_equal_with_tol(other, 1e-9)
     }
 
-    /// Compares two normalized half-spaces with `tol`.
+    /// Compares two normalized half-spaces with strict `< tol` tests.
+    /// The supplied tolerance is not validated.
     #[must_use]
     pub fn almost_equal_with_tol(&self, other: &Self, tol: f64) -> bool {
         self.outward_normal.sub(other.outward_normal).length().abs() < tol
@@ -340,6 +361,7 @@ impl HalfSpace {
 
 #[derive(Debug, Clone, PartialEq)]
 #[enum_dispatch(SweptArea)]
+/// One classified domain component, not a backend-decomposed primitive.
 pub enum SimpleCollisionObject {
     Empty(Empty),
     FullSpace(FullSpace),
@@ -412,8 +434,8 @@ impl SimpleCollisionObject {
     ///
     /// # Errors
     ///
-    /// Returns [`CrccError::InvalidGeometry`] when a coordinate or orientation
-    /// is not finite, or [`CrccError::EmptyShape`] when the rectangle is empty.
+    /// Returns [`CrccError::InvalidGeometry`] for non-finite coordinates,
+    /// orientation, derived dimensions or center. Zero dimensions are accepted.
     pub fn rectangle(rect: impl Into<Rect>, orientation: f64) -> CrccResult<Self> {
         Ok(Self::Rectangle(Rectangle::new(rect.into(), orientation)?))
     }
@@ -433,6 +455,8 @@ impl SimpleCollisionObject {
     /// Consecutive duplicate vertices (zero-length edges) are collapsed before
     /// validation because they carry no geometric information but break
     /// downstream triangulation, e.g. in the parry backend.
+    /// Unusable interior rings are discarded before validation. Backend
+    /// decomposition is deferred until representation conversion.
     ///
     /// # Errors
     ///
@@ -484,10 +508,11 @@ impl SimpleCollisionObject {
 }
 
 #[enum_dispatch]
+/// Conservative interval bounds used by trajectory construction and scene CCD.
 pub trait SweptArea {
     /// Overapproximates the area the object covers while moving through the given positions.
     ///
-    /// The returned vector has length `positions.len() - 1`, with each entry
+    /// The returned vector has length `positions.len().saturating_sub(1)`, with each entry
     /// corresponding to the swept area between two consecutive positions.
     fn swept_areas(&self, positions: &[DPose2]) -> Vec<SimpleCollisionObject>;
 

@@ -31,10 +31,30 @@
 //! # fn main() {}
 //! ```
 //!
-//! Pair-query continuous collision detection is conservative: `false` certifies
-//! separation over the motion, while `true` may be a conservative positive.
-//! Scene time windows use ordinary Rust ranges over [`TimeStep`]. Batch methods
-//! are available with the `rayon` feature and preserve input order.
+//! Pair-query continuous collision detection is conservative: `false` reports
+//! separation under the backend's contact/motion convention, assuming valid rigid
+//! poses and representable calculations; `true` may be a conservative positive.
+//! Scene windows use Rust ranges over [`TimeStep`]. Static queries require both
+//! interval endpoints selected; dynamic queries select outgoing interval starts.
+//! Batch methods require `rayon`, even for sequential execution, preserve input
+//! order, and retain one result/error per input.
+//!
+//! # Features and interfaces
+//!
+//! Default features enable `parry`, `rhusics`, and `collide`. `python_bindings`
+//! enables `PyO3` and Rayon and requires a backend. `benchmarking` exposes internal
+//! measurement helpers, not an application API. Typed [`CollisionChecker`]
+//! instances accept converted backend objects; [`SelectedCollisionChecker`]
+//! accepts domain objects and provides backend-specific reusable prepared queries.
+//!
+//! [`Polygon`] is `geo::Polygon` and [`Pose`] is `glamx::DPose2`. The pose alias
+//! adds no validation. Prefer [`CollisionObject`] constructors over partially
+//! checked lower-level wrappers. Complex polygons are decomposed on backend
+//! conversion, which can defer errors until query time. No public serialization,
+//! mutable scene, simulation, or contact-manifold API is provided.
+//!
+//! See the [user documentation](https://burakssen.com/crcc/) for workflows,
+//! `CommonRoad` conversion, numerical assumptions, and backend limitations.
 
 pub mod collision_checker;
 pub mod collision_object;

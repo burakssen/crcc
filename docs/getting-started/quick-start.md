@@ -45,8 +45,15 @@ This page checks a circle against a wall using Python, then shows the equivalent
 
         let status = checker.collides_static_pos(&query, Pose::translation(0.5, 0.0))?;
         assert!(status.collides());
+        assert!(!checker.collides_static_pos(&query, Pose::translation(2.0, 0.0))?.collides());
         Ok(())
     }
     ```
 
 Geometry constructors are fallible in Rust. Use `?` to propagate `CrccError`; see [errors and limits](../reference/errors-and-limits.md). The checker converts scene geometry when built; for repeated queries, see [scene queries](../guides/scenes-and-trajectories.md).
+
+In Python, read `status.collides`, **not `bool(status)` or `if status:`**. Generated enum variants do not share a collision-based truthiness rule. `status.time_step` is `None` for a static-query/static-scene hit.
+
+The Rust example uses a dependency on `crcc` with the `parry` feature and `geo = "0.32"`, as in [Installation](installation.md). Put it in your application's `src/main.rs` and run `cargo run`. Save the Python example as a script and run it in the environment containing CRCC, for example `uv run first_check.py`.
+
+Next: [construct geometry](../concepts/geometry-and-poses.md), [check object pairs](../guides/pair-queries.md), or [add trajectories](../guides/scenes-and-trajectories.md).

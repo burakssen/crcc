@@ -4,6 +4,10 @@ site_description = "2D collision checking for Rust, Python, and CommonRoad"
 site_url = "https://burakssen.com/crcc/"
 repo_url = "https://github.com/burakssen/crcc"
 strict = true
+extra_javascript = [
+  "javascripts/mathjax.js",
+  "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js",
+]
 nav = [
   "index.md",
   { "Get started" = [
@@ -15,6 +19,7 @@ nav = [
     "concepts/scenes-and-time.md",
     "concepts/continuous-collision.md",
     "concepts/backends.md",
+    "concepts/numerical-robustness.md",
   ] },
   { "Guides" = [
     "guides/pair-queries.md",
@@ -23,9 +28,12 @@ nav = [
     "guides/commonroad.md",
   ] },
   { "Reference" = [
+    "reference/supported-features.md",
     "reference/python.md",
     "reference/rust.md",
     "reference/errors-and-limits.md",
+    "reference/limitations.md",
+    "reference/benchmark-artifacts.md",
   ] },
   { "Architecture" = [
     "architecture/overview.md",
@@ -33,9 +41,13 @@ nav = [
     "architecture/backends-and-bindings.md",
   ] },
   { "Development" = [
+    "development/repository-structure.md",
     "development/building-and-testing.md",
+    "development/repository-tools.md",
     "development/benchmarking.md",
     "development/extending-backends.md",
+    "development/extending-geometry.md",
+    "development/python-bindings.md",
     "development/contributing.md",
   ] },
 ]
@@ -48,6 +60,16 @@ features = [
   "content.code.copy",
   "content.tabs.link",
 ]
+
+[[project.theme.palette]]
+scheme = "slate"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to light mode"
+
+[[project.theme.palette]]
+scheme = "default"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to dark mode"
 
 [project.markdown_extensions]
 admonition = {}

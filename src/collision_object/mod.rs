@@ -1,3 +1,9 @@
+//! Backend-independent local geometry, structural unions, and trajectories.
+//!
+//! Regular constructors validate/sanitize domain input; backend conversion is
+//! deferred to queries or checker construction. Lower-level [`simple`] wrappers
+//! can bypass full validation. Supplied poses must be valid rigid transforms.
+
 use crate::collision_checker::engine::{self, CollisionEngine};
 use crate::collision_object::simple::SimpleCollisionObject;
 use crate::collision_object::simple::SweptArea;
@@ -15,14 +21,19 @@ pub use dynamic::DynamicObstacle;
 #[derive(Debug, Clone)]
 /// A shape or compound of shapes accepted by every public query.
 ///
-/// Constructors validate geometry and decompose complex polygons internally.
-/// A merged object represents the union of its children.
+/// Regular constructors validate/sanitize geometry and classify polygons;
+/// backend conversion decomposes them later. A merged object represents a
+/// structural union, not a polygon Boolean union. Conversions from lower-level
+/// components do not revalidate geometry.
 pub struct CollisionObject {
     collision_objects: Vec<SimpleCollisionObject>,
 }
 
 impl CollisionObject {
     /// Performs a discrete pair collision query at two poses.
+    ///
+    /// Geometry is cloned/converted per call. Poses are not validated here;
+    /// exact boundary contact follows the selected backend.
     ///
     /// # Errors
     ///
@@ -40,8 +51,10 @@ impl CollisionObject {
 
     /// Checks two motions continuously between their start and end poses.
     ///
-    /// `false` certifies separation over the interval; `true` can be a
-    /// conservative positive for rotations and complex shapes.
+    /// `false` reports separation under the backend's motion/contact convention,
+    /// assuming valid rigid poses and representable arithmetic. `true` can be a
+    /// conservative positive. Endpoint poses do not encode multiple revolutions;
+    /// angular interpolation differs between backends. No impact time is returned.
     ///
     /// # Errors
     ///
@@ -68,6 +81,10 @@ impl CollisionObject {
     }
 
     /// Returns the non-negative separation distance at two poses.
+    ///
+    /// Overlap/contact normally yields zero; this is not an interchangeable
+    /// collision predicate near backend tolerances. Empty geometry is unsupported.
+    /// Rhusics/Collide runtime calls use shared domain distance, not typed distance.
     ///
     /// # Errors
     ///
@@ -100,6 +117,8 @@ impl CollisionObject {
     }
 
     /// Creates the half-space `normal · point <= offset`.
+    ///
+    /// Both normal and offset are divided by the original normal length.
     ///
     /// # Errors
     ///
@@ -141,6 +160,9 @@ impl CollisionObject {
 
     /// Creates an oriented rectangle from an axis-aligned base rectangle.
     ///
+    /// Orientation rotates about the local center. Zero width/height is currently
+    /// accepted by the Rust constructor, unlike Python's positive-dimension API.
+    ///
     /// # Errors
     ///
     /// Returns an error if the rectangle or orientation does not define valid
@@ -161,10 +183,21 @@ impl CollisionObject {
 
     /// Creates a polygon, including non-convex polygons and polygons with holes.
     ///
+    /// Consecutive duplicate vertices and unusable holes are removed before
+    /// validating retained coordinates/topology. Decomposition occurs later.
+    ///
+    /// ```
+    /// use crcc::{CollisionObject, Polygon};
+    /// let ring = geo::LineString::from(vec![(0.0, 0.0), (2.0, 0.0), (0.0, 2.0)]);
+    /// let object = CollisionObject::polygon(Polygon::new(ring, vec![]))?;
+    /// assert!(!object.is_empty());
+    /// # Ok::<(), crcc::CrccError>(())
+    /// ```
+    ///
     /// # Errors
     ///
-    /// Returns an error if the polygon is invalid, degenerate, or cannot be
-    /// decomposed into supported collision geometry.
+    /// Returns an error if the sanitized polygon is non-finite, topologically
+    /// invalid, or empty. Backend decomposition failures can surface on query use.
     pub fn polygon(polygon: impl Into<Polygon>) -> CrccResult<Self> {
         Ok(SimpleCollisionObject::polygon(polygon)?.into())
     }
@@ -209,6 +242,9 @@ impl CollisionObject {
     }
 
     /// Computes one swept area for each consecutive pair of poses.
+    ///
+    /// Returns `positions.len().saturating_sub(1)` conservative bounds. Supplied
+    /// poses are not validated; unrepresentable checked bounds use full space.
     #[must_use]
     pub fn swept_areas(&self, positions: &[DPose2]) -> Vec<Self> {
         let step_count = positions.len().saturating_sub(1);
@@ -235,7 +271,8 @@ impl CollisionObject {
 
     /// Computes the swept area between two poses.
     ///
-    /// Returns `None` if no swept-area interval is produced.
+    /// The current implementation always produces `Some`, including empty
+    /// geometry. The optional return type is retained by the existing API.
     #[must_use]
     pub fn swept_area(&self, start_pos: DPose2, end_pos: DPose2) -> Option<Self> {
         self.swept_areas(&[start_pos, end_pos]).pop()

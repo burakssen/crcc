@@ -1,12 +1,14 @@
 # CRCC
 
-CRCC is a 2D collision-query library for Rust and Python. It provides validated geometry, pair and scene queries, conservative continuous collision checks, and optional Parry, Rhusics, and Collide backends. Python users can convert CommonRoad scenarios with `crcc.commonroad`.
+CRCC is a 2D collision-query library for Rust and Python. It provides geometry constructors, pair and immutable-scene queries, separation distance, conservative continuous collision checks, and optional Parry, Rhusics, and Collide backends. Python users can convert CommonRoad scenarios with `crcc.commonroad`.
 
 CRCC reports overlap; it does not resolve contacts or advance simulation state. Continuous-query positives can be conservative, and backend edge semantics differ. See the [backend guide](https://burakssen.com/crcc/concepts/backends/).
 
 ## Install
 
-CRCC is not published to PyPI or crates.io. Install the Python package from GitHub with `uv` (a Rust toolchain is required to build the native extension):
+This collision library is not published to PyPI or crates.io. **`pip install crcc` installs an unrelated CRC package.**
+
+Install from GitHub inside a Python project with `uv` (Python 3.10+, current stable Rust, and a native linker are required):
 
 ```bash
 uv add git+https://github.com/burakssen/crcc
@@ -32,6 +34,7 @@ checker = (
 )
 status = checker.collides_static(Circle(0.5), position=Pose.from_translation((0.5, 0.0)))
 assert status.collides
+assert not checker.collides_static(Circle(0.5), Pose.from_translation((2.0, 0.0))).collides
 ```
 
 ## Documentation and development
@@ -39,5 +42,6 @@ assert status.collides
 - [Documentation](https://burakssen.com/crcc/): [installation](https://burakssen.com/crcc/getting-started/installation/), [quick start](https://burakssen.com/crcc/getting-started/quick-start/), [Python API](https://burakssen.com/crcc/reference/python/), and [Rust API](https://burakssen.com/crcc/reference/rust/).
 - [CommonRoad integration](https://burakssen.com/crcc/guides/commonroad/) and [architecture](https://burakssen.com/crcc/architecture/overview/).
 - [Build and test](https://burakssen.com/crcc/development/building-and-testing/), [benchmarking](https://burakssen.com/crcc/development/benchmarking/), and [contributing](https://burakssen.com/crcc/development/contributing/).
+- [Supported features](https://burakssen.com/crcc/reference/supported-features/) and [limitations](https://burakssen.com/crcc/reference/limitations/).
 
 The repository's `main.py` tutorials, playground, benchmarks, and scenarios are development assets; they are not installed as a `crcc` command. See the [development guide](https://burakssen.com/crcc/development/building-and-testing/) for source setup.

@@ -9,6 +9,8 @@ mod inner;
 mod simple;
 
 #[derive(Debug, Clone)]
+/// Collide finite-set/analytic-half-space geometry for typed queries. Typed distance
+/// retains the trait's unsupported default; runtime distance uses a shared fallback.
 pub struct CollideCollisionObject {
     inner: CollideCollisionObjectInner,
 }

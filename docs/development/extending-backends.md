@@ -1,6 +1,8 @@
 # Extending backends
 
-A collision backend is a feature-gated adapter from CRCC domain geometry to a concrete collision representation. Keep user-facing geometry and scene APIs backend-independent; place conversion and algorithm-specific behavior under `src/collision_checker/engine/<backend>/`.
+A built-in backend is a feature-gated adapter from CRCC domain geometry to a concrete representation. Keep conversion and algorithms under `src/collision_checker/engine/<backend>/`.
+
+For a Rust-only typed integration, an application can define its own representation `E`, implement `From<CollisionObject>` and `EngineCollisionObject`, and use `builder.build::<E>()` without adding a runtime enum variant. Integrating a backend into `SelectedCollisionChecker` and Python requires the coordinated changes below; there is no runtime plugin loader.
 
 ## Implementation boundary
 
@@ -12,6 +14,10 @@ A collision backend is a feature-gated adapter from CRCC domain geometry to a co
 6. Add feature-gated tests for construction, supported and unsupported geometry, contact boundaries, continuous behavior, distance, and scene queries.
 
 Use the existing backend modules as examples: Parry maps backend errors into `CrccError`; Rhusics and Collide use their collision operations with analytic half-space handling. Feature combinations matter: CI tests no backend, each backend alone, and all features together.
+
+Conversion is infallible at the trait boundary. Define how conversion failures are retained/reported on later use; never silently drop unsupported geometry. Decide contact tolerances, infinite geometry behavior, interpolation, conservative fallbacks, and distance coverage explicitly. Runtime distance dispatch can use a domain fallback independently of typed `distance_at`; wire the intended path deliberately.
+
+Replacing a built-in backend also requires checking its dependency version/feature, representation conversion, runtime default-selection order, prepared-query variants, benchmark selectors/workloads and Python package build features.
 
 ## Validate the integration
 

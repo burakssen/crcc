@@ -12,15 +12,19 @@ class CollisionBackend:
     Rhusics: CollisionBackend
     Collide: CollisionBackend
 
-CollisionEngine = CollisionBackend
-
 class CollisionStatus:
     """Checker result identifying no, static, or first dynamic collision.
 
-    Instances are returned by checker queries; they are not constructed
-    directly.
+    Read collides instead of relying on generated enum truthiness. Dynamic
+    status time is a sample/interval start, not exact time of impact.
     """
 
+    @staticmethod
+    def NoCollision() -> CollisionStatus: ...
+    @staticmethod
+    def CollidesStatic() -> CollisionStatus: ...
+    @staticmethod
+    def CollidesDynamic(time_step: int, /) -> CollisionStatus: ...
     @property
     def collides(self) -> bool: ...
     @property
@@ -97,7 +101,7 @@ class CollisionChecker:
         parallel: bool = False,
     ) -> list[CollisionStatus]: ...
 
-    # Deprecated aliases retained for one release.
+    # Deprecated compatibility aliases; use canonical methods above.
     def collides_static_prepared(
         self,
         query: PreparedStaticQuery,
@@ -140,21 +144,15 @@ class CollisionChecker:
     ) -> list[CollisionStatus]: ...
 
 class CollisionCheckerBuilder:
-    """Builder for an immutable CollisionChecker."""
+    """Native builder; the public Python facade uses backend= and add_* instead."""
 
     def __init__(
         self,
-        backend: CollisionBackend | None = None,
-        *,
         engine: CollisionBackend | None = None,
     ) -> None: ...
-    def add_static_obstacle(self, query_shape: CollisionObject) -> CollisionCheckerBuilder: ...
-    def add_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
-    def build(self, backend: CollisionBackend | None = None) -> CollisionChecker: ...
-
-    # Deprecated aliases retained for one release.
+    def build(self, engine: CollisionBackend | None = None) -> CollisionChecker: ...
     def with_engine(self, engine: CollisionBackend) -> CollisionCheckerBuilder: ...
-    def with_static_obstacle(self, query_shape: CollisionObject) -> CollisionCheckerBuilder: ...
+    def with_static_obstacle(self, collision_object: CollisionObject) -> CollisionCheckerBuilder: ...
     def with_dynamic_obstacle(self, dynamic_obstacle: DynamicObstacle) -> CollisionCheckerBuilder: ...
     def with_road_boundary(
         self,
@@ -162,14 +160,3 @@ class CollisionCheckerBuilder:
     ) -> CollisionCheckerBuilder: ...
 
 def road_boundary(lanelets: Sequence[Sequence[tuple[float, float]]]) -> CollisionObject: ...
-
-__all__ = [
-    "CollisionBackend",
-    "CollisionChecker",
-    "CollisionCheckerBuilder",
-    "CollisionEngine",
-    "CollisionStatus",
-    "PreparedDynamicQuery",
-    "PreparedStaticQuery",
-    "road_boundary",
-]

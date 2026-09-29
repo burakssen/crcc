@@ -1,3 +1,9 @@
+"""Convert CommonRoad models into CRCC local shapes and world occupancies.
+
+Import adapters explicitly. Prediction gaps become empty samples; conversions
+do not store scenario dt, obstacle IDs, or planning problems.
+"""
+
 from __future__ import annotations
 
 from numbers import Real
@@ -43,7 +49,11 @@ def scenario_builder(
     scenario: Scenario,
     builder: CollisionCheckerBuilder | None = None,
 ) -> CollisionCheckerBuilder:
-    """Creates a collision checker builder from a CommonRoad scenario."""
+    """Add lanelet boundaries, static obstacles, then dynamic obstacles.
+
+    Creates a builder if omitted; otherwise mutates it incrementally. Conversion
+    failure does not roll back earlier additions. An absent map adds no boundary.
+    """
     if builder is None:
         builder = CollisionCheckerBuilder()
 
@@ -77,7 +87,13 @@ def add_dynamic_obstacle(
 
 
 def from_dynamic_obstacle(dynamic_obstacle: cr_obstacle.DynamicObstacle) -> DynamicObstacle:
-    """Converts a CommonRoad dynamic obstacle to a local crcc DynamicObstacle."""
+    """Convert prediction samples to a time-varying CRCC trajectory.
+
+    Trajectory predictions use local shapes/state poses; other predictions use
+    world occupancies with identity poses. Missing integer samples are empty and
+    suppress adjacent motion. No prediction represents only initial occupancy.
+    This does not define geometric morphing or preserve exact rigid-motion CCD.
+    """
     initial_time = _exact_time_step(dynamic_obstacle.initial_state.time_step)
     prediction: Any = dynamic_obstacle.prediction
     if isinstance(prediction, TrajectoryPrediction):
@@ -131,7 +147,12 @@ def add_road_boundary(
 
 
 def road_boundary(lanelet_network: LaneletNetwork) -> CollisionObject:
-    """Creates an obstacle for all space outside the lanelet network."""
+    """Approximate occupancy outside the lanelet union.
+
+    Rust simplifies at 0.01 coordinate units and ignores complement regions of
+    area <= 0.001 squared units. Empty input or unrepresentable construction
+    returns full space. The module constants are informational, not settings.
+    """
     lanelets = [[_point(vertex) for vertex in lanelet.polygon.vertices] for lanelet in lanelet_network.lanelets]
     return core.road_boundary(lanelets)
 
@@ -158,7 +179,11 @@ def from_shape(shape: ObstacleShape) -> CollisionObject:
 
 
 def from_occupancy(occupancy: Occupancy) -> CollisionObject:
-    """Converts a CommonRoad occupancy to a world-positioned crcc CollisionObject."""
+    """Convert occupancy to world geometry; query it with identity pose.
+
+    Groups/other occupancies use their Shapely result, not recursive native
+    child conversion. Nonempty unsupported Shapely geometry raises ValueError.
+    """
     if isinstance(occupancy, CircleOccupancy):
         return Circle(occupancy.radius, (occupancy.circle_center.x, occupancy.circle_center.y))
     if isinstance(occupancy, RectOccupancy):
@@ -186,7 +211,11 @@ def from_shapely(geometry: BaseGeometry) -> CollisionObject:
 
 
 def from_pose(state: TraceState) -> Pose:
-    """Converts a CommonRoad state to a crcc Pose."""
+    """Convert an exact state pose, without inferring orientation from velocity.
+
+    Raises ValueError for a position other than a NumPy array of shape (2,),
+    a non-real orientation, or a nonfinite resulting transform.
+    """
     position = getattr(state, "position", None)
     orientation = getattr(state, "orientation", None)
     if not isinstance(position, np.ndarray) or position.shape != (2,):

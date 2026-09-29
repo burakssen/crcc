@@ -1,3 +1,5 @@
+//! Owned sampled trajectories with cached conservative bounds between samples.
+
 use crate::collision_object::CollisionObject;
 use crate::error::{CrccError, CrccResult};
 use crate::time::TimeStep;
@@ -6,6 +8,8 @@ use crate::time::TimeStepSet;
 use glamx::DPose2;
 
 #[derive(Debug, Clone)]
+/// Backend-converted trajectory for typed [`crate::CollisionChecker`] queries.
+/// Obtain it by consuming [`DynamicObstacle::convert_repr`]; sample fields are private.
 pub struct GenericDynamicObstacle<E> {
     pub(crate) trajectory: DynamicObstacleTrajectory<E>,
     pub(crate) time_offset: TimeStep,
@@ -27,6 +31,9 @@ pub(crate) enum DynamicObstacleTrajectory<E> {
 
 #[derive(Debug, Clone)]
 /// A discrete moving obstacle used by [`crate::CollisionChecker`].
+///
+/// Samples exist only on their active span; no extrapolation is performed.
+/// Constructors accept empty trajectories and cache swept geometry eagerly.
 pub struct DynamicObstacle(GenericDynamicObstacle<CollisionObject>);
 
 impl DynamicObstacle {
@@ -34,6 +41,19 @@ impl DynamicObstacle {
     ///
     /// `positions[0]` is active at `time_offset`; later poses advance one time
     /// step each. Motion between adjacent poses is checked conservatively.
+    /// Empty `positions` has no active times; one pose has no interval. Pose
+    /// validation checks finite translation/angle, not arbitrary unit rotations.
+    ///
+    /// ```
+    /// use crcc::{CollisionObject, DynamicObstacle, Pose, TimeStep};
+    /// let moving = DynamicObstacle::new(
+    ///     CollisionObject::circle((0.0, 0.0), 0.5)?,
+    ///     vec![Pose::translation(-2.0, 0.0), Pose::translation(2.0, 0.0)],
+    ///     TimeStep(10),
+    /// )?;
+    /// # let _ = moving;
+    /// # Ok::<(), crcc::CrccError>(())
+    /// ```
     ///
     /// # Errors
     ///
@@ -59,6 +79,9 @@ impl DynamicObstacle {
     /// Creates a trajectory whose shape may change at each step.
     ///
     /// `obstacles` and `positions` must have equal lengths.
+    /// Between steps, both endpoint shapes are swept across both poses and
+    /// their union is checked as stationary world geometry, not a geometric morph.
+    /// An empty endpoint suppresses that interval. Empty vectors are accepted.
     ///
     /// # Errors
     ///
@@ -108,6 +131,10 @@ impl DynamicObstacle {
         }))
     }
 
+    /// Consumes the trajectory and converts its geometry and cached bounds to `E`.
+    ///
+    /// Conversion cannot return errors at this boundary; backend failures can
+    /// be retained in the representation and surface when a query uses it.
     #[must_use]
     pub fn convert_repr<E: From<CollisionObject>>(self) -> GenericDynamicObstacle<E> {
         GenericDynamicObstacle {

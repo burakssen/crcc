@@ -1,8 +1,16 @@
 # CRCC
 
-CRCC is a Rust library with Python bindings for 2D collision queries. It models validated geometry, checks object pairs and immutable scenes, and can convert CommonRoad scenarios through its Python adapter.
+CRCC is a Rust library with Python bindings for 2D collision queries. Use it to check a vehicle, robot, or other occupied geometry against another object or a scene containing static and moving obstacles. Its Python adapter converts CommonRoad models into ordinary CRCC geometry and trajectories.
 
 CRCC answers whether geometry overlaps; it does not resolve contacts, advance a simulation, or return contact manifolds.
+
+```python
+from crcc import Circle, CollisionCheckerBuilder, Pose, Rectangle
+
+checker = CollisionCheckerBuilder().add_static_obstacle(Rectangle(2.0, 2.0)).build()
+assert checker.collides_static(Circle(0.5), Pose.identity()).collides
+assert not checker.collides_static(Circle(0.5), Pose.from_translation((4.0, 0.0))).collides
+```
 
 ## Start here
 
@@ -20,6 +28,8 @@ CRCC answers whether geometry overlaps; it does not resolve contacts, advance a 
 - CommonRoad shape, occupancy, prediction, obstacle, and lanelet-boundary conversion in Python.
 
 See [concepts](concepts/geometry-and-poses.md) for the data model, [guides](guides/pair-queries.md) for task-based examples, and the [API reference](reference/python.md) or [Rust reference](reference/rust.md) for signatures.
+
+Rust owns geometry, trajectory bounds, scene queries, and backend conversion. Python exposes the runtime-selected checker through PyO3; Rust also offers typed backend dispatch. See the [architecture](architecture/overview.md), [supported features](reference/supported-features.md), and [limitations](reference/limitations.md). Continuous positives can be conservative, and boundary contact differs by backend.
 
 ## For contributors
 

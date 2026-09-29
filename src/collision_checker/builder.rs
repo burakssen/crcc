@@ -9,7 +9,8 @@ use crate::time::TimeStepSet;
 use geo::{Area, BooleanOps, ConvexHull, HasDimensions, Polygon, Simplify, Winding, unary_union};
 use itertools::Itertools;
 
-/// Builds an immutable [`CollisionChecker`] with runtime engine selection.
+/// Collects domain geometry for a typed or runtime-selected immutable scene.
+/// Fluent methods and build consume `self`; clone a builder to reuse its inputs.
 #[derive(Clone, Debug)]
 pub struct CollisionCheckerBuilder {
     static_obstacles: Vec<CollisionObject>,
@@ -17,7 +18,7 @@ pub struct CollisionCheckerBuilder {
 }
 
 impl CollisionCheckerBuilder {
-    /// Creates an empty builder using [`CollisionEngine::default`].
+    /// Creates an empty builder. Backend selection happens at build time.
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -27,6 +28,7 @@ impl CollisionCheckerBuilder {
     }
 
     /// Adds geometry to the checker's merged static obstacle.
+    /// Geometry is stored at identity pose; encode any fixed placement locally.
     #[must_use]
     pub fn with_static_obstacle(mut self, collision_object: impl Into<CollisionObject>) -> Self {
         self.static_obstacles.push(collision_object.into());
@@ -34,6 +36,11 @@ impl CollisionCheckerBuilder {
     }
 
     /// Adds geometry representing the space outside `lanelets`.
+    ///
+    /// Unions/simplifies at `0.01` coordinate units and ignores complement regions
+    /// of area at most `0.001` squared units. This is an approximation, not an
+    /// exact complement. Empty/unrepresentable boundary input becomes full space.
+    /// Input polygon validity is not checked before Boolean operations.
     #[must_use]
     pub fn with_road_boundary(self, lanelets: &[Polygon]) -> Self {
         self.with_static_obstacle(road_boundary(lanelets))
@@ -47,6 +54,8 @@ impl CollisionCheckerBuilder {
     }
 
     /// Builds a checker whose backend representation is selected by `E`.
+    /// Converts geometry/cached bounds and materializes active times. Conversion
+    /// is infallible at this boundary, but later backend queries can fail.
     #[must_use]
     pub fn build<E: EngineCollisionObject>(self) -> CollisionChecker<E> {
         let active_times = self.active_times();
@@ -119,7 +128,7 @@ impl Default for CollisionCheckerBuilder {
 }
 
 pub fn road_boundary(lanelets: &[Polygon]) -> CollisionObject {
-    // Simplify with a 1 cm tolerance to reduce geometric artifacts.
+    // Coordinate units; 1 cm only when input coordinates use meters.
     let road = unary_union(lanelets).simplify(0.01);
 
     if road.is_empty() {
@@ -139,7 +148,7 @@ pub fn road_boundary(lanelets: &[Polygon]) -> CollisionObject {
     }
 
     for hole in road_convex_hull.difference(&road) {
-        // Ignore holes smaller than 10 cm² because they are likely artifacts.
+        // Squared coordinate units; 10 cm² only for meter-based input.
         if hole.unsigned_area() <= 0.001 {
             continue;
         }

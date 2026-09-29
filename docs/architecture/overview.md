@@ -3,13 +3,13 @@
 CRCC separates backend-independent geometry from engine-specific representations. Rust owns the geometry model, time model, checker pipeline, and backend adapters. PyO3 exposes the core; small Python modules provide the public package shape and CommonRoad conversion.
 
 ```mermaid
-flowchart LR
+flowchart TD
     Rust[Rust application] --> Domain[CRCC geometry and time]
     Python[Python application] --> Wrapper[python/crcc wrappers]
     Wrapper --> PyO3[PyO3 bindings]
     PyO3 --> Domain
     CommonRoad[CommonRoad model] --> Adapter[crcc.commonroad adapter]
-    Adapter --> Domain
+    Adapter --> Wrapper
     Domain --> Builder[Checker builder]
     Builder --> Selected[Runtime-selected checker]
     Builder --> Typed[Typed checker]
@@ -39,5 +39,11 @@ flowchart LR
 - Prepared queries retain converted geometry and are backend-specific.
 - Continuous queries are conservative; a positive can mean possible collision.
 - Backend-specific contact semantics remain visible instead of being normalized to a false parity guarantee.
+
+## Storage and ownership
+
+`CollisionObject` owns a vector of domain components. Static scene components are merged; dynamic obstacles remain separate. `DynamicObstacle` constructors own samples and cache per-interval swept geometry. Building converts those objects/bounds and materializes the union of active times. There is no mutable scene/update layer or shared scene-wide spatial index.
+
+Python geometry/trajectory/prepared wrappers retain Rust values through `Arc`. The public Python builder mutates a stored native builder and clones it on `build()`; Rust fluent/build calls consume the builder. Raw selected-checker queries clone and convert query values per call; preparation retains conversion for reuse. Native batch calls release the GIL and optionally use Rayon.
 
 Continue with the [query pipeline](query-pipeline.md) or [backend and binding boundaries](backends-and-bindings.md).

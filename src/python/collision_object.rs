@@ -85,7 +85,8 @@ impl CollisionObject {
     ))]
     /// Conservatively checks two motions over one continuous interval.
     ///
-    /// `False` certifies separation; `True` may be a conservative positive.
+    /// `False` reports separation under the backend's motion/contact convention
+    /// and numerical assumptions; `True` may be a conservative positive.
     ///
     /// # Errors
     ///
@@ -157,7 +158,8 @@ impl CollisionObject {
     }
 
     #[staticmethod]
-    /// Merges an iterable of objects into one compound.
+    /// Merges a sequence of objects into a base `CollisionObject` union.
+    /// Generators/iterators are not accepted by sequence extraction.
     #[must_use]
     pub fn merge_all(collision_objects: Vec<Self>) -> Self {
         Self::from(RustCollisionObject::merge_all(

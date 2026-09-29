@@ -14,7 +14,7 @@ def deterministic_probes(scenario, pose_bounds) -> tuple[tuple[str, Pose], ...]:
     vertices = np.asarray(lanelets[0].polygon.vertices)
     inside = tuple(vertices[:, :2].mean(axis=0))
     outside = (pose_bounds[1][0] + 2 * CAR_SIZE[0], pose_bounds[1][1] + 2 * CAR_SIZE[0])
-    return (("first lanelet centroid", Pose(inside, 0.0)), ("outside road bounds", Pose(outside, 0.0)))
+    return (("first lanelet vertex average", Pose(inside, 0.0)), ("outside road bounds", Pose(outside, 0.0)))
 
 
 def commonroad_results(scenario, checker, pose_bounds) -> tuple[ResultRow, ...]:

@@ -42,7 +42,7 @@ def count_collisions(results):
 
 
 def scenario_time_steps(scenario):
-    """Gather all unique time steps present in a scenario's dynamic obstacles."""
+    """Gather initial and listed trajectory-state times; omit set-based prediction times."""
     time_steps = []
     for obstacle in scenario.dynamic_obstacles:
         time_steps.append(obstacle.initial_state.time_step)

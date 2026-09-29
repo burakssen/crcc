@@ -9,6 +9,8 @@ mod inner;
 mod simple;
 
 #[derive(Debug, Clone)]
+/// Parry-converted geometry for typed queries. Failed conversion can be retained
+/// and reported as Unsupported on query use. Implements native distance.
 pub struct ParryCollisionObject(ParryCollisionObjectInner);
 
 impl EngineCollisionObject for ParryCollisionObject {

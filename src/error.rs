@@ -3,7 +3,8 @@ use derive_more::Display;
 #[derive(Debug, Clone, PartialEq, Display)]
 /// An error returned when geometry is invalid or an engine cannot perform a query.
 pub enum CrccError {
-    /// A circle radius was non-finite or not strictly positive.
+    /// A circle center/radius was non-finite or its radius was not positive.
+    /// The payload is the radius, including when the center caused rejection.
     #[display("Circle radius must be positive, got {_0}.")]
     InvalidRadius(f64),
     /// A query required convex geometry but received a non-convex shape.

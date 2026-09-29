@@ -8,6 +8,8 @@ mod inner;
 mod simple;
 
 #[derive(Debug, Clone)]
+/// Rhusics finite/analytic-half-space geometry for typed queries. Typed distance
+/// retains the trait's unsupported default; runtime distance uses a shared fallback.
 pub struct RhusicsCoreCollisionObject {
     inner: RhusicsCoreCollisionObjectInner,
 }

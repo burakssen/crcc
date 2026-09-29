@@ -39,11 +39,11 @@ possible_collision = moving.collides_continuous(
 assert possible_collision
 ```
 
-The result is conservative: `False` certifies interval separation; `True` means collision is possible. Backend algorithms and limitations differ. See [continuous collision](../concepts/continuous-collision.md) before using the result in safety-related logic.
+The result is conservative: `False` reports interval separation under the selected implementation's assumptions/contact convention; `True` means collision is possible. Backend algorithms and limitations differ. See [continuous collision](../concepts/continuous-collision.md).
 
 ## Select a backend
 
-Python pair methods accept `backend=`. Omitting it selects the compiled default, which is Parry when enabled. `engine=` and `CollisionEngine` remain deprecated aliases. Scene queries select a backend when constructing the builder:
+Python pair methods accept `backend=`. Omitting it selects the compiled default, which is Parry when enabled. `engine=` is a deprecated keyword; `CollisionEngine` is a compatibility alias of `CollisionBackend` (importing it does not itself warn). Specifying both selectors raises `TypeError`. Scene queries select a backend when constructing the builder:
 
 ```python
 from crcc import CollisionBackend, CollisionCheckerBuilder

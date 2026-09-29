@@ -8,12 +8,30 @@ on:
       - docs/**
       - README.md
       - zensical.toml
+      - src/**
+      - python/**
+      - examples/**
+      - tools/**
+      - tests/test_documentation.py
+      - Cargo.toml
+      - Cargo.lock
+      - pyproject.toml
+      - uv.lock
       - .github/workflows/docs.yml
   pull_request:
     paths:
       - docs/**
       - README.md
       - zensical.toml
+      - src/**
+      - python/**
+      - examples/**
+      - tools/**
+      - tests/test_documentation.py
+      - Cargo.toml
+      - Cargo.lock
+      - pyproject.toml
+      - uv.lock
       - .github/workflows/docs.yml
   workflow_dispatch:
 
@@ -24,7 +42,7 @@ jobs:
   build:
     name: Build documentation
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -34,6 +52,15 @@ jobs:
       - name: Build documentation
         # Keep documentation tooling isolated from the Python package dependencies.
         run: uvx --from zensical==0.0.65 zensical build --strict
+      - name: Build public Rust API reference
+        env:
+          RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          cargo doc --locked --lib --no-deps --no-default-features --features parry,rhusics,collide,rayon
+          cp -R target/doc/. site/rustdoc
+          python tools/check_documentation.py --site
       - name: Upload GitHub Pages artifact
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5

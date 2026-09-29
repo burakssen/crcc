@@ -12,6 +12,7 @@ use std::sync::Arc;
 /// `DynamicObstacle(shape, positions, time_offset)` keeps one shape and assigns
 /// successive poses to successive integer time steps. Adjacent poses are joined
 /// by conservative continuous collision checks.
+/// Empty sequences are allowed; no occupancy persists beyond the last sample.
 #[pyclass]
 #[derive(Clone)]
 pub struct DynamicObstacle(Arc<RustDynamicObstacle>);
@@ -45,11 +46,14 @@ impl DynamicObstacle {
     /// Creates a trajectory whose shape may vary at each time step.
     ///
     /// `positions` defaults to identity poses.
+    /// Empty endpoint geometry suppresses its adjacent intervals. Interval
+    /// checking uses a swept union, not shape morphing or exact timed occupancy.
     ///
     /// # Errors
     ///
     /// Returns a Python `ValueError` when the numbers of shapes and poses
-    /// differ.
+    /// differ or trajectory extent overflows. Integer extraction can raise
+    /// `OverflowError`; supplied values must fit signed 32-bit time.
     pub fn from_time_variant(
         obstacles: Vec<CollisionObject>,
         time_offset: TimeStepInner,

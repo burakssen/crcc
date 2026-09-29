@@ -20,7 +20,7 @@ classifiers = [
 dependencies = ["commonroad-io>=2026.1"]
 
 [dependency-groups]
-dev = ["pre-commit>=2.21.0", "pyright==1.1.411", "pytest>=8.0", "ruff==0.14.8"]
+dev = ["pre-commit>=2.21.0", "pyright==1.1.414", "pytest>=8.0", "ruff==0.14.8"]
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

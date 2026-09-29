@@ -226,7 +226,7 @@ def test_commonroad_probes_are_geometry_derived_and_repeatable():
     assert [(name, pose.translation, pose.rotation) for name, pose in first] == [
         (name, pose.translation, pose.rotation) for name, pose in second
     ]
-    assert [name for name, _pose in first] == ["first lanelet centroid", "outside road bounds"]
+    assert [name for name, _pose in first] == ["first lanelet vertex average", "outside road bounds"]
     assert commonroad.commonroad_results(scenario, checker, bounds) == commonroad.commonroad_results(
         scenario, checker, bounds
     )

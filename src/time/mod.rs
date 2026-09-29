@@ -1,3 +1,7 @@
+//! Signed 32-bit sample indices and checked/saturating range operations.
+//! Indices have no built-in physical duration or scenario time-step size.
+
+/// Ordered union of active trajectory sample times stored by a scene.
 pub type TimeStepSet = std::collections::BTreeSet<TimeStep>;
 use derive_more::From;
 use std::fmt::Display;
@@ -62,6 +66,15 @@ impl TimeStep {
     /// Iterates over the discrete steps selected by a Rust range.
     ///
     /// Included and excluded bounds follow normal [`RangeBounds`] semantics.
+    /// Inverted/extreme excluded ranges are empty. Unbounded iteration is lazy
+    /// but spans all 4,294,967,296 representable values.
+    ///
+    /// ```
+    /// use crcc::TimeStep;
+    /// assert_eq!(TimeStep::iter_range(TimeStep(2)..TimeStep(4)).collect::<Vec<_>>(),
+    ///            vec![TimeStep(2), TimeStep(3)]);
+    /// assert_eq!(TimeStep::MAX.checked_succ(), None);
+    /// ```
     pub fn iter_range(range: impl RangeBounds<Self>) -> impl Iterator<Item = Self> {
         let start = match range.start_bound() {
             std::ops::Bound::Included(t) => i64::from(t.0),

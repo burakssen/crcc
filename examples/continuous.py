@@ -58,7 +58,7 @@ def continuous_results(engine: CollisionEngine) -> tuple[ResultRow, ...]:
     checker = CollisionCheckerBuilder(backend=engine).add_static_obstacle(Rectangle(0.3, 3.0)).build()
     for time_step in (10, 11):
         status = checker.collides_dynamic(trajectory, min_time=time_step, max_time=time_step)
-        results += ((f"dynamic sample t={time_step}", "hit" if status.collides else "clear", str(status)),)
+        results += ((f"dynamic interval start t={time_step}", "hit" if status.collides else "clear", str(status)),)
     return results
 
 

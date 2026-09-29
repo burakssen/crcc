@@ -31,7 +31,8 @@ const ENGINE_PROPERTY_MESSAGE: &CStr = c"engine is deprecated; use backend inste
 /// The outcome of a checker query.
 ///
 /// `collides` is true for static and dynamic collisions. `time_step` is set only
-/// for a dynamic collision and contains the first colliding step.
+/// for a dynamic query/scene hit and contains a sample or interval start.
+/// Use `status.collides`, not enum truthiness; no exact contact time is returned.
 #[pyclass]
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum CollisionStatus {
@@ -90,6 +91,7 @@ impl From<RustCollisionStatus> for CollisionStatus {
 }
 
 /// Fixed geometry converted for repeated queries against one backend.
+/// Reusable across same-backend scenes; obtain via `prepare_static`.
 #[pyclass]
 pub struct PreparedStaticQuery(Arc<RustPreparedStaticQuery>);
 
@@ -109,6 +111,7 @@ impl PreparedStaticQuery {
 }
 
 /// A dynamic trajectory converted for repeated queries against one backend.
+/// Reusable across same-backend scenes; obtain via `prepare_dynamic`.
 #[pyclass]
 pub struct PreparedDynamicQuery(Arc<RustPreparedDynamicQuery>);
 
@@ -200,6 +203,8 @@ impl CollisionChecker {
 
     #[pyo3(signature = (query, position = None, min_time = None, max_time = None))]
     /// Checks a fixed shape or prepared geometry against the scene.
+    /// Static geometry is always checked. Dynamic intervals require both selected
+    /// endpoints; a singleton time window checks dynamic occupancy only.
     ///
     /// Raises `ValueError` when `min_time` exceeds `max_time` or an operation is
     /// unsupported, and `TypeError` when `query` has neither accepted type.
@@ -236,6 +241,8 @@ impl CollisionChecker {
     ///
     /// Entries may mix raw objects with prepared geometry. Set `parallel=True`
     /// to execute the batch on Rayon's active pool.
+    /// Native work releases the GIL. Any error raises for the whole call; no
+    /// partial results are returned. Batch poses must be Pose, not None.
     ///
     /// # Errors
     ///
