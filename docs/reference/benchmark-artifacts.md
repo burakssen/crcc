@@ -72,7 +72,7 @@ Analytic workloads, backend-specific contact expectations, and scalar/batch equi
 native_benchmark <parry|rhusics|collide> <native|public> <workload> [iterations]
 ```
 
-Workloads: `circle_clear`, `circle_hit`, `rectangle_clear`, `rectangle_hit`, `compound_clear`, `ccd`, `tunneling`, `moving_vs_moving`, `rotation_wrap`, `endpoint_touch`, `distance`, `dynamic_fixed`, `dynamic_time_variant`. Default iterations: 1,000,000; warm-up: 10,000. CSV includes layer, backend, operation, workload, iterations, nanoseconds, checksum, trajectory steps, motion kind and shape variation. Invalid arguments/query errors write stderr and exit nonzero.
+Workloads: `circle_clear`, `circle_hit`, `rectangle_clear`, `rectangle_hit`, `compound_clear`, `compound_hit`, `ccd`, `tunneling`, `moving_vs_moving`, `rotation_wrap`, `endpoint_touch`, `distance`, `dynamic_fixed`, `dynamic_time_variant`. Default iterations: 1,000,000; warm-up: 10,000. CSV includes layer, backend, operation, workload, iterations, nanoseconds, checksum, trajectory steps, motion kind and shape variation. Invalid arguments/query errors write stderr and exit nonzero.
 
 Rhusics/Collide “native distance” uses the shared public fallback; it is not a pure backend-native kernel.
 

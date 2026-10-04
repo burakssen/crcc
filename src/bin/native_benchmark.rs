@@ -452,9 +452,8 @@ fn repeat(
 
 fn workload(name: &str) -> BenchmarkResult<Workload> {
     match name {
-        "circle_clear" | "circle_hit" | "rectangle_clear" | "rectangle_hit" | "compound_clear" => {
-            discrete_workload(name)
-        }
+        "circle_clear" | "circle_hit" | "rectangle_clear" | "rectangle_hit" | "compound_clear"
+        | "compound_hit" => discrete_workload(name),
         "ccd" | "tunneling" | "moving_vs_moving" | "rotation_wrap" | "endpoint_touch" => {
             continuous_workload(name)
         }
@@ -500,6 +499,13 @@ fn discrete_workload(name: &str) -> BenchmarkResult<Workload> {
             compound()?,
             compound()?,
             stationary_motion(DPose2::translation(20.0, 0.0)),
+        )),
+        "compound_hit" => Ok(make_workload(
+            "compound_hit",
+            Operation::Discrete,
+            compound()?,
+            compound()?,
+            stationary_motion(DPose2::translation(1.0, 0.0)),
         )),
         _ => Err(usage()),
     }
@@ -671,13 +677,104 @@ fn invalid_input(message: impl Into<String>) -> BenchmarkError {
 fn usage() -> BenchmarkError {
     invalid_input(
         "usage: native_benchmark <parry|rhusics|collide> <native|public> \
-         <circle_clear|circle_hit|rectangle_clear|rectangle_hit|compound_clear|ccd|tunneling|moving_vs_moving|rotation_wrap|endpoint_touch|distance|dynamic_fixed|dynamic_time_variant> [iterations]",
+         <circle_clear|circle_hit|rectangle_clear|rectangle_hit|compound_clear|compound_hit|ccd|tunneling|moving_vs_moving|rotation_wrap|endpoint_touch|distance|dynamic_fixed|dynamic_time_variant> [iterations]",
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_compound_checksums<E: EngineCollisionObject>(
+        engine: CollisionEngine,
+        workload_name: &str,
+        expected_checksum: u64,
+    ) {
+        let workload_result = workload(workload_name);
+        assert!(
+            workload_result.is_ok(),
+            "{workload_name} workload is missing"
+        );
+        let Ok(workload) = workload_result else {
+            return;
+        };
+
+        assert!(matches!(workload.operation, Operation::Discrete));
+
+        let native = run_native::<E>(engine, &workload, 3);
+        assert!(native.is_ok(), "native query failed: {native:?}");
+        assert_eq!(
+            native.map(|(_, checksum)| checksum).unwrap_or_default(),
+            expected_checksum
+        );
+
+        let public = run_public(engine, &workload, 3);
+        assert!(public.is_ok(), "public query failed: {public:?}");
+        assert_eq!(
+            public.map(|(_, checksum)| checksum).unwrap_or_default(),
+            expected_checksum
+        );
+    }
+
+    #[test]
+    fn compound_hit_collides_in_native_and_public_layers() {
+        #[cfg(feature = "parry")]
+        {
+            assert_compound_checksums::<ParryCollisionObject>(
+                CollisionEngine::Parry,
+                "compound_hit",
+                3,
+            );
+        }
+
+        #[cfg(feature = "rhusics")]
+        {
+            assert_compound_checksums::<RhusicsCoreCollisionObject>(
+                CollisionEngine::Rhusics,
+                "compound_hit",
+                3,
+            );
+        }
+
+        #[cfg(feature = "collide")]
+        {
+            assert_compound_checksums::<CollideCollisionObject>(
+                CollisionEngine::Collide,
+                "compound_hit",
+                3,
+            );
+        }
+    }
+
+    #[test]
+    fn compound_clear_remains_clear_in_native_and_public_layers() {
+        #[cfg(feature = "parry")]
+        {
+            assert_compound_checksums::<ParryCollisionObject>(
+                CollisionEngine::Parry,
+                "compound_clear",
+                0,
+            );
+        }
+
+        #[cfg(feature = "rhusics")]
+        {
+            assert_compound_checksums::<RhusicsCoreCollisionObject>(
+                CollisionEngine::Rhusics,
+                "compound_clear",
+                0,
+            );
+        }
+
+        #[cfg(feature = "collide")]
+        {
+            assert_compound_checksums::<CollideCollisionObject>(
+                CollisionEngine::Collide,
+                "compound_clear",
+                0,
+            );
+        }
+    }
 
     #[test]
     fn native_distance_runs_for_all_engines() {

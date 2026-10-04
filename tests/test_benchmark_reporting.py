@@ -380,12 +380,24 @@ def test_native_layer_extra_python_workloads(engine):
         if operation == "distance":
             assert isinstance(value, float)
             assert math.isfinite(value) and value >= 0
-        elif name == "circle_hit":
-            assert value is True
-        elif name == "rectangle_clear":
-            assert value is False
         else:
-            assert isinstance(value, bool)
+            collides = value if isinstance(value, bool) else value.collides
+            assert isinstance(collides, bool)
+            if name == "circle_hit":
+                assert collides is True
+            elif name == "rectangle_clear":
+                assert collides is False
+
+
+@pytest.mark.parametrize("engine", [engine for _, engine in ENGINE_ITEMS])
+@pytest.mark.parametrize(("workload", "expected"), (("compound_clear", False), ("compound_hit", True)))
+def test_python_compound_workloads_have_expected_discrete_outcomes(engine, workload, expected):
+    execute, operation, _, _ = _python_layer_workload(engine, workload)
+    value = execute()
+    collides = value if isinstance(value, bool) else value.collides
+
+    assert operation == "discrete"
+    assert collides is expected
 
 
 def test_correctness_rejects_false_positives_unless_ccd_is_explicitly_conservative():

@@ -1205,6 +1205,7 @@ def _run_native_layer_suite(config, engine_items):
         "rectangle_clear",
         "rectangle_hit",
         "compound_clear",
+        "compound_hit",
         "ccd",
         "tunneling",
         "moving_vs_moving",
@@ -1501,9 +1502,10 @@ def _python_layer_workload(engine, name):
             0,
             "fixed",
         )
-    if name == "compound_clear":
+    if name in {"compound_clear", "compound_hit"}:
+        separation = 20.0 if name == "compound_clear" else 1.0
         return (
-            lambda: compound.collides(compound, identity, Pose.from_translation((20.0, 0.0)), engine),
+            lambda: compound.collides(compound, identity, Pose.from_translation((separation, 0.0)), engine),
             "discrete",
             0,
             "fixed",
