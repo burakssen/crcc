@@ -49,6 +49,8 @@ pub(super) mod benchmark {
 
     #[pymodule_export]
     use super::collides_static_batch_fresh_pool;
+    #[pymodule_export]
+    use crate::python::collision_checker::collides_static_prepared_timed;
 
     /// Hack: workaround for <https://github.com/PyO3/pyo3/issues/759>.
     #[pymodule_init]

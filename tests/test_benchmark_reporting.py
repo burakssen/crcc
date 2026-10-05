@@ -1,14 +1,20 @@
 import csv
 import json
 import math
+from itertools import pairwise
 
 import pytest
+from crcc import CollisionCheckerBuilder
+from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 import main
 from tools.benchmark.config import ENGINE_ITEMS, SCHEMA_VERSION
-from tools.benchmark.contract import synthetic_workloads as canonical_synthetic_workloads
+from tools.benchmark.contract import (
+    scene_workload as canonical_scene_workload,
+    synthetic_workloads as canonical_synthetic_workloads,
+)
 from tools.benchmark.io import (
     ARTIFACT_FIELDS,
     ArtifactError,
@@ -25,11 +31,14 @@ from tools.benchmark.plots import (
     _plot_api_batch_amortization,
     _plot_execution_layer_cost,
     _plot_memory_growth,
+    _plot_scene_scaling_curves,
 )
 from tools.benchmark.results import RunResult, compare_layers, compare_modes, compare_runs, run_row, summarize_runs
 from tools.benchmark.runner import (
     _correctness_mismatches,
     _execute_pair_query,
+    _measure_prepared_scene_with_checker,
+    _measure_scene_with_checker,
     _parallel_speedup,
     _python_layer_workload,
     _reusable_thread_counts,
@@ -492,6 +501,60 @@ def test_execution_layer_plot_compares_python_with_native_rust(tmp_path):
     assert (tmp_path / "execution_layer.pdf").is_file()
 
 
+def test_static_scene_plot_separates_prepared_queries_and_marks_capacity_breaks(monkeypatch, tmp_path):
+    rows = [
+        {
+            "feature": "scene_scaling",
+            "scene_mode": "static_static",
+            "shape_family": "circle",
+            "backend": "parry",
+            "execution_layer": layer,
+            "workload": "capacity_static_scene" if objects == 100_000 else "static_scene",
+            "objects": str(objects),
+            "queries": str(queries),
+            "density": "0.0",
+            "throughput_median": str(1_000_000 / latency),
+            "errors_total": "0",
+            "unsupported": "False",
+        }
+        for layer, latency in (("python_end_to_end", 120), ("rust_prepared_query", 30))
+        for objects, queries in (
+            (100, 1_000),
+            (1_000, 1_000),
+            (10_000, 1_000),
+            (25_000, 200),
+            (50_000, 200),
+            (100_000, 100),
+        )
+    ]
+    captured = []
+
+    def capture_figure(fig, _path_base):
+        captured.append(fig)
+
+    monkeypatch.setattr("tools.benchmark.plots._save_plot", capture_figure)
+    _plot_scene_scaling_curves(tmp_path / "scene_scaling", rows)
+
+    assert len(captured) == 1
+    fig = captured[0]
+    try:
+        ax = fig.axes[0]
+        data_lines = [line for line in ax.lines if len(line.get_xdata()) > 1 and len(set(line.get_xdata())) > 1]
+        assert len(data_lines) == 4
+        assert {tuple(line.get_xdata()) for line in data_lines} == {(100, 1_000, 10_000), (25_000, 50_000)}
+        assert {line.get_linestyle() for line in data_lines} == {"-", "--"}
+        assert any(list(line.get_xdata()) == [100_000] for line in ax.lines)
+        assert {text.get_text() for text in ax.texts} >= {"q=1,000 to 200", "q=200 to 100"}
+        legend_labels = {
+            text.get_text()
+            for legend in (*fig.legends, *(axis.get_legend() for axis in fig.axes if axis.get_legend()))
+            for text in legend.get_texts()
+        }
+        assert {"Python end-to-end", "Prepared Rust query"} <= legend_labels
+    finally:
+        plt.close(fig)
+
+
 def test_mode_comparisons_pair_repetitions_and_preserve_dimensions():
     runs = []
     for repetition, scalar_ns, batch_ns in ((0, 1_000, 500), (1, 1_200, 600)):
@@ -660,6 +723,98 @@ def test_scene_workloads_preserve_shape_dimensions():
         assert workload.ccd_mode == "discrete"
         assert len(workload.static_objects) == 4
         assert len(workload.positioned_queries) == 3
+
+
+def test_static_scene_queries_cover_the_scene_and_match_canonical_contract():
+    objects, queries, density = 1_000, 128, 0.5
+    workload = scene_workload(objects, queries, density, "circle")
+    canonical = canonical_scene_workload(objects, queries, density, "circle")
+    width = math.ceil(math.sqrt(objects))
+    targets = [
+        math.floor(pose.translation[1] / 6 + 0.5) * width + math.floor(pose.translation[0] / 6 + 0.5)
+        for _, pose in workload.positioned_queries
+    ]
+
+    for (_, pose), query in zip(workload.positioned_queries, canonical["queries"], strict=True):
+        assert (*pose.translation, pose.rotation) == pytest.approx(query["pose"])
+    assert targets == [((2 * index + 1) * objects) // (2 * queries) for index in range(queries)]
+    assert targets == sorted(set(targets))
+    assert targets[0] < objects * 0.05
+    assert targets[-1] >= objects * 0.95
+
+
+def test_static_scene_density_matches_observed_hits_and_handles_small_samples():
+    objects, queries, density = 64, 101, 0.5
+    for family in ("circle", "rectangle", "polygon32", "compound16_polygon32"):
+        workload = scene_workload(objects, queries, density, family)
+        canonical = canonical_scene_workload(objects, queries, density, family)
+        builder = CollisionCheckerBuilder()
+        for obstacle in workload.static_objects:
+            builder.add_static_obstacle(obstacle)
+        checker = builder.build()
+        observed = [checker.collides_static(shape, pose).collides for shape, pose in workload.positioned_queries]
+
+        expected = [query["expected"] for query in canonical["queries"]]
+        assert observed == expected
+        assert all(left != right for left, right in pairwise(expected))
+        assert sum(observed) == 51
+
+        for boundary_density, expected_hits in ((0.0, 0), (1.0, queries)):
+            boundary = scene_workload(objects, queries, boundary_density, family)
+            actual = [checker.collides_static(shape, pose).collides for shape, pose in boundary.positioned_queries]
+            assert sum(actual) == expected_hits
+
+    empty = scene_workload(1, 0, 0.5, "circle")
+    singleton = scene_workload(1, 1, 0.5, "circle")
+    assert empty.positioned_queries == ()
+    assert len(singleton.positioned_queries) == 1
+    assert canonical_scene_workload(1, 0, 0.5, "circle")["queries"] == []
+    assert canonical_scene_workload(1, 1, 0.5, "circle")["queries"][0]["expected"] is True
+
+
+@pytest.mark.parametrize("dimensions", [(0, 0, 0.5), (1, -1, 0.5), (1, 1, -0.1), (1, 1, 1.1)])
+def test_scene_workloads_reject_invalid_dimensions(dimensions):
+    with pytest.raises(ValueError):
+        scene_workload(*dimensions)
+    with pytest.raises(ValueError):
+        canonical_scene_workload(*dimensions)
+
+
+@pytest.mark.parametrize(("backend", "engine"), ENGINE_ITEMS)
+@pytest.mark.parametrize("shape_family", ("circle", "rectangle", "polygon32", "compound16_polygon32"))
+def test_prepared_rust_scene_measurement_is_additive_and_matches_end_to_end(backend, engine, shape_family):
+    workload = scene_workload(16, 9, 0.5, shape_family)
+    builder = CollisionCheckerBuilder(backend=engine)
+    for obstacle in workload.static_objects:
+        builder.add_static_obstacle(obstacle)
+    checker = builder.build()
+
+    end_to_end = _measure_scene_with_checker(backend, workload, checker, 0)
+    prepared = _measure_prepared_scene_with_checker(backend, workload, checker, 0)
+
+    expected = [query["expected"] for query in canonical_scene_workload(16, 9, 0.5, shape_family)["queries"]]
+    assert end_to_end.execution_layer == "python_end_to_end"
+    assert end_to_end.collisions == sum(expected)
+    assert prepared.execution_layer == "rust_prepared_query"
+    assert prepared.queries == end_to_end.queries == len(expected)
+    assert prepared.collisions == end_to_end.collisions
+    assert prepared.errors == 0
+    assert len(prepared.samples_ns) == prepared.queries
+    assert all(sample >= 0 for sample in prepared.samples_ns)
+    assert prepared.total_ns >= 0
+
+    from crcc._core import benchmark as core_benchmark
+
+    query = checker.prepare_static(workload.positioned_queries[0][0])
+    native_collisions, native_samples, native_total, native_errors = core_benchmark.collides_static_prepared_timed(
+        checker, query, [pose for _, pose in workload.positioned_queries]
+    )
+    assert native_collisions == expected
+    assert native_errors == 0
+    assert len(native_samples) == len(expected)
+    assert all(sample >= 0 for sample in native_samples)
+    assert native_total >= 0
+    assert core_benchmark.collides_static_prepared_timed(checker, query, []) == ([], [], 0, 0)
 
 
 def _layer_result(layer, repetition, total_ns):

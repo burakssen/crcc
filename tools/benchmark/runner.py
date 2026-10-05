@@ -262,6 +262,11 @@ def _run_scene_scaling_suite(config, engine_items, scene_sizes):
                     run_kwargs: dict[str, Any] = {**run_res.__dict__, "build_ns": build_ns}
                     run_res = RunResult(**cast(Any, run_kwargs))
                     group_results.append(run_res)
+                    prepared_res = _measure_prepared_scene_with_checker(
+                        backend, workload, checker, repetition, shape=shape_family
+                    )
+                    prepared_kwargs: dict[str, Any] = {**prepared_res.__dict__, "build_ns": build_ns}
+                    group_results.append(RunResult(**cast(Any, prepared_kwargs)))
                     if shape_family == "circle":
                         parallel_rows.extend(
                             _measure_scene_parallel_scaling(
@@ -294,6 +299,15 @@ def _run_capacity_point(config, engine_items):
                 result = _measure_scene_with_checker(backend, workload, checker, repetition, shape="circle")
                 kwargs: dict[str, Any] = {**result.__dict__, "workload": "capacity_static_scene", "build_ns": build_ns}
                 runs.append(RunResult(**cast(Any, kwargs)))
+                prepared_result = _measure_prepared_scene_with_checker(
+                    backend, workload, checker, repetition, shape="circle"
+                )
+                prepared_kwargs: dict[str, Any] = {
+                    **prepared_result.__dict__,
+                    "workload": "capacity_static_scene",
+                    "build_ns": build_ns,
+                }
+                runs.append(RunResult(**cast(Any, prepared_kwargs)))
             except Exception:
                 total_ns = time.perf_counter_ns() - start
                 runs.append(
@@ -1735,6 +1749,67 @@ def _measure_scene_with_checker(
         transform_kind=transform_kind,
         scene_kind=feature,
         density_label=density_label or workload.density_label,
+        shape_family=workload.shape_family,
+        scene_mode=workload.scene_mode,
+        ccd_mode=workload.ccd_mode,
+    )
+
+
+def _measure_prepared_scene_with_checker(
+    backend,
+    workload,
+    checker,
+    repetition,
+    *,
+    feature="scene_scaling",
+    workload_name="static_scene",
+    transform_kind="",
+    density_label="",
+    shape="",
+):
+    from crcc._core import benchmark as core_benchmark
+
+    positioned_queries = workload.positioned_queries
+    preparation_failed = False
+    try:
+        prepared = checker.prepare_static(positioned_queries[0][0]) if positioned_queries else None
+    except Exception:
+        prepared = None
+        preparation_failed = bool(positioned_queries)
+    if prepared is None:
+        collisions, samples, total_ns = (), (), 0
+        errors = len(positioned_queries) if preparation_failed else 0
+    else:
+        try:
+            collisions, samples, total_ns, errors = core_benchmark.collides_static_prepared_timed(
+                checker,
+                prepared,
+                [pose for _, pose in positioned_queries],
+            )
+        except Exception:
+            collisions, samples, total_ns = (), (), 0
+            errors = len(positioned_queries)
+    return RunResult(
+        feature,
+        None,
+        backend,
+        workload_name,
+        repetition,
+        len(positioned_queries),
+        workload.objects,
+        workload.density,
+        sum(collisions),
+        errors,
+        False,
+        total_ns,
+        samples,
+        shape=shape,
+        transform_kind=transform_kind,
+        scene_kind=feature,
+        density_label=density_label or workload.density_label,
+        execution_layer="rust_prepared_query",
+        operation="collides_static",
+        sample_semantics="per_query",
         shape_family=workload.shape_family,
         scene_mode=workload.scene_mode,
         ccd_mode=workload.ccd_mode,

@@ -20,6 +20,7 @@ use std::ffi::CStr;
 use std::fmt::Display;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Emits a `DeprecationWarning` pointing at the calling Python frame.
 pub(super) fn warn_deprecated(py: Python<'_>, message: &CStr) -> PyResult<()> {
@@ -167,6 +168,64 @@ impl AsRef<RustCollisionChecker> for CollisionChecker {
     fn as_ref(&self) -> &RustCollisionChecker {
         &self.0
     }
+}
+
+#[pyfunction(signature = (checker, prepared_query, positions, min_time = None, max_time = None))]
+/// Benchmark-only prepared static queries timed inside the Rust execution layer.
+pub(super) fn collides_static_prepared_timed(
+    py: Python<'_>,
+    checker: &CollisionChecker,
+    prepared_query: &PreparedStaticQuery,
+    positions: Vec<Pose>,
+    min_time: Option<TimeStepInner>,
+    max_time: Option<TimeStepInner>,
+) -> PyResult<(Vec<bool>, Vec<u64>, u64, u64)> {
+    let time_range = min_max_to_range(min_time, max_time)?;
+    let prepared_query = Arc::clone(&prepared_query.0);
+    let positions = positions
+        .into_iter()
+        .map(|position| position.0)
+        .collect::<Vec<_>>();
+    if positions.is_empty() {
+        return Ok((Vec::new(), Vec::new(), 0, 0));
+    }
+
+    let (collisions, samples_ns, total_ns, errors) = py.detach(|| {
+        for position in positions.iter().take(100) {
+            let _ = checker.as_ref().collides_static_prepared_range(
+                prepared_query.as_ref(),
+                *position,
+                time_range.clone(),
+            );
+        }
+
+        let mut collisions = Vec::with_capacity(positions.len());
+        let mut samples_ns = Vec::with_capacity(positions.len());
+        let mut errors = 0_u64;
+        let total_start = Instant::now();
+        for position in positions {
+            let start = Instant::now();
+            if let Ok(status) = checker.as_ref().collides_static_prepared_range(
+                prepared_query.as_ref(),
+                position,
+                time_range.clone(),
+            ) {
+                collisions.push(status.collides());
+            } else {
+                collisions.push(false);
+                errors = errors.saturating_add(1);
+            }
+            samples_ns.push(u64::try_from(start.elapsed().as_nanos()).unwrap_or(u64::MAX));
+        }
+        (
+            collisions,
+            samples_ns,
+            u64::try_from(total_start.elapsed().as_nanos()).unwrap_or(u64::MAX),
+            errors,
+        )
+    });
+
+    Ok((collisions, samples_ns, total_ns, errors))
 }
 
 #[pymethods]

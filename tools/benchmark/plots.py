@@ -241,6 +241,52 @@ def _plot_latency_tail_ratio(path_base: Path, rows):
     _save_plot(fig, path_base)
 
 
+def _scene_execution_layer(row):
+    return row.get("execution_layer") or "python_end_to_end"
+
+
+def _scene_layer_label(layer):
+    return {
+        "python_end_to_end": "Python end-to-end",
+        "rust_prepared_query": "Prepared Rust query",
+        "engine_native": "Prepared native query",
+    }.get(layer, str(layer).replace("_", " ").title())
+
+
+def _scene_layer_style(layer):
+    return "--" if layer in {"rust_prepared_query", "engine_native"} else "-"
+
+
+def _annotate_scene_query_breaks(ax, rows):
+    ranges = {}
+    for row in rows:
+        if _is_true(row.get("unsupported")) or _int(row.get("errors_total")):
+            continue
+        query_count = _int(row.get("queries"))
+        objects = _int(row.get("objects"))
+        if query_count > 0 and objects > 0:
+            ranges.setdefault(query_count, []).append(objects)
+    segments = sorted((min(objects), max(objects), query_count) for query_count, objects in ranges.items())
+    for left, right in zip(segments, segments[1:], strict=False):
+        _, left_end, left_count = left
+        right_start, _, right_count = right
+        if left_end >= right_start:
+            continue
+        break_at = math.sqrt(left_end * right_start)
+        ax.axvline(break_at, color="#89929C", linewidth=0.65, linestyle=":", zorder=0)
+        ax.text(
+            break_at,
+            0.91,
+            f"q={left_count:,} to {right_count:,}",
+            transform=ax.get_xaxis_transform(),
+            ha="center",
+            va="top",
+            fontsize=7.2,
+            color="#4B5563",
+            clip_on=False,
+        )
+
+
 def _plot_scene_scaling_curves(path_base: Path, rows):
     scene_rows = [row for row in rows if row["feature"] in {"scene_scaling", "dynamic_scene"}]
     families = sorted({row.get("shape_family") or row.get("shape") or "unspecified" for row in scene_rows})
@@ -263,6 +309,9 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
         squeeze=False,
         layout="constrained",
     )
+    static_layers = sorted(
+        {_scene_execution_layer(row) for row in scene_rows if row.get("scene_mode") == "static_static"}
+    )
     for row_index, mode in enumerate(modes):
         for column_index, family in enumerate(families):
             ax = axes[row_index, column_index]
@@ -271,22 +320,56 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
                 for row in scene_rows
                 if row.get("scene_mode") == mode and (row.get("shape_family") or row.get("shape")) == family
             ]
-            densities = sorted({row.get("density", "") for row in selected}) or [""]
-            for backend in backends:
-                for density_index, density in enumerate(densities):
-                    backend_rows = sorted(
-                        [row for row in selected if row["backend"] == backend and row.get("density", "") == density],
-                        key=lambda row: _int(row["objects"]),
-                    )
-                    if backend_rows:
-                        ax.plot(
-                            [_int(row["objects"]) for row in backend_rows],
-                            [_float(row["throughput_median"]) for row in backend_rows],
-                            marker=BACKEND_MARKERS.get(backend, "o"),
-                            color=BACKEND_COLORS.get(backend),
-                            linestyle="-" if density_index == 0 else "--",
-                            linewidth=1.5,
+            densities = sorted({row.get("density", "") for row in selected}, key=_float) or [""]
+            if mode == "static_static":
+                for backend in backends:
+                    for density in densities:
+                        density_rows = [
+                            row for row in selected if row["backend"] == backend and row.get("density", "") == density
+                        ]
+                        layer_names = sorted({_scene_execution_layer(row) for row in density_rows})
+                        for layer in layer_names:
+                            layer_rows = [row for row in density_rows if _scene_execution_layer(row) == layer]
+                            query_counts = sorted({_int(row.get("queries")) for row in layer_rows})
+                            for query_count in query_counts:
+                                segment_rows = sorted(
+                                    [row for row in layer_rows if _int(row.get("queries")) == query_count],
+                                    key=lambda row: _int(row.get("objects")),
+                                )
+                                if not segment_rows:
+                                    continue
+                                color = BACKEND_COLORS.get(backend)
+                                ax.plot(
+                                    [_int(row["objects"]) for row in segment_rows],
+                                    [_float(row["throughput_median"]) for row in segment_rows],
+                                    marker=BACKEND_MARKERS.get(backend, "o"),
+                                    markerfacecolor="white" if _float(density) > 0 else color,
+                                    markeredgecolor=color,
+                                    color=color,
+                                    linestyle=_scene_layer_style(layer),
+                                    linewidth=1.5,
+                                )
+                _annotate_scene_query_breaks(ax, selected)
+            else:
+                for backend in backends:
+                    for density_index, density in enumerate(densities):
+                        backend_rows = sorted(
+                            [
+                                row
+                                for row in selected
+                                if row["backend"] == backend and row.get("density", "") == density
+                            ],
+                            key=lambda row: _int(row["objects"]),
                         )
+                        if backend_rows:
+                            ax.plot(
+                                [_int(row["objects"]) for row in backend_rows],
+                                [_float(row["throughput_median"]) for row in backend_rows],
+                                marker=BACKEND_MARKERS.get(backend, "o"),
+                                color=BACKEND_COLORS.get(backend),
+                                linestyle="-" if density_index == 0 else "--",
+                                linewidth=1.5,
+                            )
             ax.set_title(f"{mode.replace('_', ' ')}\n{family.replace('_', ' ')}", loc="left", fontsize=8.8)
             ax.set_xscale("log")
             ax.set_yscale("log")
@@ -295,8 +378,12 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
                 ax.set_ylabel("queries/s")
             if row_index == len(modes) - 1:
                 ax.set_xlabel("environment objects")
+    capacity_included = any(row.get("workload") == "capacity_static_scene" for row in scene_rows)
+    title = "Scene Scaling by Mode and Shape Family"
+    if capacity_included:
+        title += " · 100,000-object capacity included"
     fig.suptitle(
-        "Scene Scaling by Mode and Shape Family",
+        title,
         x=0.02,
         ha="left",
         fontsize=11.5,
@@ -304,6 +391,56 @@ def _plot_scene_scaling_curves(path_base: Path, rows):
         color="#111827",
     )
     _legend_outside(fig, axes.ravel()[0], backends, style="line")
+    if len(static_layers) > 1:
+        density_values = sorted(
+            {row.get("density", "") for row in scene_rows if row.get("scene_mode") == "static_static"},
+            key=_float,
+        )
+        layer_handles = [
+            Line2D(
+                [0],
+                [0],
+                color="#374151",
+                linestyle=_scene_layer_style(layer),
+                linewidth=1.5,
+                label=_scene_layer_label(layer),
+            )
+            for layer in static_layers
+        ]
+        fig.legend(
+            handles=layer_handles,
+            title="Static-scene execution layer",
+            loc="lower center",
+            bbox_to_anchor=(0.36, 0.005),
+            ncol=len(layer_handles),
+            fontsize=8,
+            title_fontsize=8.5,
+            frameon=False,
+        )
+        density_handles = [
+            Line2D(
+                [0],
+                [0],
+                color="#374151",
+                linestyle="none",
+                marker="o",
+                markerfacecolor="white" if _float(density) > 0 else "#374151",
+                markeredgecolor="#374151",
+                markersize=4,
+                label=f"{_float(density):g}",
+            )
+            for density in density_values
+        ]
+        fig.legend(
+            handles=density_handles,
+            title="Static-scene density",
+            loc="lower center",
+            bbox_to_anchor=(0.77, 0.005),
+            ncol=len(density_handles),
+            fontsize=8,
+            title_fontsize=8.5,
+            frameon=False,
+        )
     _save_plot(fig, path_base)
 
 

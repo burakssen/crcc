@@ -285,6 +285,8 @@ def time_variant_query_batch(count: int, steps: int, variation: str):
 
 
 def scene_workload(objects: int, queries: int, density: float, shape_family: str = "circle"):
+    if objects < 1 or queries < 0 or not 0.0 <= density <= 1.0:
+        raise ValueError("invalid scene workload dimensions")
     grid_width = math.ceil(math.sqrt(objects))
     static_objects = tuple(
         matrix_shape(shape_family, ((index % grid_width) * 6.0, (index // grid_width) * 6.0))
@@ -292,12 +294,14 @@ def scene_workload(objects: int, queries: int, density: float, shape_family: str
     )
     query_shape = matrix_pair(shape_family)[1]
     positioned_queries = []
+    hit_count = math.floor(queries * density + 0.5)
+    hit_positions = {((2 * hit_index + 1) * queries) // (2 * hit_count) for hit_index in range(hit_count)}
     for index in range(queries):
-        should_collide = index / max(1, queries) < density
-        target = index % objects
+        should_collide = index in hit_positions
+        target = ((2 * index + 1) * objects) // (2 * queries)
         x = (target % grid_width) * 6.0
         y = (target // grid_width) * 6.0
-        offset = (0.0, 0.0) if should_collide else (2.8 + 0.4 * (index % 5), 2.8 + 0.3 * (index % 7))
+        offset = (0.0, 0.0) if should_collide else (2.5, 0.0)
         pose = Pose.from_translation((x + offset[0], y + offset[1]))
         positioned_queries.append((query_shape, pose))
     return SceneWorkload(

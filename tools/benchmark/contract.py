@@ -12,7 +12,7 @@ from typing import Any, Iterable
 import numpy as np
 
 SCHEMA_VERSION = "12"
-CONTRACT_VERSION = "crcc-workload-contract-v1"
+CONTRACT_VERSION = "crcc-workload-contract-v2"
 SUITES = ("pair", "continuous", "distance", "scene_scaling", "planning")
 
 _PROFILE_DIMENSIONS = {
@@ -103,11 +103,14 @@ def scene_workload(objects: int, queries: int, density: float, shape_family: str
         {"index": index, "shape": shape_family, "pose": [x, y, 0.0]} for index, (x, y) in enumerate(static_positions)
     ]
     query_items = []
+    hit_count = math.floor(queries * density + 0.5)
+    hit_positions = {((2 * hit_index + 1) * queries) // (2 * hit_count) for hit_index in range(hit_count)}
     for index in range(queries):
-        base_x, base_y = static_positions[index % objects]
-        expected = index / max(1, queries) < density
-        x = base_x if expected else base_x + 2.8 + 0.4 * (index % 5)
-        y = base_y if expected else base_y + 2.8 + 0.3 * (index % 7)
+        target = ((2 * index + 1) * objects) // (2 * queries)
+        base_x, base_y = static_positions[target]
+        expected = index in hit_positions
+        x = base_x if expected else base_x + 2.5
+        y = base_y
         query_items.append({"index": index, "shape": shape_family, "pose": [x, y, 0.0], "expected": expected})
     return {
         "objects": objects,
