@@ -1777,7 +1777,7 @@ def _measure_prepared_scene_with_checker(
         prepared = None
         preparation_failed = bool(positioned_queries)
     if prepared is None:
-        collisions, samples, total_ns = (), (), 0
+        collisions, samples, total_ns = [], [], 0
         errors = len(positioned_queries) if preparation_failed else 0
     else:
         try:
@@ -1787,7 +1787,7 @@ def _measure_prepared_scene_with_checker(
                 [pose for _, pose in positioned_queries],
             )
         except Exception:
-            collisions, samples, total_ns = (), (), 0
+            collisions, samples, total_ns = [], [], 0
             errors = len(positioned_queries)
     return RunResult(
         feature,
